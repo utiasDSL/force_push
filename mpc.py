@@ -7,6 +7,131 @@ import qpoases
 import IPython
 
 
+class Pendulum(object):
+    def __init__(self, dt):
+        self.dt = dt
+        self.g = 1
+        self.l = 1
+        self.B = np.array([0, 1])
+
+        self.u = 0
+        self.x = np.array([0, 0])
+
+    def command(self, u):
+        # u is a scalar
+        self.u = u
+
+    def step(self):
+        self.x = self.x + self.dt * np.array([
+            self.x[1],
+            self.g / self.l * np.sin(self.x[0]) + self.u])
+
+    def calc_A(self, x):
+        return np.array([
+            [1, self.dt]
+            [self.dt * self.g * np.cos(x[0]) / self.l, 1]])
+
+
+def lookahead(sys, Yd, U, Q, R, N):
+    ''' Generate lifted matrices proprogating the state N timesteps into the
+        future.
+
+        sys: System model.
+        Yd:  Desired output trajectory.
+        U:   Input trajectory from the last iteration.
+        Q:   Tracking error weighting matrix.
+        R:   Input magnitude weighting matrix.
+        N:   Number of timesteps into the future. '''
+    x0 = sys.x
+    n = sys.calc_A(x0).shape[0]  # state dimension
+    m = sys.calc_B(x0).shape[1]  # input dimension
+    p = sys.calc_C(x0).shape[0]  # output dimension
+
+    Abar = matlib.zeros((p*N, n))
+    Bbar = matlib.zeros((p*N, m*N))
+    Qbar = matlib.zeros((p*N, p*N))
+    Rbar = matlib.zeros((m*N, m*N))
+
+    # arrays of the linearized matrices for each timestep. Note that A and C go
+    # from 1..N, but B is from 0..N-1.
+    As = np.zeros((n*N,n))
+    Bs = np.zeros((n*N,m))
+    Cs = np.zeros((p*N,n))
+
+    # states from the last iteration
+    X_last = np.zeros((n*(N+1),1))
+    # X_last[:n,:] = sys.x0
+
+    Bs[:n,:] = sys.calc_B(x0)
+    X_last[:n,:] = f(x0, U[0])
+    As[:n,:] = sys.calc_A(X_last[:n])
+    Cs[:p,:] = sys.calc_C(X_last[:n])
+
+    for k in range(1, N):
+        Bs[k*n:(k+1)*n,:] = sys.calc_B(xk)
+
+        x = f(xk, U[k])
+
+        As[k*n:(k+1)*n,:] = sys.calc_A(xk)
+        Cs[k*p:(k+1)*p,:] = sys.calc_C(xk)
+
+    # x = x0
+    #
+    # for k in range(N):
+    #     B = sys.calc_B(x)
+    #     x = f(x, U[k])
+    #     A = sys.calc_A(x).dot(A)
+    #     C = sys.calc_C(x)
+
+    Abar = np.zeros((p*N, n))
+    Bbar = np.zeros((p*N, m*N))
+
+    # for k in range(N):
+    #     B = sys.calc_B(x[k])
+    #     for r in range(k, N):
+    #         Bbar[r*n:(r+1)*n, k*n:(k+1)*n] = B
+    #
+    # for k in range(1, N):
+    #     A = sys.calc_A(x[k])  # TODO
+    #     for r in range(k, N):
+    #         for c in range(k):
+    #             X = Bbar[r*n:(r+1)*n, c*n:(c+1)*n]
+    #             Bbar[r*n:(r+1)*n, c*n:(c+1)*n] = A.dot(X)
+    #
+    # for k in range(N):
+    #     C = sys.calc_C(x[k])
+    #     for c in range(k+1):
+    #         Bbar[k*n:(
+
+    for r in range(N):
+        for c in range(r+1):
+            B = Bs[c]
+            C = Cs[r+1]
+            A = np.eye(n)
+            for i in range(c+1, r+1):
+                A = As[i].dot(A)
+            Bbar[ , ] = C.dot(A).dot(B)
+
+    # TODO right now we don't include a separate QN for terminal condition
+    # Construct matrices
+    for k in range(N):
+        l = k*p
+        u = (k+1)*p
+
+        Abar[k*p:(k+1)*p, :] = C*A**(k+1)
+        Qbar[k*p:(k+1)*p, k*p:(k+1)*p] = Q
+        Rbar[k*m:(k+1)*m, k*m:(k+1)*m] = R
+
+        for j in range(k + 1):
+            Bbar[k*p:(k+1)*p, j*m:(j+1)*m] = C*A**(k-j-1)*B
+
+    H = Rbar + Bbar.T * Qbar * Bbar
+    g = (Abar * x0 - Yd).T * Qbar * Bbar
+
+    return np.array(H), np.array(g).flatten()
+
+
+
 class LinearSystem(object):
     def __init__(self, x0, A, B, C):
         self.A = A

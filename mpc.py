@@ -14,6 +14,10 @@ class Pendulum(object):
         self.l = 1
         self.B = np.array([0, 1])
 
+        self.m = 1  # state dimension
+        self.n = 2  # input dimension
+        self.p = 2  # output dimension
+
     def motion(self, x, u):
         ''' Motion model: x_k+1 = f(x_k, u_k) '''
         return x + self.dt * np.array([
@@ -48,9 +52,9 @@ def lookahead(sys, x0, Yd, U, Q, R, N):
         R:   Input magnitude weighting matrix.
         N:   Number of timesteps into the future. '''
 
-    n = sys.calc_A(x0).shape[0]  # state dimension
-    m = sys.calc_B(x0).shape[1]  # input dimension
-    p = sys.calc_C(x0).shape[0]  # output dimension
+    n = sys.n
+    m = sys.m
+    p = sys.p
 
     Abar = matlib.zeros((p*N, n))
     Bbar = matlib.zeros((p*N, m*N))
@@ -163,6 +167,7 @@ class LinearSystem(object):
 
 
 class PID(object):
+    ''' PID controller. '''
     def __init__(self, Kp, Ki, Kd):
         self.Kp = Kp
         self.Ki = Ki
@@ -181,11 +186,53 @@ class PID(object):
 
 
 class MPC(object):
-    def __init__(self, Q, R, lb, ub, N):
+    ''' Model predictive controller. '''
+    def __init__(self, sys, Q, R, lb, ub, N):
+        self.sys = sys
         self.Q = Q
         self.R = R
         self.lb = lb
         self.ub = ub
+        self.N = N
+
+    def _lookahead(self, x0, Yd, U):
+        return lookahead(self.sys, x0, Yd, U, self.Q, self.R, self.N)
+
+    def _iterate(self, x0, Yd, U):
+        # Create the QP, which we'll solve sequentially.
+        qp = qpoases.PySQProblem(self.sys.m * self.N)
+        options = qpoases.PyOptions()
+        options.printLevel = qpoases.PyPrintLevel.NONE
+        qp.setOptions(options)
+
+        # TODO put somewhere else
+        nWSR = 100
+        NUM_ITER = 5
+
+        # Initial opt problem.
+        H, g = self._lookahead(x0, Yd, U)
+        qp.init(H, g, self.lb, self.ub, nWSR)
+        dU = np.zeros(self.sys.m * self.N)
+        qp.getPrimalSolution(dU)
+        U = U + dU
+
+        # Remaining sequence is hotstarted from the first.
+        for i in range(NUM_ITER):
+            H, g = self._lookahead(x0, Yd, U)
+            # we currently do not have a constraint matrix A
+            qp.hotstart(H, g, 0, self.lb, self.ub, nWSR)
+            qp.getPrimalSolution(dU)
+            U = U + dU
+
+        return U
+
+    def solve(self, x0, Yd):
+        # initialize optimal inputs
+        U = np.zeros((self.sys.p*self.N, 1))
+        U = self._iterate(x0, Yd, U)
+
+        # return first optimal input
+        return U[:self.sys.p]
 
 
 def step(t):

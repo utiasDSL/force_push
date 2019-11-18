@@ -14,35 +14,40 @@ class Pendulum(object):
         self.l = 1
         self.B = np.array([0, 1])
 
-        self.u = 0
-        self.x = np.array([0, 0])
+    def motion(self, x, u):
+        ''' Motion model: x_k+1 = f(x_k, u_k) '''
+        return x + self.dt * np.array([
+            x[1],
+            self.g / self.l * np.sin(x[0]) + u])
 
-    def command(self, u):
-        # u is a scalar
-        self.u = u
-
-    def step(self):
-        self.x = self.x + self.dt * np.array([
-            self.x[1],
-            self.g / self.l * np.sin(self.x[0]) + self.u])
+    def measure(self, x):
+        ''' Measurement model: y_k = g(u_k) '''
+        return x
 
     def calc_A(self, x):
         return np.array([
             [1, self.dt]
             [self.dt * self.g * np.cos(x[0]) / self.l, 1]])
 
+    def calc_B(self, x):
+        return np.array([[0], [1]])
 
-def lookahead(sys, Yd, U, Q, R, N):
+    def calc_C(self, x):
+        return np.eye(2)
+
+
+def lookahead(sys, x0, Yd, U, Q, R, N):
     ''' Generate lifted matrices proprogating the state N timesteps into the
         future.
 
         sys: System model.
+        x0:  Current state.
         Yd:  Desired output trajectory.
         U:   Input trajectory from the last iteration.
         Q:   Tracking error weighting matrix.
         R:   Input magnitude weighting matrix.
         N:   Number of timesteps into the future. '''
-    x0 = sys.x
+
     n = sys.calc_A(x0).shape[0]  # state dimension
     m = sys.calc_B(x0).shape[1]  # input dimension
     p = sys.calc_C(x0).shape[0]  # output dimension
@@ -52,57 +57,41 @@ def lookahead(sys, Yd, U, Q, R, N):
     Qbar = matlib.zeros((p*N, p*N))
     Rbar = matlib.zeros((m*N, m*N))
 
-    # arrays of the linearized matrices for each timestep. Note that A and C go
-    # from 1..N, but B is from 0..N-1.
-    As = np.zeros((n*N,n))
-    Bs = np.zeros((n*N,m))
-    Cs = np.zeros((p*N,n))
+    # States from the last iteration
+    X_last = np.zeros((n*(N+1), 1))
+    X_last[:n, :] = x0
 
-    # states from the last iteration
-    X_last = np.zeros((n*(N+1),1))
-    # X_last[:n,:] = sys.x0
+    for k in range(1, N+1):
+        x_prev = X_last[(k-1)*n:k*n]
+        u_prev = U[(k-1)*m:k*m]
+        x = sys.f(x_prev, u_prev)
+        X_last[k*n:(k+1)*n] = x
 
-    Bs[:n,:] = sys.calc_B(x0)
-    X_last[:n,:] = f(x0, U[0])
-    As[:n,:] = sys.calc_A(X_last[:n])
-    Cs[:p,:] = sys.calc_C(X_last[:n])
+    # Arrays of the linearized matrices for each timestep.
+    As = np.zeros((n*(N+1), n))
+    Bs = np.zeros((n*N, m))
+    Cs = np.zeros((p*(N+1), n))
 
-    for k in range(1, N):
-        Bs[k*n:(k+1)*n,:] = sys.calc_B(xk)
+    # Calculate B matrices: B_0..B_{N-1}
+    for k in range(N):
+        x = X_last[k*n:(k+1)*n]
+        Bs[k*n:(k+1)*n, :] = sys.calc_B(x)
 
-        x = f(xk, U[k])
-
-        As[k*n:(k+1)*n,:] = sys.calc_A(xk)
-        Cs[k*p:(k+1)*p,:] = sys.calc_C(xk)
-
-    # x = x0
-    #
-    # for k in range(N):
-    #     B = sys.calc_B(x)
-    #     x = f(x, U[k])
-    #     A = sys.calc_A(x).dot(A)
-    #     C = sys.calc_C(x)
+    # Calculate A and C matrices: A_1..A_N, C_1..C_N
+    for k in range(1, N+1):
+        x = X_last[k*n:(k+1)*n]
+        As[k*n:(k+1)*n, :] = sys.calc_A(x)
+        Cs[k*p:(k+1)*p, :] = sys.calc_C(x)
 
     Abar = np.zeros((p*N, n))
     Bbar = np.zeros((p*N, m*N))
 
-    # for k in range(N):
-    #     B = sys.calc_B(x[k])
-    #     for r in range(k, N):
-    #         Bbar[r*n:(r+1)*n, k*n:(k+1)*n] = B
-    #
-    # for k in range(1, N):
-    #     A = sys.calc_A(x[k])  # TODO
-    #     for r in range(k, N):
-    #         for c in range(k):
-    #             X = Bbar[r*n:(r+1)*n, c*n:(c+1)*n]
-    #             Bbar[r*n:(r+1)*n, c*n:(c+1)*n] = A.dot(X)
-    #
-    # for k in range(N):
-    #     C = sys.calc_C(x[k])
-    #     for c in range(k+1):
-    #         Bbar[k*n:(
+    # Build Abar matrix
+    for k in range(1, N+1):
+        x = X_last[k*n:(k+1)*n]
+        Abar[k*p:k*(p+1)] = sys.g(x)
 
+    # Build Bbar matrix
     for r in range(N):
         for c in range(r+1):
             B = Bs[c]
@@ -110,26 +99,17 @@ def lookahead(sys, Yd, U, Q, R, N):
             A = np.eye(n)
             for i in range(c+1, r+1):
                 A = As[i].dot(A)
-            Bbar[ , ] = C.dot(A).dot(B)
+            Bbar[r*p:(r+1)*p, c*m:(c+1)*m] = C.dot(A).dot(B)
 
-    # TODO right now we don't include a separate QN for terminal condition
-    # Construct matrices
+    # Build lifted weight matrices
     for k in range(N):
-        l = k*p
-        u = (k+1)*p
-
-        Abar[k*p:(k+1)*p, :] = C*A**(k+1)
         Qbar[k*p:(k+1)*p, k*p:(k+1)*p] = Q
         Rbar[k*m:(k+1)*m, k*m:(k+1)*m] = R
-
-        for j in range(k + 1):
-            Bbar[k*p:(k+1)*p, j*m:(j+1)*m] = C*A**(k-j-1)*B
 
     H = Rbar + Bbar.T * Qbar * Bbar
     g = (Abar * x0 - Yd).T * Qbar * Bbar
 
     return np.array(H), np.array(g).flatten()
-
 
 
 class LinearSystem(object):

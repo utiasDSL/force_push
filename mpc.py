@@ -1,4 +1,5 @@
 #!/usr/bin/env python2
+from __future__ import print_function
 import numpy as np
 import numpy.matlib as matlib
 import matplotlib.pyplot as plt
@@ -10,13 +11,12 @@ import IPython
 class Pendulum(object):
     def __init__(self, dt):
         self.dt = dt
-        self.g = 1
-        self.l = 1
-        self.B = np.array([0, 1])
+        self.g = 1.0
+        self.l = 1.0
 
         self.m = 1  # state dimension
         self.n = 2  # input dimension
-        self.p = 2  # output dimension
+        self.p = 1  # output dimension
 
     def motion(self, x, u):
         ''' Motion model: x_k+1 = f(x_k, u_k) '''
@@ -26,18 +26,18 @@ class Pendulum(object):
 
     def measure(self, x):
         ''' Measurement model: y_k = g(u_k) '''
-        return x
+        return x[0]
 
     def calc_A(self, x):
         return np.array([
-            [1, self.dt]
+            [1, self.dt],
             [self.dt * self.g * np.cos(x[0]) / self.l, 1]])
 
     def calc_B(self, x):
         return np.array([[0], [1]])
 
     def calc_C(self, x):
-        return np.eye(2)
+        return np.array([[1, 0]])
 
 
 def lookahead(sys, x0, Yd, U, Q, R, N):
@@ -56,19 +56,19 @@ def lookahead(sys, x0, Yd, U, Q, R, N):
     m = sys.m
     p = sys.p
 
-    Abar = matlib.zeros((p*N, n))
-    Bbar = matlib.zeros((p*N, m*N))
-    Qbar = matlib.zeros((p*N, p*N))
-    Rbar = matlib.zeros((m*N, m*N))
+    Abar = np.zeros((p*N, n))
+    Bbar = np.zeros((p*N, m*N))
+    Qbar = np.zeros((p*N, p*N))
+    Rbar = np.zeros((m*N, m*N))
 
     # States from the last iteration
-    X_last = np.zeros((n*(N+1), 1))
-    X_last[:n, :] = x0
+    X_last = np.zeros(n*(N+1))
+    X_last[:n] = x0
 
     for k in range(1, N+1):
         x_prev = X_last[(k-1)*n:k*n]
         u_prev = U[(k-1)*m:k*m]
-        x = sys.f(x_prev, u_prev)
+        x = sys.motion(x_prev, u_prev)
         X_last[k*n:(k+1)*n] = x
 
     # Arrays of the linearized matrices for each timestep.
@@ -87,22 +87,22 @@ def lookahead(sys, x0, Yd, U, Q, R, N):
         As[k*n:(k+1)*n, :] = sys.calc_A(x)
         Cs[k*p:(k+1)*p, :] = sys.calc_C(x)
 
-    Abar = np.zeros((p*N, n))
+    Abar = np.zeros((p*N, 1))
     Bbar = np.zeros((p*N, m*N))
 
     # Build Abar matrix
     for k in range(1, N+1):
         x = X_last[k*n:(k+1)*n]
-        Abar[k*p:k*(p+1)] = sys.g(x)
+        Abar[k*p:k*(p+1)] = sys.measure(x)
 
     # Build Bbar matrix
     for r in range(N):
         for c in range(r+1):
-            B = Bs[c]
-            C = Cs[r+1]
+            B = Bs[c*n:(c+1)*n, :]
+            C = Cs[(r+1)*p:(r+2)*p, :]
             A = np.eye(n)
             for i in range(c+1, r+1):
-                A = As[i].dot(A)
+                A = As[i*n:(i+1)*n, :].dot(A)
             Bbar[r*p:(r+1)*p, c*m:(c+1)*m] = C.dot(A).dot(B)
 
     # Build lifted weight matrices
@@ -110,8 +110,8 @@ def lookahead(sys, x0, Yd, U, Q, R, N):
         Qbar[k*p:(k+1)*p, k*p:(k+1)*p] = Q
         Rbar[k*m:(k+1)*m, k*m:(k+1)*m] = R
 
-    H = Rbar + Bbar.T * Qbar * Bbar
-    g = (Abar * x0 - Yd).T * Qbar * Bbar
+    H = Rbar + Bbar.T.dot(Qbar).dot(Bbar)
+    g = (Abar - Yd).T.dot(Qbar).dot(Bbar)
 
     return np.array(H), np.array(g).flatten()
 
@@ -200,18 +200,18 @@ class MPC(object):
 
     def _iterate(self, x0, Yd, U):
         # Create the QP, which we'll solve sequentially.
-        qp = qpoases.PySQProblem(self.sys.m * self.N)
+        qp = qpoases.PySQProblem(self.sys.m * self.N, self.sys.m * self.N)
         options = qpoases.PyOptions()
         options.printLevel = qpoases.PyPrintLevel.NONE
         qp.setOptions(options)
 
         # TODO put somewhere else
         nWSR = 100
-        NUM_ITER = 5
+        NUM_ITER = 10
 
         # Initial opt problem.
         H, g = self._lookahead(x0, Yd, U)
-        qp.init(H, g, self.lb, self.ub, nWSR)
+        qp.init(H, g, None, self.lb - U, self.ub - U, None, None, nWSR)
         dU = np.zeros(self.sys.m * self.N)
         qp.getPrimalSolution(dU)
         U = U + dU
@@ -220,15 +220,17 @@ class MPC(object):
         for i in range(NUM_ITER):
             H, g = self._lookahead(x0, Yd, U)
             # we currently do not have a constraint matrix A
-            qp.hotstart(H, g, 0, self.lb, self.ub, nWSR)
+            qp.hotstart(H, g, None, self.lb - U, self.ub - U, None, None, nWSR)
             qp.getPrimalSolution(dU)
+            # TODO we could have a different step size here, since the
+            # linearization is only locally valid
             U = U + dU
 
         return U
 
     def solve(self, x0, Yd):
         # initialize optimal inputs
-        U = np.zeros((self.sys.p*self.N, 1))
+        U = np.zeros(self.sys.p*self.N)
         U = self._iterate(x0, Yd, U)
 
         # return first optimal input
@@ -241,6 +243,43 @@ def step(t):
     if t < 1.0:
         return 0.0
     return 1.0
+
+
+def main3():
+    N = 10
+    dt = 0.01
+    tf = 10.0
+    num_steps = int(tf / dt)
+
+    Q = np.eye(1) * 10
+    R = np.eye(1)
+    lb = np.ones(N) * -1.0
+    ub = np.ones(N) * 1.0
+
+    sys = Pendulum(dt)
+    mpc = MPC(sys, Q, R, lb, ub, N)
+
+    # desired trajectory is to just stabilize
+    Yd = np.ones(num_steps) * np.pi
+
+    ts = np.zeros(num_steps)
+    ys = np.zeros(num_steps)
+
+    x = np.zeros(2)
+
+    for i in xrange(num_steps - 1):
+        y = ys[i]
+
+        u = mpc.solve(y, Yd[i:i+N])
+        print(u)
+        x = sys.motion(x, u)
+        y = sys.measure(x)
+
+        ys[i+1] = y
+        ts[i+1] = i * dt
+
+    plt.plot(ts, ys)
+    plt.show()
 
 
 def main2():
@@ -346,8 +385,6 @@ def main():
     nWSR = 10  # number of working set recomputations
     qp.init(H, g, lb, ub, nWSR)
 
-    IPython.embed()
-
 
 if __name__ == '__main__':
-    main2()
+    main3()

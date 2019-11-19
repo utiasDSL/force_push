@@ -23,7 +23,7 @@ class Pendulum(object):
         # TODO do I need to put modulo math in here?
         return x + self.dt * np.array([
             x[1],
-            np.sin(x[0]) + u])
+            np.sin(x[0]) + u])  # TODO
 
     def measure(self, x):
         ''' Measurement model: y_k = g(u_k) '''
@@ -38,6 +38,7 @@ class Pendulum(object):
         return np.array([[0], [1]])
 
     def calc_C(self, x):
+        # return np.array([[1, 0]])
         return np.eye(self.n)
 
 
@@ -56,7 +57,6 @@ def lookahead(sys, x0, Yd, U, Q, R, N):
     n = sys.n
     m = sys.m
     p = sys.p
-
 
     # States from the last iteration
     X_last = np.zeros(n*(N+1))
@@ -189,8 +189,10 @@ def main():
     tf = 10.0
     num_steps = int(tf / dt)
 
-    Q = np.eye(1) * 10
-    R = np.eye(1)
+    sys = Pendulum(dt)
+
+    Q = np.diag([1, 0.1])
+    R = np.eye(sys.m)
     lb = -1.0
     ub = 1.0
 
@@ -198,7 +200,6 @@ def main():
     Ki = 0.1
     Kd = 2.0
 
-    sys = Pendulum(dt)
     mpc = MPC(sys, Q, R, lb, ub)
 
     # desired trajectory is to just stabilize
@@ -206,33 +207,41 @@ def main():
     Yd = np.array([np.pi if i % 2 == 0 else 0 for i in xrange(num_steps * 2)])
 
     ts = np.array([i * dt for i in xrange(num_steps)])
-    ys = np.zeros(num_steps)
-    xs = np.zeros((num_steps, 2))
+    ys = np.zeros((num_steps, sys.p))
+    xs = np.zeros((num_steps, sys.n))
     us = np.zeros(num_steps)
 
-    x = np.zeros(2)
+    x = np.zeros(sys.n)
 
     E = 0
 
+    print(sys.p)
+
     for i in xrange(num_steps - 1):
-        # y = ys[i]
+        y = ys[i, :]
         x = xs[i, :]
 
-        n = min(N, num_steps - i)
-        u = mpc.solve(x, Yd[i*2:(i+n)*2], n)
+        # n = min(N, num_steps - i)
+        # u = mpc.solve(x, Yd[i*sys.p:(i+n)*sys.p], n)
 
         # PID control
-        # e = Yd[i] - y
-        # de = -x[1]  # assume ref velocity is 0
-        # E += dt * e
-        # u = Kp*e + Kd*de + Ki*E
+        e = Yd[i*2] - x[0]
+        de = Yd[i*2+1] - x[1]
+        E += dt * e
+        u = Kp*e + Kd*de + Ki*E
+
+        # bound u
+        if u < -1.0:
+            u = -1.0
+        elif u > 1.0:
+            u = 1.0
 
         x = sys.motion(x, u)
-        # y = sys.measure(x)
+        y = sys.measure(x)
 
         us[i] = u
         xs[i+1, :] = x
-        # ys[i+1] = y
+        ys[i+1, :] = y
 
     plt.plot(ts, xs[:, 0], label='x1')
     plt.plot(ts, xs[:, 1], label='x2')

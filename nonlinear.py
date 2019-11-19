@@ -110,7 +110,7 @@ def lookahead(sys, x0, Yd, U, Q, R, N):
         Rbar[k*m:(k+1)*m, k*m:(k+1)*m] = R
 
     H = Rbar + Bbar.T.dot(Qbar).dot(Bbar)
-    g = (Abar - Yd).T.dot(Qbar).dot(Bbar)
+    g = U.T.dot(Rbar) + (Abar - Yd).T.dot(Qbar).dot(Bbar)
 
     return H, g
 
@@ -185,14 +185,14 @@ def step(t):
 
 def main():
     N = 10
-    dt = 0.01
+    dt = 0.05
     tf = 10.0
     num_steps = int(tf / dt)
 
     sys = Pendulum(dt)
 
     Q = np.diag([1, 0.1])
-    R = np.eye(sys.m)
+    R = np.eye(sys.m) * 0.1
     lb = -1.0
     ub = 1.0
 
@@ -202,33 +202,34 @@ def main():
 
     mpc = MPC(sys, Q, R, lb, ub)
 
-    # desired trajectory is to just stabilize
-    # Yd = np.ones(num_steps) * np.pi
-    Yd = np.array([np.pi if i % 2 == 0 else 0 for i in xrange(num_steps * 2)])
-
     ts = np.array([i * dt for i in xrange(num_steps)])
     ys = np.zeros((num_steps, sys.p))
     xs = np.zeros((num_steps, sys.n))
     us = np.zeros(num_steps)
 
+    # desired trajectory
+    pd = np.array([np.pi if ts[i] > 1 else 0 for i in xrange(num_steps)])
+    vd = np.zeros(num_steps)
+    Yd = np.zeros(num_steps * 2)
+    Yd[::2] = pd
+    Yd[1::2] = vd
+
     x = np.zeros(sys.n)
 
     E = 0
-
-    print(sys.p)
 
     for i in xrange(num_steps - 1):
         y = ys[i, :]
         x = xs[i, :]
 
-        # n = min(N, num_steps - i)
-        # u = mpc.solve(x, Yd[i*sys.p:(i+n)*sys.p], n)
+        n = min(N, num_steps - i)
+        u = mpc.solve(x, Yd[i*sys.p:(i+n)*sys.p], n)
 
         # PID control
-        e = Yd[i*2] - x[0]
-        de = Yd[i*2+1] - x[1]
-        E += dt * e
-        u = Kp*e + Kd*de + Ki*E
+        # e = Yd[i*2] - x[0]
+        # de = Yd[i*2+1] - x[1]
+        # E += dt * e
+        # u = Kp*e + Kd*de + Ki*E
 
         # bound u
         if u < -1.0:

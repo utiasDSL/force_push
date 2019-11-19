@@ -12,7 +12,7 @@ class Pendulum(object):
     def __init__(self, dt):
         self.dt = dt
         self.g = 1.0
-        self.l = 1.0
+        self.l = 4.0
 
         self.m = 1  # state dimension
         self.n = 2  # input dimension
@@ -87,7 +87,7 @@ def lookahead(sys, x0, Yd, U, Q, R, N):
         As[k*n:(k+1)*n, :] = sys.calc_A(x)
         Cs[k*p:(k+1)*p, :] = sys.calc_C(x)
 
-    Abar = np.zeros((p*N, 1))
+    Abar = np.zeros(p*N)
     Bbar = np.zeros((p*N, m*N))
 
     # Build Abar matrix
@@ -113,7 +113,9 @@ def lookahead(sys, x0, Yd, U, Q, R, N):
     H = Rbar + Bbar.T.dot(Qbar).dot(Bbar)
     g = (Abar - Yd).T.dot(Qbar).dot(Bbar)
 
-    return np.array(H), np.array(g).flatten()
+    # TODO debug actual optimal value
+
+    return H, g
 
 
 class LinearSystem(object):
@@ -216,6 +218,8 @@ class MPC(object):
         qp.getPrimalSolution(dU)
         U = U + dU
 
+        IPython.embed()
+
         # Remaining sequence is hotstarted from the first.
         for i in range(NUM_ITER):
             H, g = self._lookahead(x0, Yd, U)
@@ -226,11 +230,17 @@ class MPC(object):
             # linearization is only locally valid
             U = U + dU
 
+            # obj_val = qp.getObjVal()
+
         return U
 
     def solve(self, x0, Yd):
+        ''' Solve the MPC problem at current state x0 given desired output
+            trajectory Yd. '''
         # initialize optimal inputs
         U = np.zeros(self.sys.p*self.N)
+
+        # iterate to final solution
         U = self._iterate(x0, Yd, U)
 
         # return first optimal input
@@ -260,7 +270,7 @@ def main3():
     mpc = MPC(sys, Q, R, lb, ub, N)
 
     # desired trajectory is to just stabilize
-    Yd = np.ones(num_steps) * np.pi
+    Yd = np.ones(num_steps) * np.pi / 2.0
 
     ts = np.zeros(num_steps)
     ys = np.zeros(num_steps)
@@ -271,7 +281,6 @@ def main3():
         y = ys[i]
 
         u = mpc.solve(y, Yd[i:i+N])
-        print(u)
         x = sys.motion(x, u)
         y = sys.measure(x)
 

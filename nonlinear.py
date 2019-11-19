@@ -112,27 +112,24 @@ def lookahead(sys, x0, Yd, U, Q, R, N):
     H = Rbar + Bbar.T.dot(Qbar).dot(Bbar)
     g = (Abar - Yd).T.dot(Qbar).dot(Bbar)
 
-    # TODO debug actual optimal value
-
     return H, g
 
 
 class MPC(object):
     ''' Model predictive controller. '''
-    def __init__(self, sys, Q, R, lb, ub, N):
+    def __init__(self, sys, Q, R, lb, ub):
         self.sys = sys
         self.Q = Q
         self.R = R
         self.lb = lb
         self.ub = ub
-        self.N = N
 
-    def _lookahead(self, x0, Yd, U):
-        return lookahead(self.sys, x0, Yd, U, self.Q, self.R, self.N)
+    def _lookahead(self, x0, Yd, U, N):
+        return lookahead(self.sys, x0, Yd, U, self.Q, self.R, N)
 
-    def _iterate(self, x0, Yd, U):
+    def _iterate(self, x0, Yd, U, N):
         # Create the QP, which we'll solve sequentially.
-        qp = qpoases.PySQProblem(self.sys.m * self.N, self.sys.m * self.N)
+        qp = qpoases.PySQProblem(self.sys.m * N, self.sys.m * N)
         options = qpoases.PyOptions()
         options.printLevel = qpoases.PyPrintLevel.NONE
         qp.setOptions(options)
@@ -142,15 +139,17 @@ class MPC(object):
         NUM_ITER = 10
 
         # Initial opt problem.
-        H, g = self._lookahead(x0, Yd, U)
-        qp.init(H, g, None, self.lb - U, self.ub - U, None, None, nWSR)
-        dU = np.zeros(self.sys.m * self.N)
+        H, g = self._lookahead(x0, Yd, U, N)
+        lb = np.ones(N) * self.lb - U
+        ub = np.ones(N) * self.ub - U
+        qp.init(H, g, None, lb, ub, None, None, nWSR)
+        dU = np.zeros(self.sys.m * N)
         qp.getPrimalSolution(dU)
         U = U + dU
 
         # Remaining sequence is hotstarted from the first.
         for i in range(NUM_ITER):
-            H, g = self._lookahead(x0, Yd, U)
+            H, g = self._lookahead(x0, Yd, U, N)
 
             # we currently do not have a constraint matrix A
             qp.hotstart(H, g, None, self.lb - U, self.ub - U, None, None, nWSR)
@@ -163,14 +162,14 @@ class MPC(object):
         # obj_val = qp.getObjVal()
         return U
 
-    def solve(self, x0, Yd):
+    def solve(self, x0, Yd, N):
         ''' Solve the MPC problem at current state x0 given desired output
             trajectory Yd. '''
         # initialize optimal inputs
-        U = np.zeros(self.sys.m*self.N)
+        U = np.zeros(self.sys.m * N)
 
         # iterate to final solution
-        U = self._iterate(x0, Yd, U)
+        U = self._iterate(x0, Yd, U, N)
 
         # return first optimal input
         return U[:self.sys.m]
@@ -192,15 +191,15 @@ def main():
 
     Q = np.eye(1) * 10
     R = np.eye(1)
-    lb = np.ones(N) * -1.0
-    ub = np.ones(N) * 1.0
+    lb = -1.0
+    ub = 1.0
 
     Kp = 1.0
     Ki = 0.1
     Kd = 2.0
 
     sys = Pendulum(dt)
-    mpc = MPC(sys, Q, R, lb, ub, N)
+    mpc = MPC(sys, Q, R, lb, ub)
 
     # desired trajectory is to just stabilize
     # Yd = np.ones(num_steps) * np.pi
@@ -215,11 +214,12 @@ def main():
 
     E = 0
 
-    for i in xrange(num_steps - N):
+    for i in xrange(num_steps - 1):
         # y = ys[i]
         x = xs[i, :]
 
-        u = mpc.solve(x, Yd[i*2:(i+N)*2])
+        n = min(N, num_steps - i)
+        u = mpc.solve(x, Yd[i*2:(i+n)*2], n)
 
         # PID control
         # e = Yd[i] - y

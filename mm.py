@@ -14,6 +14,11 @@ NUM_WSR = 100
 NUM_ITER = 10
 
 
+def rms(e):
+    ''' Calculate root mean square of a vector of data. '''
+    return np.sqrt(np.mean(np.square(e)))
+
+
 def bound_array(a, lb, ub):
     ''' Elementwise bound array above and below. '''
     return np.minimum(np.maximum(a, lb), ub)
@@ -32,6 +37,73 @@ class MM(object):
         return np.array([
             [1, -L1*np.sin(q[1])-L2*np.sin(q[1]+q[2]), -L2*np.sin(q[1]+q[2])],
             [0,  L1*np.cos(q[1])+L2*np.cos(q[1]+q[2]),  L2*np.cos(q[1]+q[2])]])
+
+
+class RobotPlotter(object):
+    def __init__(self):
+        self.xs = []
+        self.ys = []
+
+    def start(self, q0, xr, yr):
+        ''' Launch the plot. '''
+        plt.ion()
+
+        self.fig = plt.figure()
+        self.ax = plt.gca()
+
+        self.ax.set_xlabel('x (m)')
+        self.ax.set_ylabel('y (m)')
+        self.ax.set_xlim([-1, 4])
+        self.ax.set_ylim([-1, 2])
+
+        xa, ya = self._calc_arm_pts(q0)
+        xb, yb = self._calc_body_pts(q0)
+
+        self.xs.append(xa[-1])
+        self.ys.append(ya[-1])
+
+        self.arm, = self.ax.plot(xa, ya, color='k')
+        self.body, = self.ax.plot(xb, yb, color='k')
+        self.ref, = self.ax.plot(xr, yr, linestyle='--')
+        self.act, = self.ax.plot(self.xs, self.ys, color='r')
+
+    def _calc_arm_pts(self, q):
+        x0 = q[0]
+        y0 = 0
+        x = [x0, x0 + L1*np.cos(q[1]), x0 + L1*np.cos(q[1]) + L2*np.cos(q[1]+q[2])]
+        y = [y0, y0 + L1*np.sin(q[1]), y0 + L1*np.sin(q[1]) + L2*np.sin(q[1]+q[2])]
+        return x, y
+
+    def _calc_body_pts(self, q):
+        x0 = q[0]
+        y0 = 0
+        r = 0.5
+        h = 0.25
+
+        x = [x0, x0 - r, x0 - r, x0 + r, x0 + r, x0]
+        y = [y0, y0, y0 - h, y0 - h, y0, y0]
+
+        return x, y
+
+    def update(self, q):
+        ''' Update plot based on current transforms. '''
+        xa, ya = self._calc_arm_pts(q)
+        xb, yb = self._calc_body_pts(q)
+
+        self.xs.append(xa[-1])
+        self.ys.append(ya[-1])
+
+        self.arm.set_xdata(xa)
+        self.arm.set_ydata(ya)
+
+        self.body.set_xdata(xb)
+        self.body.set_ydata(yb)
+
+        self.act.set_xdata(self.xs)
+        self.act.set_ydata(self.ys)
+
+        self.fig.canvas.draw()
+        self.fig.canvas.flush_events()
 
 
 class MPC(object):
@@ -89,8 +161,6 @@ class MPC(object):
         H = Rbar + self.dt**2*Jbar.T.dot(Qbar).dot(Jbar)
         g = dq.T.dot(Rbar) + self.dt*dbar.T.dot(Qbar).dot(Jbar)
 
-        # IPython.embed()
-
         return H, g
 
     def _iterate(self, q0, pr, dq, N):
@@ -116,8 +186,6 @@ class MPC(object):
         qp.getPrimalSolution(delta)
         dq = dq + delta
 
-        # IPython.embed()
-
         # Remaining sequence is hotstarted from the first.
         for i in range(NUM_ITER):
             H, g = self._lookahead(q0, pr, dq, N)
@@ -131,8 +199,6 @@ class MPC(object):
             # TODO we could have a different step size here, since the
             # linearization is only locally valid
             dq = dq + delta
-
-            # IPython.embed()
 
         # TODO this isn't actually that valuable since it's for the step not
         # the actual velocity
@@ -153,8 +219,32 @@ class MPC(object):
         return dq[:self.model.n], obj
 
 
+# Trajectories
+
+
+def spiral(p0, ts):
+    a = 0.1
+    b = 0.08
+    x = p0[0] + (a + b*ts) * np.cos(ts)
+    y = p0[1] + (a + b*ts) * np.sin(ts)
+    return x, y
+
+
+def point(p0, ts):
+    x = p0[0] * np.ones(ts.shape[0])
+    y = p0[1] * np.ones(ts.shape[0])
+    return x, y
+
+
+def line(p0, ts):
+    v = 0.25
+    x = p0[0] + np.array([v*t for t in ts])
+    y = p0[1] * np.ones(ts.shape[0])
+    return x, y
+
+
 def main():
-    N = 10
+    N = 1
     dt = 0.1
     tf = 10.0
     num_steps = int(tf / dt)
@@ -172,39 +262,33 @@ def main():
 
     mpc = MPC(model, dt, Q, R, lb, ub)
 
-    ts = np.array([i * dt for i in xrange(num_steps)])
-    ps = np.zeros((num_steps, model.p))
-    qs = np.zeros((num_steps, model.n))
+    ts = np.array([i * dt for i in xrange(num_steps+1)])
+    ps = np.zeros((num_steps+1, model.p))
+    qs = np.zeros((num_steps+1, model.n))
     dqs = np.zeros((num_steps, model.n))
+    objs = np.zeros(num_steps)
+
+    q0 = np.array([0, np.pi/4.0, -np.pi/4.0])
+    p0 = model.forward(q0)
 
     # reference trajectory
-    dist = 2.0
-    # xr = np.array([i*dist/num_steps for i in xrange(num_steps)])
-    xr = np.ones(num_steps)
-    yr = np.ones(num_steps)
+    xr, yr = spiral(p0, ts[1:])
     pr = np.zeros(num_steps * 2)
     pr[::2] = xr
     pr[1::2] = yr
 
-    q0 = np.array([0, np.pi/4.0, -np.pi/2.0])
     q = q0
-    ps[0, :] = model.forward(q)
+    qs[0, :] = q0
+    ps[0, :] = p0
 
-    objs = np.zeros(num_steps)
+    plotter = RobotPlotter()
+    plotter.start(q0, xr, yr)
 
-    E = 0
-
-    for i in xrange(num_steps-1):
+    for i in xrange(num_steps):
         n = min(N, num_steps - i)
         dq, obj = mpc.solve(q, pr[i*model.p:(i+n)*model.p], n)
 
-        # PID control
-        # e = Yd[i*2] - x[0]
-        # de = Yd[i*2+1] - x[1]
-        # E += dt * e
-        # u = Kp*e + Kd*de + Ki*E
-
-        # bound joint velocities
+        # bound joint velocities (i.e. enforce actuation constraints)
         dq = bound_array(dq, lb, ub)
 
         q = q + dt * dq
@@ -215,31 +299,42 @@ def main():
         qs[i+1, :] = q
         ps[i+1, :] = p
 
+        plotter.update(q)
+
+    plt.ioff()
+
+    xe = pr[::2] - ps[1:, 0]
+    ye = pr[1::2] - ps[1:, 1]
+    print('RMSE(x) = {}'.format(rms(xe)))
+    print('RMSE(y) = {}'.format(rms(ye)))
+
     # plt.plot(ts, pr, label='$\\theta_d$', color='k', linestyle='--')
-    plt.figure(1)
-    plt.plot(ts, pr[::2],  label='$x_d$', color='b', linestyle='--')
-    plt.plot(ts, pr[1::2], label='$y_d$', color='r', linestyle='--')
+    plt.figure()
+    plt.plot(ts[1:], pr[::2],  label='$x_d$', color='b', linestyle='--')
+    plt.plot(ts[1:], pr[1::2], label='$y_d$', color='r', linestyle='--')
     plt.plot(ts, ps[:, 0], label='$x$', color='b')
     plt.plot(ts, ps[:, 1], label='$y$', color='r')
     plt.grid()
     plt.legend()
     plt.xlabel('Time (s)')
     plt.ylabel('Position')
+    plt.title('End effector position')
 
-    plt.figure(2)
-    plt.plot(ts, dqs[:, 0], label='$\\dot{q}_x$')
-    plt.plot(ts, dqs[:, 1], label='$\\dot{q}_1$')
-    plt.plot(ts, dqs[:, 2], label='$\\dot{q}_2$')
+    plt.figure()
+    plt.plot(ts[:-1], dqs[:, 0], label='$\\dot{q}_x$')
+    plt.plot(ts[:-1], dqs[:, 1], label='$\\dot{q}_1$')
+    plt.plot(ts[:-1], dqs[:, 2], label='$\\dot{q}_2$')
     plt.grid()
     plt.legend()
+    plt.title('Commanded joint velocity')
     plt.xlabel('Time (s)')
     plt.ylabel('Velocity')
 
-    plt.figure(3)
-    plt.plot(ts, objs)
-    plt.grid()
-    plt.xlabel('Time (s)')
-    plt.ylabel('Objective value')
+    # plt.figure(3)
+    # plt.plot(ts, objs)
+    # plt.grid()
+    # plt.xlabel('Time (s)')
+    # plt.ylabel('Objective value')
 
     plt.show()
 

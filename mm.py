@@ -8,12 +8,21 @@ import IPython
 
 
 L1 = 1
-L2 = 2
+L2 = 1
+
+NUM_WSR = 100
+NUM_ITER = 10
+
+
+def bound_array(a, lb, ub):
+    ''' Elementwise bound array above and below. '''
+    return np.minimum(np.maximum(a, lb), ub)
 
 
 class MM(object):
     def __init__(self):
-        pass
+        self.n = 3  # number of joints (inputs)
+        self.p = 2  # number of outputs (Cartesian DOFs)
 
     def forward(self, q):
         return np.array([q[0] + L1*np.cos(q[1]) + L2*np.cos(q[1]+q[2]),
@@ -22,7 +31,7 @@ class MM(object):
     def jacobian(self, q):
         return np.array([
             [1, -L1*np.sin(q[1])-L2*np.sin(q[1]+q[2]), -L2*np.sin(q[1]+q[2])],
-            [0,  L1*np.cos(q[1])-L2*np.cos(q[1]+q[2]), -L2*np.cos(q[1]+q[2])]])
+            [0,  L1*np.cos(q[1])+L2*np.cos(q[1]+q[2]), L2*np.cos(q[1]+q[2])]])
 
 
 class MPC(object):
@@ -47,8 +56,8 @@ class MPC(object):
             R:   Input magnitude weighting matrix.
             N:   Number of timesteps into the future. '''
 
-        n = 3  # number of joints
-        p = 2  # number of Cartesian outputs
+        n = self.model.n  # number of joints
+        p = self.model.p  # number of Cartesian outputs
 
         qbar = np.zeros(n*(N+1))
         qbar[:n] = q0
@@ -69,8 +78,8 @@ class MPC(object):
         for k in range(N):
             q = qbar[(k+1)*n:(k+2)*n]
 
-            fbar[k*np:(k+1)*np] = self.model.forward(q)
-            Jbar[k*np:(k+1)*np, k*n:(k+1)*n] = 0
+            fbar[k*p:(k+1)*p] = self.model.forward(q)
+            Jbar[k*p:(k+1)*p, k*n:(k+1)*n] = self.model.jacobian(q)
 
             Qbar[k*p:(k+1)*p, k*p:(k+1)*p] = self.Q
             Rbar[k*n:(k+1)*n, k*n:(k+1)*n] = self.R
@@ -80,66 +89,79 @@ class MPC(object):
         H = Rbar + self.dt**2*Jbar.T.dot(Qbar).dot(Jbar)
         g = dq.T.dot(Rbar) + self.dt*dbar.T.dot(Qbar).dot(Jbar)
 
+        # IPython.embed()
+
         return H, g
 
-    def _iterate(self, x0, Yd, U, N):
+    def _iterate(self, q0, pr, dq, N):
+        n = self.model.n
+
         # Create the QP, which we'll solve sequentially.
-        qp = qpoases.PySQProblem(self.sys.m * N, self.sys.m * N)
+        # num vars, num constraints
+        qp = qpoases.PySQProblem(n * N, n * N)
         options = qpoases.PyOptions()
-        options.printLevel = qpoases.PyPrintLevel.NONE
+        # options.printLevel = qpoases.PyPrintLevel.NONE
         qp.setOptions(options)
 
-        # TODO put somewhere else
-        nWSR = 100
-        NUM_ITER = 10
-
         # Initial opt problem.
-        H, g = self._lookahead(x0, Yd, U, N)
-        lb = np.ones(N) * self.lb - U
-        ub = np.ones(N) * self.ub - U
-        qp.init(H, g, None, lb, ub, None, None, nWSR)
-        dU = np.zeros(self.sys.m * N)
-        qp.getPrimalSolution(dU)
-        U = U + dU
+        H, g = self._lookahead(q0, pr, dq, N)
+
+        # TODO revisit damper formulation
+        # TODO handle individual bounds for different joints
+        lb = np.ones(n * N) * self.lb - dq
+        ub = np.ones(n * N) * self.ub - dq
+        ret = qp.init(H, g, None, lb, ub, None, None, NUM_WSR)
+        delta = np.zeros(n * N)
+        qp.getPrimalSolution(delta)
+        dq = dq + delta
+
+        # IPython.embed()
 
         # Remaining sequence is hotstarted from the first.
         for i in range(NUM_ITER):
-            H, g = self._lookahead(x0, Yd, U, N)
+            H, g = self._lookahead(q0, pr, dq, N)
 
             # we currently do not have a constraint matrix A
-            qp.hotstart(H, g, None, self.lb - U, self.ub - U, None, None, nWSR)
-            qp.getPrimalSolution(dU)
+            lb = np.ones(n*N) * self.lb - dq
+            ub = np.ones(n*N) * self.ub - dq
+            qp.hotstart(H, g, None, lb, ub, None, None, NUM_WSR)
+            qp.getPrimalSolution(delta)
 
             # TODO we could have a different step size here, since the
             # linearization is only locally valid
-            U = U + dU
+            dq = dq + delta
 
-        # obj_val = qp.getObjVal()
-        return U
+            # IPython.embed()
 
-    def solve(self, x0, Yd, N):
+        # TODO this isn't actually that valuable since it's for the step not
+        # the actual velocity
+        obj = qp.getObjVal()
+
+        return dq, obj
+
+    def solve(self, q0, pr, N):
         ''' Solve the MPC problem at current state x0 given desired output
             trajectory Yd. '''
         # initialize optimal inputs
-        U = np.zeros(self.sys.m * N)
+        dq = np.zeros(self.model.n * N)
 
         # iterate to final solution
-        U = self._iterate(x0, Yd, U, N)
+        dq, obj = self._iterate(q0, pr, dq, N)
 
         # return first optimal input
-        return U[:self.sys.m]
+        return dq[:self.model.n], obj
 
 
 def main():
-    N = 10
-    dt = 0.05
+    N = 5
+    dt = 0.1
     tf = 10.0
     num_steps = int(tf / dt)
 
-    sys = Pendulum(dt)
+    model = MM()
 
-    Q = np.diag([1, 0.1])
-    R = np.eye(sys.m) * 0.1
+    Q = np.eye(model.p)
+    R = np.eye(model.n) * 0.01
     lb = -1.0
     ub = 1.0
 
@@ -147,30 +169,33 @@ def main():
     Ki = 0.1
     Kd = 2.0
 
-    mpc = MPC(sys, Q, R, lb, ub)
+    mpc = MPC(model, dt, Q, R, lb, ub)
 
     ts = np.array([i * dt for i in xrange(num_steps)])
-    ys = np.zeros((num_steps, sys.p))
-    xs = np.zeros((num_steps, sys.n))
-    us = np.zeros(num_steps)
+    ps = np.zeros((num_steps, model.p))
+    qs = np.zeros((num_steps, model.n))
+    dqs = np.zeros((num_steps, model.n))
 
-    # desired trajectory
-    pd = np.array([np.pi if ts[i] > 1 else 0 for i in xrange(num_steps)])
-    vd = np.zeros(num_steps)
-    Yd = np.zeros(num_steps * 2)
-    Yd[::2] = pd
-    Yd[1::2] = vd
+    # reference trajectory
+    dist = 2.0
+    # xr = np.array([i*dist/num_steps for i in xrange(num_steps)])
+    xr = np.ones(num_steps)
+    yr = np.ones(num_steps)
+    pr = np.zeros(num_steps * 2)
+    pr[::2] = xr
+    pr[1::2] = yr
 
-    x = np.zeros(sys.n)
+    q0 = np.array([0, np.pi/4.0, -np.pi/2.0])
+    q = q0
+    ps[0, :] = model.forward(q)
+
+    objs = np.zeros(num_steps)
 
     E = 0
 
-    for i in xrange(num_steps - 1):
-        y = ys[i, :]
-        x = xs[i, :]
-
+    for i in xrange(num_steps-1):
         n = min(N, num_steps - i)
-        u = mpc.solve(x, Yd[i*sys.p:(i+n)*sys.p], n)
+        dq, obj = mpc.solve(q, pr[i*model.p:(i+n)*model.p], n)
 
         # PID control
         # e = Yd[i*2] - x[0]
@@ -178,25 +203,43 @@ def main():
         # E += dt * e
         # u = Kp*e + Kd*de + Ki*E
 
-        # bound u
-        if u < -1.0:
-            u = -1.0
-        elif u > 1.0:
-            u = 1.0
+        # bound joint velocities
+        dq = bound_array(dq, lb, ub)
 
-        x = sys.motion(x, u)
-        y = sys.measure(x)
+        q = q + dt * dq
+        p = model.forward(q)
 
-        us[i] = u
-        xs[i+1, :] = x
-        ys[i+1, :] = y
+        objs[i] = obj
+        dqs[i, :] = dq
+        qs[i+1, :] = q
+        ps[i+1, :] = p
 
-    plt.plot(ts, pd, label='$\\theta_d$', color='k', linestyle='--')
-    plt.plot(ts, xs[:, 0], label='$\\theta$')
-    plt.plot(ts, xs[:, 1], label='$\dot{\\theta}$')
-    plt.plot(ts, us, label='$u$')
+    # plt.plot(ts, pr, label='$\\theta_d$', color='k', linestyle='--')
+    plt.figure(1)
+    plt.plot(ts, pr[::2],  label='$x_d$', color='b', linestyle='--')
+    plt.plot(ts, pr[1::2], label='$y_d$', color='r', linestyle='--')
+    plt.plot(ts, ps[:, 0], label='$x$', color='b')
+    plt.plot(ts, ps[:, 1], label='$y$', color='r')
     plt.grid()
     plt.legend()
+    plt.xlabel('Time (s)')
+    plt.ylabel('Position')
+
+    plt.figure(2)
+    plt.plot(ts, dqs[:, 0], label='$\\dot{q}_x$')
+    plt.plot(ts, dqs[:, 1], label='$\\dot{q}_1$')
+    plt.plot(ts, dqs[:, 2], label='$\\dot{q}_2$')
+    plt.grid()
+    plt.legend()
+    plt.xlabel('Time (s)')
+    plt.ylabel('Velocity')
+
+    plt.figure(3)
+    plt.plot(ts, objs)
+    plt.grid()
+    plt.xlabel('Time (s)')
+    plt.ylabel('Objective value')
+
     plt.show()
 
 

@@ -31,7 +31,7 @@ class MM(object):
     def jacobian(self, q):
         return np.array([
             [1, -L1*np.sin(q[1])-L2*np.sin(q[1]+q[2]), -L2*np.sin(q[1]+q[2])],
-            [0,  L1*np.cos(q[1])+L2*np.cos(q[1]+q[2]), L2*np.cos(q[1]+q[2])]])
+            [0,  L1*np.cos(q[1])+L2*np.cos(q[1]+q[2]),  L2*np.cos(q[1]+q[2])]])
 
 
 class MPC(object):
@@ -97,10 +97,11 @@ class MPC(object):
         n = self.model.n
 
         # Create the QP, which we'll solve sequentially.
-        # num vars, num constraints
-        qp = qpoases.PySQProblem(n * N, n * N)
+        # num vars, num constraints (note that constraints only refer to matrix
+        # constraints rather than bounds)
+        qp = qpoases.PySQProblem(n * N, 0)
         options = qpoases.PyOptions()
-        # options.printLevel = qpoases.PyPrintLevel.NONE
+        options.printLevel = qpoases.PyPrintLevel.NONE
         qp.setOptions(options)
 
         # Initial opt problem.
@@ -153,7 +154,7 @@ class MPC(object):
 
 
 def main():
-    N = 5
+    N = 10
     dt = 0.1
     tf = 10.0
     num_steps = int(tf / dt)

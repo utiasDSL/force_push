@@ -24,6 +24,14 @@ def bound_array(a, lb, ub):
     return np.minimum(np.maximum(a, lb), ub)
 
 
+class ForceObserver(object):
+    def __init(self):
+        pass
+
+    def in_contact(self, f):
+        pass
+
+
 class MM(object):
     def __init__(self):
         self.n = 3  # number of joints (inputs)
@@ -66,6 +74,8 @@ class RobotPlotter(object):
         self.body, = self.ax.plot(xb, yb, color='k')
         self.ref, = self.ax.plot(xr, yr, linestyle='--')
         self.act, = self.ax.plot(self.xs, self.ys, color='r')
+
+        self.ax.plot([3.0, 3.0], [0, 2], color='k')
 
     def _calc_arm_pts(self, q):
         x0 = q[0]
@@ -221,7 +231,6 @@ class MPC(object):
 
 # Trajectories
 
-
 def spiral(p0, ts):
     a = 0.1
     b = 0.08
@@ -244,7 +253,7 @@ def line(p0, ts):
 
 
 def main():
-    N = 1
+    N = 10
     dt = 0.1
     tf = 10.0
     num_steps = int(tf / dt)
@@ -272,12 +281,21 @@ def main():
     p0 = model.forward(q0)
 
     # reference trajectory
-    xr, yr = spiral(p0, ts[1:])
+    # xr, yr = spiral(p0, ts[1:])
+    xr, yr = line(p0, ts[1:])
     pr = np.zeros(num_steps * 2)
     pr[::2] = xr
     pr[1::2] = yr
 
+    K_e = 1000
+    fd = 0
+    K_pf = 0.0
+    K_if = 0.01
+
+    F = 0
+
     q = q0
+    p = p0
     qs[0, :] = q0
     ps[0, :] = p0
 
@@ -285,8 +303,21 @@ def main():
     plotter.start(q0, xr, yr)
 
     for i in xrange(num_steps):
+        # force control is applied at imaginary surface at x=2.0
+        if p[0] > 3.0:
+            pf0 = p[0] - 3.0
+            f = K_e * pf0
+            print('f = {}'.format(f))
+            f_err = fd - f
+            F += dt * f_err
+            pf = np.array([K_pf * f_err + K_if * F, 0])
+        else:
+            pf = np.zeros(2)
+
         n = min(N, num_steps - i)
-        dq, obj = mpc.solve(q, pr[i*model.p:(i+n)*model.p], n)
+        pd = pr[i*model.p:(i+n)*model.p] + np.tile(pf, n)
+
+        dq, obj = mpc.solve(q, pd, n)
 
         # bound joint velocities (i.e. enforce actuation constraints)
         dq = bound_array(dq, lb, ub)

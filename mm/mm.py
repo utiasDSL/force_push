@@ -4,14 +4,20 @@ import numpy as np
 import matplotlib.pyplot as plt
 import qpoases
 
+from plotter import RobotPlotter
+
 import IPython
 
 
+# robot parameters
 L1 = 1
 L2 = 1
 
-NUM_WSR = 100
-NUM_ITER = 10
+DT = 0.1  # timestep
+DURATION = 25.0  # seconds
+NUM_HORIZON = 10  # number of time steps for prediction horizon
+NUM_WSR = 100  # number of working set recalculations
+NUM_ITER = 10  # number of linearizations/iterations
 
 
 def rms(e):
@@ -24,96 +30,84 @@ def bound_array(a, lb, ub):
     return np.minimum(np.maximum(a, lb), ub)
 
 
-class ForceObserver(object):
-    def __init(self):
-        pass
+class Wall(object):
+    def __init__(self, k, x):
+        self.k = k  # spring constant
+        self.x = x  # location
 
-    def in_contact(self, f):
-        pass
+    def apply_force(self, p):
+        ''' Apply force based on end effector position p. '''
+        if p[0] > self.x:
+            dx = p[0] - self.x
+            f = np.array([self.k * dx, 0])
+        else:
+            f = np.zeros(2)
+        return f
+
+
+class Circle(object):
+    def __init__(self, k, c, r):
+        self.k = k
+        self.c = c
+        self.r = r
+
+    def apply_force(self, p):
+        a = p[:2] - self.c
+        d = np.linalg.norm(a)
+        b = self.r * a / d
+        if d < self.r:
+            dx = a - b
+            f = self.k * dx
+        else:
+            f = np.zeros(2)
+        return f
+
+    def draw(self, ax):
+        ax.add_patch(plt.Circle(self.c, self.r, color='k', fill=False))
+
+
+# TODO but no, we want to do orthogonal to the plane
+def desired_force1(f, f_contact, f_threshold):
+    fd = np.zeros(2)
+    if f[0] >= f_threshold[0]:
+        fd[0] = f_contact
+    if f[1] >= f_threshold[1]:
+        fd[1] = f_contact
+    return fd
+
+
+def desired_force2(f, f_contact, f_threshold):
+    ''' Calculate desired force based on whether contact is detected.
+
+        f:            Measured force
+        f_contact:   Desired contact force
+        f_threshold: Threshold for force that indicates contact has been made. '''
+    f_norm = np.linalg.norm(f)
+    if f_norm > f_contact:
+        # project contact back onto f
+        return f_contact * f / f_norm, True
+
+    # otherwise we assume we're in freespace
+    return np.zeros(2), False
 
 
 class MM(object):
     def __init__(self):
-        self.n = 3  # number of joints (inputs)
-        self.p = 2  # number of outputs (Cartesian DOFs)
+        self.n = 3  # number of joints (inputs/DOFs)
+        self.p = 2  # number of outputs (end effector coords)
 
     def forward(self, q):
-        return np.array([q[0] + L1*np.cos(q[1]) + L2*np.cos(q[1]+q[2]),
-                                L1*np.sin(q[1]) + L2*np.sin(q[1]+q[2])])
+        f = np.array([q[0] + L1*np.cos(q[1]) + L2*np.cos(q[1]+q[2]),
+                      L1*np.sin(q[1]) + L2*np.sin(q[1]+q[2]),
+                      q[1] + q[2]])
+        return f[:self.p]
 
     def jacobian(self, q):
-        return np.array([
+        J = np.array([
             [1, -L1*np.sin(q[1])-L2*np.sin(q[1]+q[2]), -L2*np.sin(q[1]+q[2])],
-            [0,  L1*np.cos(q[1])+L2*np.cos(q[1]+q[2]),  L2*np.cos(q[1]+q[2])]])
-
-
-class RobotPlotter(object):
-    def __init__(self):
-        self.xs = []
-        self.ys = []
-
-    def start(self, q0, xr, yr):
-        ''' Launch the plot. '''
-        plt.ion()
-
-        self.fig = plt.figure()
-        self.ax = plt.gca()
-
-        self.ax.set_xlabel('x (m)')
-        self.ax.set_ylabel('y (m)')
-        self.ax.set_xlim([-1, 4])
-        self.ax.set_ylim([-1, 2])
-
-        xa, ya = self._calc_arm_pts(q0)
-        xb, yb = self._calc_body_pts(q0)
-
-        self.xs.append(xa[-1])
-        self.ys.append(ya[-1])
-
-        self.arm, = self.ax.plot(xa, ya, color='k')
-        self.body, = self.ax.plot(xb, yb, color='k')
-        self.ref, = self.ax.plot(xr, yr, linestyle='--')
-        self.act, = self.ax.plot(self.xs, self.ys, color='r')
-
-        self.ax.plot([3.0, 3.0], [0, 2], color='k')
-
-    def _calc_arm_pts(self, q):
-        x0 = q[0]
-        y0 = 0
-        x = [x0, x0 + L1*np.cos(q[1]), x0 + L1*np.cos(q[1]) + L2*np.cos(q[1]+q[2])]
-        y = [y0, y0 + L1*np.sin(q[1]), y0 + L1*np.sin(q[1]) + L2*np.sin(q[1]+q[2])]
-        return x, y
-
-    def _calc_body_pts(self, q):
-        x0 = q[0]
-        y0 = 0
-        r = 0.5
-        h = 0.25
-
-        x = [x0, x0 - r, x0 - r, x0 + r, x0 + r, x0]
-        y = [y0, y0, y0 - h, y0 - h, y0, y0]
-
-        return x, y
-
-    def update(self, q):
-        ''' Update plot based on current transforms. '''
-        xa, ya = self._calc_arm_pts(q)
-        xb, yb = self._calc_body_pts(q)
-
-        self.xs.append(xa[-1])
-        self.ys.append(ya[-1])
-
-        self.arm.set_xdata(xa)
-        self.arm.set_ydata(ya)
-
-        self.body.set_xdata(xb)
-        self.body.set_ydata(yb)
-
-        self.act.set_xdata(self.xs)
-        self.act.set_ydata(self.ys)
-
-        self.fig.canvas.draw()
-        self.fig.canvas.flush_events()
+            [0,  L1*np.cos(q[1])+L2*np.cos(q[1]+q[2]),  L2*np.cos(q[1]+q[2])],
+            [0, 1, 1]])
+        return J[:self.p, :]
 
 
 class MPC(object):
@@ -246,32 +240,26 @@ def point(p0, ts):
 
 
 def line(p0, ts):
-    v = 0.25
+    v = 0.125
     x = p0[0] + np.array([v*t for t in ts])
     y = p0[1] * np.ones(ts.shape[0])
-    return x, y
+    theta = np.ones(ts.shape[0]) * np.pi * 0
+    return x, y, theta
 
 
 def main():
-    N = 10
-    dt = 0.1
-    tf = 10.0
-    num_steps = int(tf / dt)
+    num_steps = int(DURATION / DT)
 
     model = MM()
 
     Q = np.eye(model.p)
     R = np.eye(model.n) * 0.01
-    lb = -1.0
-    ub = 1.0
+    lb = -10.0
+    ub = 10.0
 
-    Kp = 1.0
-    Ki = 0.1
-    Kd = 2.0
+    mpc = MPC(model, DT, Q, R, lb, ub)
 
-    mpc = MPC(model, dt, Q, R, lb, ub)
-
-    ts = np.array([i * dt for i in xrange(num_steps+1)])
+    ts = np.array([i * DT for i in xrange(num_steps+1)])
     ps = np.zeros((num_steps+1, model.p))
     qs = np.zeros((num_steps+1, model.n))
     dqs = np.zeros((num_steps, model.n))
@@ -282,16 +270,19 @@ def main():
 
     # reference trajectory
     # xr, yr = spiral(p0, ts[1:])
-    xr, yr = line(p0, ts[1:])
-    pr = np.zeros(num_steps * 2)
-    pr[::2] = xr
-    pr[1::2] = yr
+    xr, yr, thetar = line(p0, ts[1:])
+    pr = np.zeros(num_steps * model.p)
+    pr[0::model.p] = xr
+    pr[1::model.p] = yr
+    # pr[2::model.p] = thetar
 
-    K_e = 1000
-    fd = 0
+    # obstacles
+    # obs = Wall(k=1000, x=3.0)
+    obs = Circle(k=10000, c=np.array([3.5, 1.5]), r=1)
+
+    # force control
     K_pf = 0.0
-    K_if = 0.01
-
+    K_if = 0.001
     F = 0
 
     q = q0
@@ -299,22 +290,28 @@ def main():
     qs[0, :] = q0
     ps[0, :] = p0
 
-    plotter = RobotPlotter()
-    plotter.start(q0, xr, yr)
+    plotter = RobotPlotter(L1, L2)
+    plotter.start(q0, xr, yr, obs)
+
+    thetar = 0
 
     for i in xrange(num_steps):
-        # force control is applied at imaginary surface at x=2.0
-        if p[0] > 3.0:
-            pf0 = p[0] - 3.0
-            f = K_e * pf0
-            print('f = {}'.format(f))
-            f_err = fd - f
-            F += dt * f_err
-            pf = np.array([K_pf * f_err + K_if * F, 0])
-        else:
-            pf = np.zeros(2)
+        f = obs.apply_force(p)
 
-        n = min(N, num_steps - i)
+        fd, contact = desired_force2(f, f_contact=0.1, f_threshold=0.1)
+        f_err = fd - f
+        F += DT * f_err  # integrate
+        pf = K_pf * f_err + K_if * F  # control law
+        F = 0.9 * F  # discharge term, so we can return to original trajectory
+        print('f = {}'.format(f))
+
+        # if contact:
+        #     d = f / np.linalg.norm(f)  # unit vector in direction of force
+        #     a = np.arctan2(d[1], d[0])  # angle in direction of force
+        #     thetar = a
+        # pf = np.array([pf[0], pf[1], thetar])
+
+        n = min(NUM_HORIZON, num_steps - i)
         pd = pr[i*model.p:(i+n)*model.p] + np.tile(pf, n)
 
         dq, obj = mpc.solve(q, pd, n)
@@ -322,7 +319,7 @@ def main():
         # bound joint velocities (i.e. enforce actuation constraints)
         dq = bound_array(dq, lb, ub)
 
-        q = q + dt * dq
+        q = q + DT * dq
         p = model.forward(q)
 
         objs[i] = obj
@@ -334,15 +331,15 @@ def main():
 
     plt.ioff()
 
-    xe = pr[::2] - ps[1:, 0]
-    ye = pr[1::2] - ps[1:, 1]
+    xe = pr[0::model.p] - ps[1:, 0]
+    ye = pr[1::model.p] - ps[1:, 1]
     print('RMSE(x) = {}'.format(rms(xe)))
     print('RMSE(y) = {}'.format(rms(ye)))
 
     # plt.plot(ts, pr, label='$\\theta_d$', color='k', linestyle='--')
     plt.figure()
-    plt.plot(ts[1:], pr[::2],  label='$x_d$', color='b', linestyle='--')
-    plt.plot(ts[1:], pr[1::2], label='$y_d$', color='r', linestyle='--')
+    plt.plot(ts[1:], pr[0::model.p], label='$x_d$', color='b', linestyle='--')
+    plt.plot(ts[1:], pr[1::model.p], label='$y_d$', color='r', linestyle='--')
     plt.plot(ts, ps[:, 0], label='$x$', color='b')
     plt.plot(ts, ps[:, 1], label='$y$', color='r')
     plt.grid()

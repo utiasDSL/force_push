@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 import qpoases
 
 from plotter import RobotPlotter
+from obstacle import Wall, Circle
+from trajectory import circle, spiral
 
 import IPython
 
@@ -13,11 +15,29 @@ import IPython
 L1 = 1
 L2 = 1
 
-DT = 0.1  # timestep
-DURATION = 25.0  # seconds
+DT = 0.1         # timestep (s)
+DURATION = 10.0  # duration of trajectory (s)
+
+# mpc parameters
 NUM_HORIZON = 10  # number of time steps for prediction horizon
-NUM_WSR = 100  # number of working set recalculations
-NUM_ITER = 10  # number of linearizations/iterations
+NUM_WSR = 100     # number of working set recalculations
+NUM_ITER = 10     # number of linearizations/iterations
+
+Q = np.diag([1.0, 1.0, 0.00001])
+R = np.eye(3) * 0.01
+LB = -1.0
+UB = 1.0
+
+
+# force control params
+K_pf = 0
+K_if = 0.01
+K_df = 0.9  # discharge term
+
+K_a = 100.0
+K_v = 100.0
+
+F_CONTACT = 0.0
 
 
 def rms(e):
@@ -30,71 +50,25 @@ def bound_array(a, lb, ub):
     return np.minimum(np.maximum(a, lb), ub)
 
 
-class Wall(object):
-    def __init__(self, k, x):
-        self.k = k  # spring constant
-        self.x = x  # location
-
-    def apply_force(self, p):
-        ''' Apply force based on end effector position p. '''
-        if p[0] > self.x:
-            dx = p[0] - self.x
-            f = np.array([self.k * dx, 0])
-        else:
-            f = np.zeros(2)
-        return f
-
-
-class Circle(object):
-    def __init__(self, k, c, r):
-        self.k = k
-        self.c = c
-        self.r = r
-
-    def apply_force(self, p):
-        a = p[:2] - self.c
-        d = np.linalg.norm(a)
-        b = self.r * a / d
-        if d < self.r:
-            dx = a - b
-            f = self.k * dx
-        else:
-            f = np.zeros(2)
-        return f
-
-    def draw(self, ax):
-        ax.add_patch(plt.Circle(self.c, self.r, color='k', fill=False))
-
-
-# TODO but no, we want to do orthogonal to the plane
-def desired_force1(f, f_contact, f_threshold):
-    fd = np.zeros(2)
-    if f[0] >= f_threshold[0]:
-        fd[0] = f_contact
-    if f[1] >= f_threshold[1]:
-        fd[1] = f_contact
-    return fd
-
-
-def desired_force2(f, f_contact, f_threshold):
+def desired_force(f, fc):
     ''' Calculate desired force based on whether contact is detected.
 
-        f:            Measured force
+        f:           Measured force
         f_contact:   Desired contact force
         f_threshold: Threshold for force that indicates contact has been made. '''
     f_norm = np.linalg.norm(f)
-    if f_norm > f_contact:
+    if f_norm > fc:
         # project contact back onto f
-        return f_contact * f / f_norm, True
+        return fc * f / f_norm, True
 
     # otherwise we assume we're in freespace
-    return np.zeros(2), False
+    return f, False
 
 
 class MM(object):
     def __init__(self):
         self.n = 3  # number of joints (inputs/DOFs)
-        self.p = 2  # number of outputs (end effector coords)
+        self.p = 3  # number of outputs (end effector coords)
 
     def forward(self, q):
         f = np.array([q[0] + L1*np.cos(q[1]) + L2*np.cos(q[1]+q[2]),
@@ -150,6 +124,8 @@ class MPC(object):
         Jbar = np.zeros((p*N, n*N))  # Lifted Jacobian
         Qbar = np.zeros((p*N, p*N))
         Rbar = np.zeros((n*N, n*N))
+        Ebar = np.tril(np.ones((n*N, n*N)))
+        # Ebar = np.eye(n*N)
 
         for k in range(N):
             q = qbar[(k+1)*n:(k+2)*n]
@@ -162,8 +138,8 @@ class MPC(object):
 
         dbar = fbar - pr
 
-        H = Rbar + self.dt**2*Jbar.T.dot(Qbar).dot(Jbar)
-        g = dq.T.dot(Rbar) + self.dt*dbar.T.dot(Qbar).dot(Jbar)
+        H = Rbar + self.dt**2*Ebar.T.dot(Jbar.T).dot(Qbar).dot(Jbar).dot(Ebar)
+        g = dq.T.dot(Rbar) + self.dt*dbar.T.dot(Qbar).dot(Jbar).dot(Ebar)
 
         return H, g
 
@@ -223,67 +199,35 @@ class MPC(object):
         return dq[:self.model.n], obj
 
 
-# Trajectories
-
-def spiral(p0, ts):
-    a = 0.1
-    b = 0.08
-    x = p0[0] + (a + b*ts) * np.cos(ts)
-    y = p0[1] + (a + b*ts) * np.sin(ts)
-    return x, y
-
-
-def point(p0, ts):
-    x = p0[0] * np.ones(ts.shape[0])
-    y = p0[1] * np.ones(ts.shape[0])
-    return x, y
-
-
-def line(p0, ts):
-    v = 0.125
-    x = p0[0] + np.array([v*t for t in ts])
-    y = p0[1] * np.ones(ts.shape[0])
-    theta = np.ones(ts.shape[0]) * np.pi * 0
-    return x, y, theta
-
-
 def main():
     num_steps = int(DURATION / DT)
 
     model = MM()
-
-    Q = np.eye(model.p)
-    R = np.eye(model.n) * 0.01
-    lb = -10.0
-    ub = 10.0
-
-    mpc = MPC(model, DT, Q, R, lb, ub)
+    mpc = MPC(model, DT, Q, R, LB, UB)
 
     ts = np.array([i * DT for i in xrange(num_steps+1)])
     ps = np.zeros((num_steps+1, model.p))
     qs = np.zeros((num_steps+1, model.n))
     dqs = np.zeros((num_steps, model.n))
-    objs = np.zeros(num_steps)
+    dps = np.zeros((num_steps, model.p))
+    fs = np.zeros((num_steps, 2))
 
     q0 = np.array([0, np.pi/4.0, -np.pi/4.0])
     p0 = model.forward(q0)
 
     # reference trajectory
-    # xr, yr = spiral(p0, ts[1:])
-    xr, yr, thetar = line(p0, ts[1:])
+    xr, yr = spiral(p0, ts[1:])
+    # xr, yr, thetar = circle(p0, ts[1:])
     pr = np.zeros(num_steps * model.p)
     pr[0::model.p] = xr
     pr[1::model.p] = yr
-    # pr[2::model.p] = thetar
+    #pr[2::model.p] = thetar
 
     # obstacles
-    # obs = Wall(k=1000, x=3.0)
-    obs = Circle(k=10000, c=np.array([3.5, 1.5]), r=1)
+    obs = Wall(x=2.5)
+    # obs = Circle(c=np.array([3.0, 1.5]), r=1)
 
-    # force control
-    K_pf = 0.0
-    K_if = 0.001
-    F = 0
+    F = 0  # force control integral term
 
     q = q0
     p = p0
@@ -295,34 +239,94 @@ def main():
 
     thetar = 0
 
+    flag = False
+
+    pf = np.zeros(2)
+    dpf = np.zeros(2)
+
+    ddpf_max = 1.0
+    dpf_max = 1.0
+
+    # IPython.embed()
+
     for i in xrange(num_steps):
-        f = obs.apply_force(p)
-
-        fd, contact = desired_force2(f, f_contact=0.1, f_threshold=0.1)
-        f_err = fd - f
-        F += DT * f_err  # integrate
-        pf = K_pf * f_err + K_if * F  # control law
-        F = 0.9 * F  # discharge term, so we can return to original trajectory
-        print('f = {}'.format(f))
-
-        # if contact:
-        #     d = f / np.linalg.norm(f)  # unit vector in direction of force
-        #     a = np.arctan2(d[1], d[0])  # angle in direction of force
-        #     thetar = a
-        # pf = np.array([pf[0], pf[1], thetar])
+        # apply force
+        f = obs.apply_force(p, dps[i-1, :])
+        # f = np.zeros(2)
 
         n = min(NUM_HORIZON, num_steps - i)
-        pd = pr[i*model.p:(i+n)*model.p] + np.tile(pf, n)
 
-        dq, obj = mpc.solve(q, pd, n)
+        # alternative force control
+        # remove desired orientation
+        # ref = pr[i*model.p:(i+n)*model.p].reshape((n, model.p))
+        # P = ref[:, :2]
+        # theta = ref[:, 2]
+        # f_norm = np.linalg.norm(f)
+        #
+        # if f_norm > F_CONTACT:
+        #     fd = F_CONTACT
+        # else:
+        #     fd = f_norm
+        #
+        # if f_norm > 0:
+        #     fn = f / f_norm
+        #     f_err = fd - f_norm
+        #     F += DT * f_err
+        #     pf = K_pf * f_err + K_if * F
+        #
+        #     Pr = P - np.outer(P.dot(fn), fn) #+ pf * np.tile(fn, (n, 1))
+        #     pd = np.concatenate((Pr, theta[:, None]), axis=1).flatten()
+        # else:
+        #     pd = ref.flatten()
+
+        # force control
+        fd, contact = desired_force(f, fc=F_CONTACT)
+        f_err = fd - f
+        F += DT * f_err
+        pf = K_pf * f_err + K_if * F
+        F = K_df * F  # discharge term, so we can return to original trajectory
+
+        ddpf = (f_err - K_v*dpf) / K_a
+        # if np.linalg.norm(ddpf) > ddpf_max:
+        #     ddpf = ddpf_max * ddpf / np.linalg.norm(ddpf)
+
+        # pf = pf + DT * dpf
+
+        dpf = dpf + DT * ddpf
+        # if np.linalg.norm(dpf) > dpf_max:
+        #     dpf = dpf_max * dpf / np.linalg.norm(dpf)
+
+        if contact and not flag:
+            flag = True
+
+        if flag and np.linalg.norm(f) > 0:
+            d = f / np.linalg.norm(f)  # unit vector in direction of force
+            a = np.arctan2(d[1], d[0])  # angle in direction of force
+            thetar = a
+        pf3 = np.array([pf[0], pf[1], thetar])
+
+        # only do discharge when not in contact
+        # if not contact:
+        dpf = K_df * dpf
+        pf = K_df * pf
+
+        pf3 = np.zeros(3)
+
+        # MPC
+        pd = pr[i*model.p:(i+n)*model.p] + np.tile(pf3, n)
+        dq, _ = mpc.solve(q, pd, n)
 
         # bound joint velocities (i.e. enforce actuation constraints)
-        dq = bound_array(dq, lb, ub)
+        dq = bound_array(dq, LB, UB)
 
+        # record end effector velocity
+        dps[i, :] = model.jacobian(q).dot(dq)
+
+        # integrate
         q = q + DT * dq
         p = model.forward(q)
 
-        objs[i] = obj
+        fs[i, :] = f
         dqs[i, :] = dq
         qs[i+1, :] = q
         ps[i+1, :] = p
@@ -357,6 +361,16 @@ def main():
     plt.title('Commanded joint velocity')
     plt.xlabel('Time (s)')
     plt.ylabel('Velocity')
+
+    plt.figure()
+    plt.plot(ts[:-1], fs[:, 0], label='$f_x$')
+    plt.plot(ts[:-1], fs[:, 1], label='$f_y$')
+    plt.plot(ts[:-1], np.sqrt(np.sum(fs**2, axis=1)), label='$f$')
+    plt.grid()
+    plt.legend()
+    plt.title('Force')
+    plt.xlabel('Time (s)')
+    plt.ylabel('Force')
 
     # plt.figure(3)
     # plt.plot(ts, objs)

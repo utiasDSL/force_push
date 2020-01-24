@@ -9,6 +9,7 @@ class RobotPlotter(object):
         self.xs = []
         self.ys = []
 
+
     def start(self, q0, xr, yr, obs):
         ''' Launch the plot. '''
         plt.ion()
@@ -32,7 +33,6 @@ class RobotPlotter(object):
         self.ref, = self.ax.plot(xr, yr, linestyle='--')
         self.act, = self.ax.plot(self.xs, self.ys, color='r')
 
-        # self.ax.plot([3.0, 3.0], [0, 2], color='k')
         obs.draw(self.ax)
 
     def _calc_arm_pts(self, q):

@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import qpoases
 
 DURATION = 10
 DT = 0.01
@@ -15,6 +16,19 @@ K_if = 0.01
 fd = 1
 
 
+def basic(p, I):
+    f = Kf * p if p > 0 else 0
+    df = fd - f
+    I += DT * df
+    p = K_pf * df + K_if * I
+    return p, f, I
+
+
+def opt(p):
+    f = Kf * p if p > 0 else 0
+    # nf if trivial in 1d case
+
+
 def main():
     I = 0
     p = 0
@@ -24,10 +38,7 @@ def main():
     fs = np.zeros(STEPS + 1)
 
     for i in xrange(STEPS):
-        f = Kf * p if p > 0 else 0
-        df = fd - f
-        I += DT * df
-        p = K_pf * df + K_if * I
+        p, f, I = basic(p, I)
 
         fs[i+1] = f
         ps[i+1] = p

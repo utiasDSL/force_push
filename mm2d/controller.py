@@ -185,6 +185,7 @@ class OptimizingForceController(object):
             # Create the QP, which we'll solve sequentially.
             # num vars, num constraints (note that constraints only refer to
             # matrix constraints rather than bounds)
+
             # qp = qpoases.PyQProblem(n, 1)
             # options = qpoases.PyOptions()
             # options.printLevel = qpoases.PyPrintLevel.NONE
@@ -209,85 +210,55 @@ class OptimizingForceController(object):
 
 
 class BaselineController(object):
-    ''' Optimizing controller. '''
-    def __init__(self, model, dt, Q, R, lb, ub):
+    ''' Baseline optimizing controller.
+        Solves:
+            min  u'Wu
+            s.t. Ju = v
+                 lb <= u <= ub
+        where
+            v = K*(pd-p) + vd '''
+    def __init__(self, model, W, K, lb, ub, verbose=False):
         self.model = model
-        self.dt = dt
-        self.Q = Q
-        self.R = R
+        self.W = W
+        self.K = K
         self.lb = lb
         self.ub = ub
 
-    def solve(self, q, pr, f, fd):
-        ''' Solve the MPC problem at current state x0 given desired output
-            trajectory Yd. '''
-        n = self.model.n
+        self.verbose = verbose
 
-        pe = self.model.forward(q)
-        d = pr - pe
+    def solve(self, q, pd, vd):
+        ''' Solve for the optimal inputs. '''
+        ni = self.model.ni
+        no = self.model.no
+
+        # forward kinematics
+        p = self.model.forward(q)
         J = self.model.jacobian(q)
 
-        H = self.dt**2 * J.T.dot(self.Q).dot(J) + self.R
-        g = -self.dt * d.T.dot(self.Q).dot(J)
+        # calculate velocity reference
+        v = self.K.dot(pd - p) + vd
 
-        lb = np.ones(n) * self.lb
-        ub = np.ones(n) * self.ub
+        # setup the QP
+        H = self.W
+        g = np.zeros(ni)
 
-        # force control
-        Kp = 0.01
-        f_norm = np.linalg.norm(f)
+        A = J
+        lbA = ubA = v
 
-        # TODO we can actually set nf in the case we have f=0 but fd != 0
-        if f_norm > 0:
-            nf = f / f_norm  # unit vector in direction of force
-            df = fd - f_norm
+        # bounds on the computed input
+        lb = np.ones(ni) * self.lb
+        ub = np.ones(ni) * self.ub
 
-            # only the first two rows of J are used since we only want to
-            # constrain position
-            A = nf.T.dot(J[:2,:])
-            lbA = ubA = np.array([Kp * df])
-            # lbA = np.array([0.0]) if df > 0 else None
-            # ubA = np.array([0.0]) if df < 0 else None
-            # A = A.reshape((1, 3))
-
-            # H += np.outer(A, A)
-            # g -= Kp * df * A
-
-
-            # # admittance control
-            Qf = np.eye(2)
-            Bf = 0 * np.eye(2)
-            Kf = 0.001 * np.eye(2)
-
-            Jp = J[:2, :]
-
-            K = -(self.dt*Kf + Bf).dot(Jp)
-            d = K.dot(pr-pe) - f
-
-            H += K.T.dot(Qf).dot(K)
-            g += d.T.dot(Qf).dot(K)
-
-            # Create the QP, which we'll solve sequentially.
-            # num vars, num constraints (note that constraints only refer to
-            # matrix constraints rather than bounds)
-            # qp = qpoases.PyQProblem(n, 1)
-            # options = qpoases.PyOptions()
-            # options.printLevel = qpoases.PyPrintLevel.NONE
-            # qp.setOptions(options)
-            # ret = qp.init(H, g, A, lb, ub, lbA, ubA, NUM_WSR)
-
-            qp = qpoases.PyQProblemB(n)
+        qp = qpoases.PyQProblem(ni, no)
+        if not self.verbose:
             options = qpoases.PyOptions()
             options.printLevel = qpoases.PyPrintLevel.NONE
             qp.setOptions(options)
-            ret = qp.init(H, g, lb, ub, NUM_WSR)
-        else:
-            qp = qpoases.PyQProblemB(n)
-            options = qpoases.PyOptions()
-            options.printLevel = qpoases.PyPrintLevel.NONE
-            qp.setOptions(options)
-            ret = qp.init(H, g, lb, ub, NUM_WSR)
+        ret = qp.init(H, g, A, lb, ub, lbA, ubA, NUM_WSR)
 
-        dq = np.zeros(n)
+        dq = np.zeros(ni)
         qp.getPrimalSolution(dq)
         return dq
+
+
+# class DecoupledController(object):

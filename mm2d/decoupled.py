@@ -5,38 +5,47 @@ import matplotlib.pyplot as plt
 
 from plotter import RobotPlotter
 from trajectory import Line
-from controller import OptimizingController
+from controller import BaselineController
 from model import ThreeInputModel
 
 import IPython
 
 
-# robot parameters
+# model parameters
+# link lengths
 L1 = 1
 L2 = 1
 
-DT = 0.1         # timestep (s)
-DURATION = 20.0  # duration of trajectory (s)
+# input bounds
+LB = -1
+UB = 1
 
+# controller parameters
 Q = np.diag([1.0, 1.0, 0.00001])
 R = np.eye(3) * 0.01
+
+# trajectory parameters
+DT = 0.1         # timestep (s)
+DURATION = 20.0  # duration of trajectory (s)
 
 
 def main():
     N = int(DURATION / DT)
 
     # robot model
-    model = ThreeInputModel(L1, L2)
+    model = ThreeInputModel(L1, L2, LB, UB, output_idx=[0, 1])
 
     # robot controller
-    controller = OptimizingController(model, DT, Q, R)
+    W = np.eye(model.ni)
+    K = np.eye(model.no)
+    controller = BaselineController(model, W, K, LB, UB)
 
     ts = np.array([i * DT for i in xrange(N+1)])
-    ps = np.zeros((N+1, model.p))
-    qs = np.zeros((N+1, model.n))
-    dqs = np.zeros((N+1, model.n))
-    us = np.zeros((N+1, model.p))
-    vs = np.zeros((N+1, model.p))
+    qs = np.zeros((N+1, model.ni))
+    dqs = np.zeros((N+1, model.ni))
+    us = np.zeros((N+1, model.ni))
+    ps = np.zeros((N+1, model.no))
+    vs = np.zeros((N+1, model.no))
 
     # setup initial conditions
     q0 = np.array([0, np.pi/4.0, -np.pi/4.0])
@@ -48,7 +57,7 @@ def main():
     ps[0, :] = p0
 
     # reference trajectory
-    trajectory = Line(p0, v=[0.1, 0])
+    trajectory = Line(p0, v=np.array([0.1, 0]))
 
     # real time plotter
     plotter = RobotPlotter(model, trajectory)
@@ -59,8 +68,8 @@ def main():
         t = ts[i+1]
 
         # step forward
-        pd = trajectory.sample(t)
-        u = controller.solve(q, pd)
+        pd, vd = trajectory.sample(t)
+        u = controller.solve(q, pd, vd)
         q, dq = model.step(q, u, DT)
         p = model.forward(q)
         v = model.jacobian(q).dot(dq)
@@ -73,7 +82,7 @@ def main():
         vs[i+1, :] = v
 
         # plot
-        plotter.update(q, t)
+        plotter.update(q)
 
     plt.ioff()
 

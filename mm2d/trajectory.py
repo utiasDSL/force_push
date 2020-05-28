@@ -40,11 +40,12 @@ class Line(object):
         self.v = v
 
     def sample(self, t):
-        x = self.p0[0] + self.v[0] * t
-        y = self.p0[1] + self.v[1] * t
-        return x, y
+        pd = self.p0 + self.v * t
+        vd = self.v
+        return pd, vd
 
 
 def unroll(ts, trajectory):
     ''' Unroll a trajectory over the given times. '''
-    return np.array([trajectory.sample(t) for t in ts])
+    # TODO this is not super clear since sample returns pd and vd
+    return np.array([trajectory.sample(t)[0] for t in ts])

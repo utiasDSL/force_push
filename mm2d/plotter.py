@@ -43,8 +43,8 @@ class RobotPlotter(object):
 
     def update(self, q):
         ''' Update plot based on current transforms. '''
-        xa, ya = self.model.arm(q0)
-        xb, yb = self.model.base(q0)
+        xa, ya = self.model.arm(q)
+        xb, yb = self.model.base(q)
 
         self.xs.append(xa[-1])
         self.ys.append(ya[-1])

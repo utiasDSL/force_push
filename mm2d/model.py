@@ -2,25 +2,27 @@ import numpy as np
 import util
 
 
-# Input bounds on velocity
-LB = -1.0
-UB = 1.0
-
-
 class ThreeInputModel(object):
-    def __init__(self, l1, l2):
-        self.n = 3  # number of joints (inputs/DOFs)
-        self.p = 3  # number of outputs (end effector coords)
+    def __init__(self, l1, l2, lb, ub, output_idx=[0,1,2]):
+        self.ni = 3  # number of joints (inputs/DOFs)
+
+        # control which outputs are used
+        # possible outputs are: x, y, theta
+        self.no = len(output_idx)
+        self.output_idx = output_idx
 
         self.l1 = l1
         self.l2 = l2
 
+        self.lb = lb
+        self.ub = ub
+
     def forward(self, q):
         ''' Forward kinematic transform for the end effector. '''
-        f = np.array([q[0] + self.l1*np.cos(q[1]) + self.l2*np.cos(q[1]+q[2]),
+        p = np.array([q[0] + self.l1*np.cos(q[1]) + self.l2*np.cos(q[1]+q[2]),
                       self.l1*np.sin(q[1]) + self.l2*np.sin(q[1]+q[2]),
                       q[1] + q[2]])
-        return f
+        return p[self.output_idx]
 
     def jacobian(self, q):
         ''' End effector Jacobian. '''
@@ -28,7 +30,7 @@ class ThreeInputModel(object):
             [1, -self.l1*np.sin(q[1])-self.l2*np.sin(q[1]+q[2]), -self.l2*np.sin(q[1]+q[2])],
             [0,  self.l1*np.cos(q[1])+self.l2*np.cos(q[1]+q[2]),  self.l2*np.cos(q[1]+q[2])],
             [0, 1, 1]])
-        return J
+        return J[self.output_idx, :]
 
     def base(self, q):
         ''' Generate an array of points representing the base of the robot. '''
@@ -59,6 +61,6 @@ class ThreeInputModel(object):
 
     def step(self, q, u, dt):
         ''' Step forward one timestep. '''
-        dq = util.bound_array(u, LB, UB)
+        dq = util.bound_array(u, self.lb, self.ub)
         q = q + dt * dq
         return q, dq

@@ -46,22 +46,26 @@ def main():
     us = np.zeros((N+1, model.ni))
     ps = np.zeros((N+1, model.no))
     vs = np.zeros((N+1, model.no))
+    pds = np.zeros((N+1, model.no))
 
     # setup initial conditions
     q0 = np.array([0, np.pi/4.0, -np.pi/4.0])
     p0 = model.forward(q0)
+
+    # reference trajectory
+    trajectory = Line(p0, v=np.array([0.1, 0]))
 
     q = q0
     p = p0
     qs[0, :] = q0
     ps[0, :] = p0
 
-    # reference trajectory
-    trajectory = Line(p0, v=np.array([0.1, 0]))
+    pd0, _ = trajectory.sample(0)
+    pds[0, :] = pd0
 
     # real time plotter
-    plotter = RobotPlotter(model, trajectory)
-    plotter.start(q0, ts)
+    # plotter = RobotPlotter(model, trajectory)
+    # plotter.start(q0, ts)
 
     # simulation loop
     for i in xrange(N):
@@ -78,13 +82,50 @@ def main():
         dqs[i+1, :] = dq
         qs[i+1, :] = q
         ps[i+1, :] = p
+        pds[i+1, :] = pd
         us[i+1, :] = u
         vs[i+1, :] = v
 
         # plot
-        plotter.update(q)
+        # plotter.update(q)
 
     plt.ioff()
+
+    # plot cartesian trajectory
+    plt.figure()
+    plt.plot(pds[:, 0], pds[:, 1], label='Desired')
+    plt.plot(ps[:, 0], ps[:, 1], label='Actual')
+    plt.legend()
+    plt.xlabel('x (m)')
+    plt.ylabel('y (m)')
+
+    # plot joints
+    plt.figure()
+    plt.subplot(211)
+    plt.plot(ts, qs[:, 0], label='$x_b$ (m)')
+    plt.plot(ts, qs[:, 1], label='$\\theta_1$ (rad)')
+    plt.plot(ts, qs[:, 2], label='$\\theta_2$ (rad)')
+    plt.legend()
+    plt.grid()
+    plt.ylabel('Joint positions')
+
+    plt.subplot(212)
+    plt.plot(ts[1:], us[1:, 0], label='$\dot{x}_b$ (m/s)')
+    plt.plot(ts[1:], us[1:, 1], label='$\\theta_1$')
+    plt.plot(ts[1:], us[1:, 2], label='$\\theta_2$')
+    plt.legend()
+    plt.grid()
+    plt.ylabel('Joint velocities')
+    plt.xlabel('Time (s)')
+
+    # plot cost
+    Js = np.array([u.T.dot(W).dot(u) for u in us])
+    plt.figure()
+    plt.plot(ts[1:], Js[1:])
+    plt.xlabel('Time (s)')
+    plt.ylabel('Cost')
+
+    plt.show()
 
 
 if __name__ == '__main__':

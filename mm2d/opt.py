@@ -16,12 +16,8 @@ L1 = 1
 L2 = 1
 
 DT = 0.1         # timestep (s)
-DURATION = 10.0  # duration of trajectory (s)
+DURATION = 20.0  # duration of trajectory (s)
 
-# mpc parameters
-NUM_HORIZON = 1  # number of time steps for prediction horizon
-NUM_WSR = 100     # number of working set recalculations
-NUM_ITER = 3      # number of linearizations/iterations
 
 Q = np.diag([1.0, 1.0, 0.00001])
 R = np.eye(3) * 0.01
@@ -40,16 +36,6 @@ K_v = 100.0
 F_CONTACT = 0.0
 
 
-def rms(e):
-    ''' Calculate root mean square of a vector of data. '''
-    return np.sqrt(np.mean(np.square(e)))
-
-
-def bound_array(a, lb, ub):
-    ''' Elementwise bound array above and below. '''
-    return np.minimum(np.maximum(a, lb), ub)
-
-
 def desired_force(f, fc):
     ''' Calculate desired force based on whether contact is detected.
 
@@ -65,63 +51,6 @@ def desired_force(f, fc):
     return f, False
 
 
-class MM(object):
-    def __init__(self):
-        self.n = 3  # number of joints (inputs/DOFs)
-        self.p = 3  # number of outputs (end effector coords)
-
-    def forward(self, q):
-        f = np.array([q[0] + L1*np.cos(q[1]) + L2*np.cos(q[1]+q[2]),
-                      L1*np.sin(q[1]) + L2*np.sin(q[1]+q[2]),
-                      q[1] + q[2]])
-        return f[:self.p]
-
-    def jacobian(self, q):
-        J = np.array([
-            [1, -L1*np.sin(q[1])-L2*np.sin(q[1]+q[2]), -L2*np.sin(q[1]+q[2])],
-            [0,  L1*np.cos(q[1])+L2*np.cos(q[1]+q[2]),  L2*np.cos(q[1]+q[2])],
-            [0, 1, 1]])
-        return J[:self.p, :]
-
-
-class Optimizer(object):
-    ''' Optimizing controller. '''
-    def __init__(self, model, dt, Q, R, lb, ub):
-        self.model = model
-        self.dt = dt
-        self.Q = Q
-        self.R = R
-        self.lb = lb
-        self.ub = ub
-
-    def solve(self, q, pr, N):
-        ''' Solve the MPC problem at current state x0 given desired output
-            trajectory Yd. '''
-        n = self.model.n
-
-        d = pr - self.model.forward(q)
-        J = self.model.jacobian(q)
-
-        H = DT**2 * J.T.dot(self.Q).dot(J) + self.R
-        g = -DT * d.T.dot(self.Q).dot(J)
-
-        lb = np.ones(n) * self.lb
-        ub = np.ones(n) * self.ub
-
-        # Create the QP, which we'll solve sequentially.
-        # num vars, num constraints (note that constraints only refer to matrix
-        # constraints rather than bounds)
-        qp = qpoases.PyQProblem(n, 2)
-        options = qpoases.PyOptions()
-        options.printLevel = qpoases.PyPrintLevel.NONE
-        qp.setOptions(options)
-
-        ret = qp.init(H, g, None, lb, ub, None, None, NUM_WSR)
-        dq = np.zeros(n)
-        qp.getPrimalSolution(dq)
-        return dq
-
-
 def main():
     num_steps = int(DURATION / DT)
 
@@ -134,6 +63,7 @@ def main():
     dqs = np.zeros((num_steps, model.n))
     dps = np.zeros((num_steps, model.p))
     fs = np.zeros((num_steps, 2))
+    contacts = np.zeros(num_steps)
 
     q0 = np.array([0, np.pi/4.0, -np.pi/4.0])
     p0 = model.forward(q0)
@@ -175,6 +105,7 @@ def main():
     for i in xrange(num_steps):
         # apply force
         f = obs.apply_force(p, dps[i-1, :])
+        print(f)
         # f = np.zeros(2)
 
         n = min(NUM_HORIZON, num_steps - i)
@@ -204,6 +135,17 @@ def main():
 
         # force control
         fd, contact = desired_force(f, fc=F_CONTACT)
+        # if contact:
+        #     fd = F_CONTACT
+        if p[0] >= 2.5:
+            contact = True
+            fd = 1.0
+        else:
+            contact = False
+            fd = 0.0
+
+        contacts[i] = 1 if contact else 0
+
         f_err = fd - f
         F += DT * f_err
         pf = K_pf * f_err + K_if * F
@@ -233,11 +175,11 @@ def main():
         dpf = K_df * dpf
         pf = K_df * pf
 
-        # pf3 = np.zeros(3)
+        pf3 = np.zeros(3)
 
         # MPC
         pd = pr[i*model.p:(i+n)*model.p] + np.tile(pf3, n)
-        dq = mpc.solve(q, pd, n)
+        dq = mpc.solve(q, pd, f, fd)
 
         # bound joint velocities (i.e. enforce actuation constraints)
         dq = bound_array(dq, LB, UB)
@@ -269,6 +211,7 @@ def main():
     plt.plot(ts[1:], pr[1::model.p], label='$y_d$', color='r', linestyle='--')
     plt.plot(ts, ps[:, 0], label='$x$', color='b')
     plt.plot(ts, ps[:, 1], label='$y$', color='r')
+    plt.plot(ts[1:], contacts, label='contact')
     plt.grid()
     plt.legend()
     plt.xlabel('Time (s)')

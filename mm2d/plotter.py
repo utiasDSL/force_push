@@ -1,16 +1,17 @@
-import numpy as np
 import matplotlib.pyplot as plt
+
+from trajectory import unroll
 
 
 class RobotPlotter(object):
-    def __init__(self, l1, l2):
-        self.l1 = l1
-        self.l2 = l2
+    ''' Real time plotter for the robot and associated trajectories. '''
+    def __init__(self, model, trajectory):
+        self.model = model
+        self.trajectory = trajectory
         self.xs = []
         self.ys = []
 
-
-    def start(self, q0, xr, yr, obs):
+    def start(self, q0, ts, obstacles=None):
         ''' Launch the plot. '''
         plt.ion()
 
@@ -22,41 +23,28 @@ class RobotPlotter(object):
         self.ax.set_xlim([-1, 6])
         self.ax.set_ylim([-1, 2])
 
-        xa, ya = self._calc_arm_pts(q0)
-        xb, yb = self._calc_body_pts(q0)
+        xa, ya = self.model.arm(q0)
+        xb, yb = self.model.base(q0)
 
         self.xs.append(xa[-1])
         self.ys.append(ya[-1])
 
+        # reference trajectory doesn't change
+        pr = unroll(ts, self.trajectory)
+        xr = pr[:, 0]
+        yr = pr[:, 1]
+        self.ref, = self.ax.plot(xr, yr, linestyle='--')
+
         self.arm, = self.ax.plot(xa, ya, color='k')
         self.body, = self.ax.plot(xb, yb, color='k')
-        self.ref, = self.ax.plot(xr, yr, linestyle='--')
         self.act, = self.ax.plot(self.xs, self.ys, color='r')
 
-        obs.draw(self.ax)
-
-    def _calc_arm_pts(self, q):
-        x0 = q[0]
-        y0 = 0
-        x = [x0, x0 + self.l1*np.cos(q[1]), x0 + self.l1*np.cos(q[1]) + self.l2*np.cos(q[1]+q[2])]
-        y = [y0, y0 + self.l1*np.sin(q[1]), y0 + self.l1*np.sin(q[1]) + self.l2*np.sin(q[1]+q[2])]
-        return x, y
-
-    def _calc_body_pts(self, q):
-        x0 = q[0]
-        y0 = 0
-        r = 0.5
-        h = 0.25
-
-        x = [x0, x0 - r, x0 - r, x0 + r, x0 + r, x0]
-        y = [y0, y0, y0 - h, y0 - h, y0, y0]
-
-        return x, y
+        # obs.draw(self.ax)
 
     def update(self, q):
         ''' Update plot based on current transforms. '''
-        xa, ya = self._calc_arm_pts(q)
-        xb, yb = self._calc_body_pts(q)
+        xa, ya = self.model.arm(q0)
+        xb, yb = self.model.base(q0)
 
         self.xs.append(xa[-1])
         self.ys.append(ya[-1])

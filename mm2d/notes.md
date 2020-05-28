@@ -1,5 +1,11 @@
 # Sim Notes
 
+## New notes
+* models
+* controller
+
+
+## Old stuff
 * Hybrid vs. parallel control logic
   - one idea is that we could do both, where we constrain certain directions to
     be force controlled at certain times (e.g. when I expect to encounter a

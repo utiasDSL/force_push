@@ -8,6 +8,7 @@ import IPython
 
 
 class Pendulum(object):
+    ''' Nonlinear single pendulum system. '''
     def __init__(self, dt):
         self.dt = dt
         self.g = 1.0
@@ -30,14 +31,17 @@ class Pendulum(object):
         return x
 
     def calc_A(self, x):
+        ''' Linearized A matrix. '''
         return np.array([
             [1, self.dt],
             [self.dt * self.g * np.cos(x[0]) / self.l, 1]])
 
     def calc_B(self, x):
+        ''' Linearized B matrix. '''
         return np.array([[0], [1]])
 
     def calc_C(self, x):
+        ''' Linearized C matrix. '''
         # return np.array([[1, 0]])
         return np.eye(self.n)
 

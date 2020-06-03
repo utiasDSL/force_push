@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 
-from trajectory import unroll
+from .trajectory import unroll
 
 
 class RobotPlotter(object):

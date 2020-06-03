@@ -1,5 +1,5 @@
 import numpy as np
-import util
+from .util import bound_array
 
 
 class ThreeInputModel(object):
@@ -61,6 +61,6 @@ class ThreeInputModel(object):
 
     def step(self, q, u, dt):
         ''' Step forward one timestep. '''
-        dq = util.bound_array(u, self.lb, self.ub)
+        dq = bound_array(u, self.lb, self.ub)
         q = q + dt * dq
         return q, dq

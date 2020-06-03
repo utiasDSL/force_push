@@ -1,12 +1,11 @@
-#!/usr/bin/env python2
-from __future__ import print_function
+#!/usr/bin/env python
 import numpy as np
 import matplotlib.pyplot as plt
 
-from plotter import RobotPlotter
-from trajectory import Line
-from controller import BaselineController
-from model import ThreeInputModel
+from mm2d.plotter import RobotPlotter
+from mm2d.trajectory import Line
+from mm2d.controller import BaselineController
+from mm2d.model import ThreeInputModel
 
 
 # model parameters
@@ -38,7 +37,7 @@ def main():
     K = np.eye(model.no)
     controller = BaselineController(model, W, K, LB, UB)
 
-    ts = np.array([i * DT for i in xrange(N+1)])
+    ts = np.array([i * DT for i in range(N+1)])
     qs = np.zeros((N+1, model.ni))
     dqs = np.zeros((N+1, model.ni))
     us = np.zeros((N+1, model.ni))
@@ -66,7 +65,7 @@ def main():
     # plotter.start(q0, ts)
 
     # simulation loop
-    for i in xrange(N):
+    for i in range(N):
         t = ts[i+1]
 
         # step forward

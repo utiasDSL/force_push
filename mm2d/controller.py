@@ -226,7 +226,7 @@ class BaselineController(object):
 
         self.verbose = verbose
 
-    def solve(self, q, pd, vd):
+    def solve(self, q, pd, vd, C=None):
         ''' Solve for the optimal inputs. '''
         ni = self.model.ni
         no = self.model.no
@@ -242,14 +242,21 @@ class BaselineController(object):
         H = self.W
         g = np.zeros(ni)
 
-        A = J
-        lbA = ubA = v
+        # optionally add additional constraints to decouple the system
+        if C is not None:
+            A = np.vstack((J, C))
+            lbA = ubA = np.concatenate((v, np.zeros(C.shape[0])))
+            nc = no + C.shape[0]
+        else:
+            A = J
+            lbA = ubA = v
+            nc = no
 
         # bounds on the computed input
         lb = np.ones(ni) * self.lb
         ub = np.ones(ni) * self.ub
 
-        qp = qpoases.PyQProblem(ni, no)
+        qp = qpoases.PyQProblem(ni, nc)
         if not self.verbose:
             options = qpoases.PyOptions()
             options.printLevel = qpoases.PyPrintLevel.NONE
@@ -259,6 +266,3 @@ class BaselineController(object):
         dq = np.zeros(ni)
         qp.getPrimalSolution(dq)
         return dq
-
-
-# class DecoupledController(object):

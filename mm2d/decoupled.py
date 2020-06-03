@@ -8,8 +8,6 @@ from trajectory import Line
 from controller import BaselineController
 from model import ThreeInputModel
 
-import IPython
-
 
 # model parameters
 # link lengths
@@ -73,7 +71,11 @@ def main():
 
         # step forward
         pd, vd = trajectory.sample(t)
-        u = controller.solve(q, pd, vd)
+
+        J = model.jacobian(q)
+        C = np.array([0, J[0, 1], J[0, 2]])
+        u = controller.solve(q, pd, vd, C=None)
+
         q, dq = model.step(q, u, DT)
         p = model.forward(q)
         v = model.jacobian(q).dot(dq)

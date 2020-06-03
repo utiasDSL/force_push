@@ -5,6 +5,7 @@ Simulation tools for a two-dimensional mobile manipulator. You'll need
 dependencies.
 
 ## Install
+
 ```bash
 # Clone the repository
 git clone https://github.com/adamheins/mm2d
@@ -26,3 +27,14 @@ make
 cd interfaces/python
 python setup.py install
 ```
+
+## Organization
+
+* `mm2d`: The main Python package.
+* `sims`: Simulations making use of the `mm2d` utilities.
+* `toys`: Stand-alone proof-of-concept scripts (e.g. simple control implementations).
+* `tools`: Miscellaneous additional utilities.
+
+## License
+
+MIT - see the LICENSE file.

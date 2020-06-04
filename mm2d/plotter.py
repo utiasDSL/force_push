@@ -1,7 +1,5 @@
 import matplotlib.pyplot as plt
 
-from .trajectory import unroll
-
 
 class RobotPlotter(object):
     ''' Real time plotter for the robot and associated trajectories. '''
@@ -29,8 +27,9 @@ class RobotPlotter(object):
         self.xs.append(xa[-1])
         self.ys.append(ya[-1])
 
-        # reference trajectory doesn't change
-        pr = unroll(ts, self.trajectory)
+        # reference trajectory doesn't change, so we can just unroll and plot
+        # the whole thing now
+        pr, _ = self.trajectory.unroll(ts)
         xr = pr[:, 0]
         yr = pr[:, 1]
         self.ref, = self.ax.plot(xr, yr, linestyle='--')
@@ -39,7 +38,10 @@ class RobotPlotter(object):
         self.body, = self.ax.plot(xb, yb, color='k')
         self.act, = self.ax.plot(self.xs, self.ys, color='r')
 
-        # obs.draw(self.ax)
+        # draw obstacles
+        if obstacles is not None:
+            for obstacle in obstacles:
+                obstacle.draw(self.ax)
 
     def update(self, q):
         ''' Update plot based on current transforms. '''

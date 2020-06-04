@@ -1,5 +1,6 @@
 import numpy as np
 import qpoases
+import IPython
 
 
 # mpc parameters
@@ -30,35 +31,34 @@ class MPC(object):
             R:   Input magnitude weighting matrix.
             N:   Number of timesteps into the future. '''
 
-        n = self.model.n  # number of joints
-        p = self.model.p  # number of Cartesian outputs
+        ni = self.model.ni  # number of joints
+        no = self.model.no  # number of Cartesian outputs
 
-        qbar = np.zeros(n*(N+1))
-        qbar[:n] = q0
+        qbar = np.zeros(ni*(N+1))
+        qbar[:ni] = q0
 
         # Integrate joint positions from the last iteration
         for k in range(1, N+1):
-            q_prev = qbar[(k-1)*n:k*n]
-            dq_prev = dq[(k-1)*n:k*n]
+            q_prev = qbar[(k-1)*ni:k*ni]
+            dq_prev = dq[(k-1)*ni:k*ni]
             q = q_prev + self.dt * dq_prev
 
-            qbar[k*n:(k+1)*n] = q
+            qbar[k*ni:(k+1)*ni] = q
 
-        fbar = np.zeros(p*N)         # Lifted forward kinematics
-        Jbar = np.zeros((p*N, n*N))  # Lifted Jacobian
-        Qbar = np.zeros((p*N, p*N))
-        Rbar = np.zeros((n*N, n*N))
-        Ebar = np.tril(np.ones((n*N, n*N)))
-        # Ebar = np.eye(n*N)
+        fbar = np.zeros(no*N)         # Lifted forward kinematics
+        Jbar = np.zeros((no*N, ni*N))  # Lifted Jacobian
+        Qbar = np.zeros((no*N, no*N))
+        Rbar = np.zeros((ni*N, ni*N))
+        Ebar = np.tril(np.ones((ni*N, ni*N)))
 
         for k in range(N):
-            q = qbar[(k+1)*n:(k+2)*n]
+            q = qbar[(k+1)*ni:(k+2)*ni]
 
-            fbar[k*p:(k+1)*p] = self.model.forward(q)
-            Jbar[k*p:(k+1)*p, k*n:(k+1)*n] = self.model.jacobian(q)
+            fbar[k*no:(k+1)*no] = self.model.forward(q)
+            Jbar[k*no:(k+1)*no, k*ni:(k+1)*ni] = self.model.jacobian(q)
 
-            Qbar[k*p:(k+1)*p, k*p:(k+1)*p] = self.Q
-            Rbar[k*n:(k+1)*n, k*n:(k+1)*n] = self.R
+            Qbar[k*no:(k+1)*no, k*no:(k+1)*no] = self.Q
+            Rbar[k*ni:(k+1)*ni, k*ni:(k+1)*ni] = self.R
 
         dbar = fbar - pr
 
@@ -68,25 +68,29 @@ class MPC(object):
         return H, g
 
     def _iterate(self, q0, pr, dq, N):
-        n = self.model.n
+        ni = self.model.ni
 
         # Create the QP, which we'll solve sequentially.
         # num vars, num constraints (note that constraints only refer to matrix
         # constraints rather than bounds)
-        qp = qpoases.PySQProblem(n * N, 0)
+        qp = qpoases.PySQProblem(ni * N, 0)
         options = qpoases.PyOptions()
         options.printLevel = qpoases.PyPrintLevel.NONE
         qp.setOptions(options)
 
+        # Zeros, because we currently do not have a constraint matrix A.
+        A = np.zeros((ni * N, ni * N))
+        lbA = ubA = np.zeros(ni * N)
+
         # Initial opt problem.
         H, g = self._lookahead(q0, pr, dq, N)
 
-        # TODO revisit damper formulation
+        # TODO revisit velocity damper formulation
         # TODO handle individual bounds for different joints
-        lb = np.ones(n * N) * self.lb - dq
-        ub = np.ones(n * N) * self.ub - dq
-        ret = qp.init(H, g, None, lb, ub, None, None, NUM_WSR)
-        delta = np.zeros(n * N)
+        lb = np.ones(ni * N) * self.lb - dq
+        ub = np.ones(ni * N) * self.ub - dq
+        ret = qp.init(H, g, A, lb, ub, lbA, ubA, NUM_WSR)
+        delta = np.zeros(ni * N)
         qp.getPrimalSolution(delta)
         dq = dq + delta
 
@@ -94,9 +98,8 @@ class MPC(object):
         for i in range(NUM_ITER):
             H, g = self._lookahead(q0, pr, dq, N)
 
-            # we currently do not have a constraint matrix A
-            lb = np.ones(n*N) * self.lb - dq
-            ub = np.ones(n*N) * self.ub - dq
+            lb = np.ones(ni*N) * self.lb - dq
+            ub = np.ones(ni*N) * self.ub - dq
             qp.hotstart(H, g, None, lb, ub, None, None, NUM_WSR)
             qp.getPrimalSolution(delta)
 
@@ -114,13 +117,13 @@ class MPC(object):
         ''' Solve the MPC problem at current state x0 given desired output
             trajectory Yd. '''
         # initialize optimal inputs
-        dq = np.zeros(self.model.n * N)
+        dq = np.zeros(self.model.ni * N)
 
         # iterate to final solution
         dq, obj = self._iterate(q0, pr, dq, N)
 
         # return first optimal input
-        return dq[:self.model.n], obj
+        return dq[:self.model.ni], obj
 
 
 class OptimizingForceController(object):

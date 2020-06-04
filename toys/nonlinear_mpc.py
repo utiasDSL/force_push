@@ -134,13 +134,13 @@ class MPC(object):
     def _iterate(self, x0, Yd, U, N):
         # Create the QP, which we'll solve sequentially.
         qp = qpoases.PySQProblem(self.sys.m * N, self.sys.m * N)
-        # options = qpoases.PyOptions()
-        # options.printLevel = qpoases.PyPrintLevel.NONE
-        # qp.setOptions(options)
+        options = qpoases.PyOptions()
+        options.printLevel = qpoases.PyPrintLevel.NONE
+        qp.setOptions(options)
 
         # Zeros, because we currently do not have a constraint matrix A.
-        A = np.zeros((10, 10))
-        lbA = ubA = np.zeros(10)
+        A = np.zeros((self.sys.m * N, self.sys.m * N))
+        lbA = ubA = np.zeros(self.sys.m * N)
 
         # Initial opt problem.
         H, g = self._lookahead(x0, Yd, U, N)

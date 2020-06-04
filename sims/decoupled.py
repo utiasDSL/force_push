@@ -37,13 +37,13 @@ def main():
     K = np.eye(model.no)
     controller = BaselineController(model, W, K, LB, UB)
 
-    ts = np.array([i * DT for i in range(N+1)])
-    qs = np.zeros((N+1, model.ni))
-    dqs = np.zeros((N+1, model.ni))
-    us = np.zeros((N+1, model.ni))
-    ps = np.zeros((N+1, model.no))
-    vs = np.zeros((N+1, model.no))
-    pds = np.zeros((N+1, model.no))
+    ts = np.array([i * DT for i in range(N)])
+    qs = np.zeros((N, model.ni))
+    dqs = np.zeros((N, model.ni))
+    us = np.zeros((N, model.ni))
+    ps = np.zeros((N, model.no))
+    vs = np.zeros((N, model.no))
+    pds = np.zeros((N, model.no))
 
     # setup initial conditions
     q0 = np.array([0, np.pi/4.0, -np.pi/4.0])
@@ -56,23 +56,23 @@ def main():
     p = p0
     qs[0, :] = q0
     ps[0, :] = p0
-
-    pd0, _ = trajectory.sample(0)
-    pds[0, :] = pd0
+    pds[0, :] = p0
 
     # real time plotter
     # plotter = RobotPlotter(model, trajectory)
     # plotter.start(q0, ts)
 
     # simulation loop
-    for i in range(N):
+    for i in range(N - 1):
         t = ts[i+1]
 
         # step forward
         pd, vd = trajectory.sample(t)
 
+        # extra constraints to decouple system
         J = model.jacobian(q)
         C = np.array([0, J[0, 1], J[0, 2]])
+
         u = controller.solve(q, pd, vd, C=None)
 
         q, dq = model.step(q, u, DT)
@@ -80,11 +80,11 @@ def main():
         v = model.jacobian(q).dot(dq)
 
         # record
+        us[i, :] = u
         dqs[i+1, :] = dq
         qs[i+1, :] = q
         ps[i+1, :] = p
         pds[i+1, :] = pd
-        us[i+1, :] = u
         vs[i+1, :] = v
 
         # plot
@@ -122,7 +122,7 @@ def main():
     # plot cost
     Js = np.array([u.T.dot(W).dot(u) for u in us])
     plt.figure()
-    plt.plot(ts[1:], Js[1:])
+    plt.plot(ts[:-1], Js[:-1])
     plt.xlabel('Time (s)')
     plt.ylabel('Cost')
 

@@ -1,6 +1,7 @@
 import numpy as np
 
 
+# TODO rewrite
 def spiral(p0, ts):
     a = 0.1
     b = 0.08
@@ -9,29 +10,19 @@ def spiral(p0, ts):
     return x, y
 
 
-def point(p0, ts):
-    x = p0[0] * np.ones(ts.shape[0])
-    y = p0[1] * np.ones(ts.shape[0])
-    return x, y
+class Point(object):
+    def __init__(self, x0):
+        self.x0 = x0
 
+    def sample(self, t):
+        return self.x0, np.zeros(self.x.shape)
 
-def line(p0, ts):
-    v = 0.125
-    x = p0[0] + np.array([v*t for t in ts])
-    y = p0[1] * np.ones(ts.shape[0])
-    theta = np.ones(ts.shape[0]) * np.pi * 0.25
-    return x, y, theta
-
-
-def circle(p0, ts):
-    R = 0.5
-    t_max = ts[-1]
-    angles = np.array([2.0 * np.pi * t / t_max for t in ts]) - np.pi
-    x = p0[0] + R * np.cos(angles) + R
-    y = p0[1] + R * np.sin(angles)
-    # theta = np.ones(ts.shape[0]) * 0
-    theta = angles
-    return x, y, theta
+    def unroll(self, ts, flatten=False):
+        xs = np.tile(self.x0, (ts.shape[0], 1))
+        vs = np.zeros(xs.shape)
+        if flatten:
+            return xs.flatten(), vs.flatten()
+        return xs, vs
 
 
 class Line(object):
@@ -44,8 +35,49 @@ class Line(object):
         vd = self.v
         return pd, vd
 
+    def unroll(self, ts, flatten=False):
+        ''' Unroll the trajectory over the given times ts.
+            Returns the desired position and velocity arrays.
+            If flatten=True, then the arrays are flattened before returning. '''
+        pds = self.p0 + np.array([self.v * t for t in ts])
+        vds = np.array([self.v for _ in ts])
+        if flatten:
+            return pds.flatten(), vds.flatten()
+        return pds, vds
 
-def unroll(ts, trajectory):
-    ''' Unroll a trajectory over the given times. '''
-    # TODO this is not super clear since sample returns pd and vd
-    return np.array([trajectory.sample(t)[0] for t in ts])
+
+class Circle(object):
+    def __init__(self, p0, r, duration):
+        self.p0 = p0
+        self.r = r
+        self.duration = duration
+
+    def sample(self, t):
+        a = 2.0 * np.pi * t / self.duration - np.pi
+
+        # position
+        x = self.p0[0] + self.r * np.cos(a) + self.r
+        y = self.p0[1] + self.r * np.sin(a)
+        theta = a
+        p = np.array([x, y, theta])
+
+        # velocity
+        da = 2.0 * np.pi * np.ones(t.shape) / self.duration
+        vx = -self.r * np.sin(a) * da
+        vy = self.r * np.cos(a) * da
+        vtheta = da
+        v = np.array([vx, vy, vtheta])
+
+        # truncate in the case that theta is not included
+        n = self.p0.shape[0]
+        return p[:n], v[:n]
+
+    def unroll(self, ts, flatten=False):
+        # Because of the way sample is written for Circle, it neatly extended
+        # to vector-valued time inputs
+        ps, vs = self.sample(ts)
+        ps = ps.T
+        vs = vs.T
+        if flatten:
+            return ps.flatten(), vs.flatten()
+        return ps, vs

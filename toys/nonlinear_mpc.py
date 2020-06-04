@@ -1,11 +1,14 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 
-from __future__ import print_function
 import numpy as np
 import matplotlib.pyplot as plt
 import qpoases
 
 import IPython
+
+
+nWSR = 100  # number of working set recalculations for qpOASES
+NUM_ITER = 3  # number of relinearizations
 
 
 class Pendulum(object):
@@ -131,19 +134,19 @@ class MPC(object):
     def _iterate(self, x0, Yd, U, N):
         # Create the QP, which we'll solve sequentially.
         qp = qpoases.PySQProblem(self.sys.m * N, self.sys.m * N)
-        options = qpoases.PyOptions()
-        options.printLevel = qpoases.PyPrintLevel.NONE
-        qp.setOptions(options)
+        # options = qpoases.PyOptions()
+        # options.printLevel = qpoases.PyPrintLevel.NONE
+        # qp.setOptions(options)
 
-        # TODO put somewhere else
-        nWSR = 100
-        NUM_ITER = 10
+        # Zeros, because we currently do not have a constraint matrix A.
+        A = np.zeros((10, 10))
+        lbA = ubA = np.zeros(10)
 
         # Initial opt problem.
         H, g = self._lookahead(x0, Yd, U, N)
         lb = np.ones(N) * self.lb - U
         ub = np.ones(N) * self.ub - U
-        qp.init(H, g, None, lb, ub, None, None, nWSR)
+        qp.init(H, g, A, lb, ub, lbA, ubA, nWSR)
         dU = np.zeros(self.sys.m * N)
         qp.getPrimalSolution(dU)
         U = U + dU
@@ -152,15 +155,13 @@ class MPC(object):
         for i in range(NUM_ITER):
             H, g = self._lookahead(x0, Yd, U, N)
 
-            # we currently do not have a constraint matrix A
-            qp.hotstart(H, g, None, self.lb - U, self.ub - U, None, None, nWSR)
+            qp.hotstart(H, g, A, self.lb - U, self.ub - U, lbA, ubA, nWSR)
             qp.getPrimalSolution(dU)
 
             # TODO we could have a different step size here, since the
             # linearization is only locally valid
             U = U + dU
 
-        # obj_val = qp.getObjVal()
         return U
 
     def solve(self, x0, Yd, N):
@@ -195,13 +196,13 @@ def main():
 
     mpc = MPC(sys, Q, R, lb, ub)
 
-    ts = np.array([i * dt for i in xrange(num_steps)])
+    ts = np.array([i * dt for i in range(num_steps)])
     ys = np.zeros((num_steps, sys.p))
     xs = np.zeros((num_steps, sys.n))
     us = np.zeros(num_steps)
 
     # desired trajectory
-    pd = np.array([np.pi if ts[i] > 1 else 0 for i in xrange(num_steps)])
+    pd = np.array([np.pi if ts[i] > 1 else 0 for i in range(num_steps)])
     vd = np.zeros(num_steps)
     Yd = np.zeros(num_steps * 2)
     Yd[::2] = pd
@@ -211,7 +212,7 @@ def main():
 
     E = 0
 
-    for i in xrange(num_steps - 1):
+    for i in range(num_steps - 1):
         y = ys[i, :]
         x = xs[i, :]
 

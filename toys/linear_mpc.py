@@ -1,8 +1,7 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 
 # Simulation of comparison between PID and MPC for linear systems.
 
-from __future__ import print_function
 import numpy as np
 import numpy.matlib as matlib
 import matplotlib.pyplot as plt
@@ -130,11 +129,11 @@ def main():
     options.printLevel = qpoases.PyPrintLevel.NONE
     qp.setOptions(options)
 
-    Yd = np.matrix([[step(t[0] + dt * j)] for j in xrange(N)])
+    Yd = np.matrix([[step(t[0] + dt * j)] for j in range(N)])
     H, g = sys2.lookahead(x0, Yd, Q, R, N)
     qp.init(H, g, lb, ub, nWSR)
 
-    for i in xrange(num_steps - 1):
+    for i in range(num_steps - 1):
         # desired trajectory
         yd[i] = step(t[i])
 
@@ -148,7 +147,7 @@ def main():
 
         # MPC
         x0 = np.matrix(x2[i*n:(i+1)*n]).T
-        Yd = np.matrix([[step(t[i] + dt * j)] for j in xrange(N)])
+        Yd = np.matrix([[step(t[i] + dt * j)] for j in range(N)])
         _, g = sys2.lookahead(x0, Yd, Q, R, N)
         qp.hotstart(g, lb, ub, nWSR)
         U = np.zeros(sys2.m * N)

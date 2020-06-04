@@ -32,7 +32,6 @@ python setup.py install
 
 * `mm2d`: The main Python package.
 * `sims`: Simulations making use of the `mm2d` utilities.
-* `toys`: Stand-alone proof-of-concept scripts (e.g. simple control implementations).
 * `tools`: Miscellaneous additional utilities.
 
 ## License

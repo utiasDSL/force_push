@@ -17,10 +17,6 @@ L2 = 1
 LB = -1
 UB = 1
 
-# controller parameters
-Q = np.diag([1.0, 1.0, 0.00001])
-R = np.eye(3) * 0.01
-
 # trajectory parameters
 DT = 0.1         # timestep (s)
 DURATION = 20.0  # duration of trajectory (s)

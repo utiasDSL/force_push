@@ -9,3 +9,8 @@ def rms(e):
 def bound_array(a, lb, ub):
     ''' Elementwise bound array above and below. '''
     return np.minimum(np.maximum(a, lb), ub)
+
+
+def right_pseudoinverse(J):
+    JJT = J.dot(J.T)
+    return J.T.dot(np.linalg.inv(JJT))

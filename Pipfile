@@ -10,6 +10,9 @@ numpy = "*"
 matplotlib = "*"
 cython = "*"
 ipython = "*"
+scipy = "*"
+autograd = "*"
+sympy = "*"
 
 [requires]
 python_version = "3.7"

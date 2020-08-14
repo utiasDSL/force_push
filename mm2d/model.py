@@ -32,6 +32,16 @@ class ThreeInputModel(object):
             [0, 1, 1]])
         return J[self.output_idx, :]
 
+    def dJdt(self, q, dq):
+        ''' Derivative of EE Jacobian w.r.t. time. '''
+        q12 = q[1] + q[2]
+        dq12 = dq[1] + dq[2]
+        J = np.array([
+            [0, -self.l1*np.cos(q[1])*dq[1]-self.l2*np.cos(q12)*dq12, -self.l2*np.cos(q12)*dq12],
+            [0, -self.l1*np.sin(q[1])*dq[1]-self.l2*np.sin(q12)*dq12, -self.l2*np.sin(q12)*dq12],
+            [0, 0, 0]])
+        return J[self.output_idx, :]
+
     def base(self, q):
         ''' Generate an array of points representing the base of the robot. '''
         x0 = q[0]

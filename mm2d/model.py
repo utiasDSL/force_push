@@ -17,6 +17,38 @@ class ThreeInputModel(object):
         self.lb = lb
         self.ub = ub
 
+    def pos_all(self, q):
+        ps = np.array([
+            [q[0] - 0.5, 0],
+            [q[0] + 0.5, 0],
+            [q[0], 0],
+            [q[0] + self.l1*np.cos(q[1]), self.l1*np.sin(q[1])],
+            [q[0] + self.l1*np.cos(q[1]) + self.l2*np.cos(q[1]+q[2]), self.l1*np.sin(q[1]) + self.l2*np.sin(q[1]+q[2])]])
+        return ps
+
+    def jac_all(self, q):
+        Js = np.zeros((5, 2, 3))
+        Js[0, :, :] = Js[1, :, :] = Js[2, :, :] = np.array([[1, 0, 0], [0, 0, 0]])
+        Js[3, :, :] = np.array([
+            [1, -self.l1*np.sin(q[1]), 0],
+            [0,  self.l1*np.cos(q[1]), 0]])
+        Js[4, :, :] = np.array([
+            [1, -self.l1*np.sin(q[1])-self.l2*np.sin(q[1]+q[2]), -self.l2*np.sin(q[1]+q[2])],
+            [0,  self.l1*np.cos(q[1])+self.l2*np.cos(q[1]+q[2]),  self.l2*np.cos(q[1]+q[2])]])
+        return Js
+
+    def dJdt_all(self, q, dq):
+        dJs = np.zeros((5, 2, 3))
+        dJs[3, :, :] = np.array([
+            [0, -self.l1*np.cos(q[1])*dq[1], 0],
+            [0, -self.l1*np.sin(q[1])*dq[1], 0]])
+        q12 = q[1] + q[2]
+        dq12 = dq[1] + dq[2]
+        dJs[4, :, :] = np.array([
+            [0, -self.l1*np.cos(q[1])*dq[1]-self.l2*np.cos(q12)*dq12, -self.l2*np.cos(q12)*dq12],
+            [0, -self.l1*np.sin(q[1])*dq[1]-self.l2*np.sin(q12)*dq12, -self.l2*np.sin(q12)*dq12]])
+        return dJs
+
     def forward(self, q):
         ''' Forward kinematic transform for the end effector. '''
         p = np.array([q[0] + self.l1*np.cos(q[1]) + self.l2*np.cos(q[1]+q[2]),

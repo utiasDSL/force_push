@@ -3,7 +3,7 @@ from .util import bound_array
 
 
 class ThreeInputModel(object):
-    def __init__(self, l1, l2, lb, ub, output_idx=[0,1,2]):
+    def __init__(self, l1, l2, lb, ub, width=1, height=0.5, output_idx=[0,1,2]):
         self.ni = 3  # number of joints (inputs/DOFs)
 
         # control which outputs are used
@@ -18,6 +18,21 @@ class ThreeInputModel(object):
         self.ub = ub
 
     def pos_all(self, q):
+        # elementary points
+        p0 = np.array([q[0], 0])
+        p1 = p0 + self.l1 * np.array([np.cos(q[1]), np.sin(q[1])])
+        p2 = p1 + self.l2 * np.array([np.cos(q[1]+q[2]), np.sin(q[1]+q[2])])
+
+        # evenly divide the links
+        l1s = np.linspace(0, self.l1, 10)
+        l2s = np.linspace(0, self.l2, 10)
+
+        p0s = p0 + np.array([[-0.5, 0], [0.5, 0], [0, 0]])
+        p1s = p0 + np.outer(l1s, np.array([np.cos(q[1]), np.sin(q[1])]))
+        p2s = p1 + np.outer(l2s, np.array([np.cos(q[1]+q[2]), np.sin(q[1]+q[2])]))
+
+        ps = np.concatenate((p0s, p1s, p2s))
+
         ps = np.array([
             [q[0] - 0.5, 0],
             [q[0] + 0.5, 0],
@@ -27,6 +42,24 @@ class ThreeInputModel(object):
         return ps
 
     def jac_all(self, q):
+        # elementary Jacobians
+        J0 = np.array([[1, 0, 0],
+                       [0, 0, 0]])
+        J1 = np.array([[0, -np.sin(q[1]), 0],
+                       [0,  np.cos(q[1]), 0]])
+        J2 = np.array([[0, -np.sin(q[1]+q[2]), -np.sin(q[1]+q[2])],
+                       [0,  np.cos(q[1]+q[2]),  np.cos(q[1]+q[2])]])
+
+        l1s = np.linspace(0, self.l1, 10)
+        l2s = np.linspace(0, self.l2, 10)
+
+        J0s = np.kron(np.ones((3, 1)), J0)
+        J1s = J0s[-1, :, :] + np.kron(l1s[:, None], J1)
+        J2s = J1s[-1, :, :] + np.kron(l2s[:, None], J2)
+
+        Js = np.concatenate((J0s, J1s, J2s))
+
+
         Js = np.zeros((5, 2, 3))
         Js[0, :, :] = Js[1, :, :] = Js[2, :, :] = np.array([[1, 0, 0], [0, 0, 0]])
         Js[3, :, :] = np.array([

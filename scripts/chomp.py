@@ -77,6 +77,28 @@ class FloorField:
         return np.zeros(dg.shape)
 
 
+class ObstacleField:
+    def __init__(self, obstacles):
+        self.obstacles = obstacles
+
+    def evaluate(self, p, eps):
+        ds = np.array([d for o.signed_dist(p, eps) in self.obstacles])
+        idx = np.argmin(ds)
+        d = ds[idx]
+        dg = self.obstacles[idx].cost_grad(p, eps)
+
+        cost = 0
+        grad = np.zeros(dg.shape)
+        if d <= 0:
+            cost = -d + 0.5 * eps
+            grad = -dg
+        elif d <= eps:
+            cost = (d-eps)**2 / (2*eps)
+            grad = -(d - eps) * dg / eps
+
+        return cost, grad
+
+
 def fd1(N, n, q0, qf):
     ''' First-order finite differencing matrix. '''
     # construct the finite differencing matrix
@@ -101,6 +123,8 @@ def fd2(N, n, q0, qf):
     # construct the finite differencing matrix
     d1 = -2*np.ones(N)
     d2 = np.ones(N - 1)
+
+    # K0 is N x N
     K0 = sparse.diags((d2, d1, d2), [1, 0, -1]).toarray()
 
     # kron to make it work for n-dimensional inputs
@@ -114,11 +138,14 @@ def fd2(N, n, q0, qf):
 
 
 def motion_grad(model, traj, q0, qf, N):
+    ''' Compute the prior motion/smoothness gradient for the entire trajectory. '''
     # velocity weighting
     wv = 1
 
+    n = q0.shape[0]
+
     # construct first-order finite differencing matrix (velocity level)
-    Kv, ev = fd1(N, 3, q0, qf)
+    Kv, ev = fd1(N, n, q0, qf)
 
     A = Kv.T @ Kv
     b = Kv.T @ ev
@@ -129,6 +156,7 @@ def motion_grad(model, traj, q0, qf, N):
 
 
 def obs_grad_one_step(model, q, dq, ddq, field):
+    ''' Compute the obstacle gradient for a single waypoint. '''
     n = q.shape[0]
     Js = model.jac_all(q)
     dJs = model.dJdt_all(q, dq)
@@ -168,6 +196,7 @@ def obs_grad_one_step(model, q, dq, ddq, field):
 
 
 def obs_grad(model, traj, q0, qf, field, N):
+    ''' Compute the obstacle gradient for the entire trajectory. '''
     n = q0.shape[0]
 
     # finite diff matrices
@@ -207,6 +236,10 @@ def main():
     traj0 = np.linspace(q0, qf, N + 2)[1:-1, :].flatten()
     traj = traj0
 
+    Kv, ev = fd1(N, n, q0, qf)
+    A = Kv.T @ Kv
+    Ainv = np.linalg.inv(A)
+
     learn_rate = 0.01
 
     for i in range(100):
@@ -214,7 +247,7 @@ def main():
         ograd = obs_grad(model, traj, q0, qf, field, N)
         grad = mgrad + 10*ograd
 
-        traj = traj - learn_rate * grad
+        traj = traj - learn_rate * Ainv @ grad
 
     traj = np.concatenate((q0, traj, qf)).reshape((N + 2, n))
 

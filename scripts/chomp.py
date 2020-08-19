@@ -20,7 +20,7 @@ UB = 1
 # optimize over q1...qn, with q0 and qn+1 the fixed end points
 
 
-class ObstacleField:
+class CircleField:
     def __init__(self, c, r):
         self.c = c
         self.r = r
@@ -62,18 +62,14 @@ class FloorField:
     def cost(self, p, eps):
         d = self.signed_dist(p)
         if d <= 0:
-            return -d + 0.5 * eps
-        elif d <= eps:
-            return (d-eps)**2 / (2*eps)
+            return d**2
         return 0
 
     def cost_grad(self, x, eps):
         d = self.signed_dist(x)
         dg = self.signed_dist_grad(x)
         if d <= 0:
-            return -dg
-        elif d <= eps:
-            return -(d - eps) * dg / eps
+            return 2*d*dg
         return np.zeros(dg.shape)
 
 
@@ -81,22 +77,13 @@ class ObstacleField:
     def __init__(self, obstacles):
         self.obstacles = obstacles
 
-    def evaluate(self, p, eps):
-        ds = np.array([d for o.signed_dist(p, eps) in self.obstacles])
-        idx = np.argmin(ds)
-        d = ds[idx]
-        dg = self.obstacles[idx].cost_grad(p, eps)
+    def cost(self, p, eps):
+        cost = np.sum([obs.cost(p, eps) for obs in self.obstacles])
+        return cost
 
-        cost = 0
-        grad = np.zeros(dg.shape)
-        if d <= 0:
-            cost = -d + 0.5 * eps
-            grad = -dg
-        elif d <= eps:
-            cost = (d-eps)**2 / (2*eps)
-            grad = -(d - eps) * dg / eps
-
-        return cost, grad
+    def cost_grad(self, p, eps):
+        grad = np.sum([obs.cost_grad(p, eps) for obs in self.obstacles], axis=0)
+        return grad
 
 
 def fd1(N, n, q0, qf):
@@ -182,6 +169,9 @@ def obs_grad_one_step(model, q, dq, ddq, field):
         c = field.cost(x, obs_eps)
         dc = field.cost_grad(x, obs_eps)
 
+        if i == 0:
+            print(c)
+
         dx_norm = np.linalg.norm(dx)
         if dx_norm < eps:
             continue
@@ -226,7 +216,10 @@ def main():
     np.set_printoptions(precision=3, suppress=True)
 
     model = ThreeInputModel(L1, L2, LB, UB, output_idx=[0, 1])
-    field = ObstacleField([3, 1], 0.5)
+
+    circle = CircleField([3, 1], 0.5)
+    floor = FloorField(0)
+    field = ObstacleField([circle, floor])
 
     N = 20
     n = 3
@@ -258,7 +251,7 @@ def main():
     plt.plot(points[:, 2, 0], points[:, 2, 1], 'o-', label='p2')
 
     ax = plt.gca()
-    ax.add_patch(plt.Circle(field.c, field.r, color='k', fill=False))
+    ax.add_patch(plt.Circle(circle.c, circle.r, color='k', fill=False))
 
     plt.legend()
 

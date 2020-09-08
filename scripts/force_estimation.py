@@ -37,24 +37,17 @@ def main():
             if f_elastic > wo:
                 # these two formulae are equivalent:
                 # xo[i+1] = xo[i] + (f[i+1] - wo) / ko
-                xo[i+1] = x[i] - wo / ko
-            else:
-                xo[i+1] = xo[i]
+                xo[i] = x[i] - wo / ko
+
+            f[i] = ko * (x[i] - xo[i])
         else:
             f[i] = 0
-            xo[i+1] = xo[i]
 
+        xo[i+1] = xo[i]
         x[i+1] = x[i] + u * dt
 
-
-    # NOTE we can find approximate k just by using:
-    #   A = x[500:] - xo[500:]
-    #   b = f[500:]
-    # but why can't I get w out of this, too?
-    # TODO maybe need to take velocity observations into account?
-
-    # ideally this would give back my ko and wo values
-    # A = np.vstack((x[500:] - xo[500:], np.ones(500))).T
+    # to make the plot look nice
+    f[-1] = f[-2]
 
     # calculate object velocity
     vo = np.zeros(N)
@@ -65,13 +58,17 @@ def main():
     # contact
     contact = f > 0
 
-    A = np.vstack((x - xo, moving)).T
-    A = A[contact, :]
+    # A = np.vstack((x - xo)).T
+    A = (x - xo)[contact, None]
     b = f[contact]
 
     eps = 0
-    params = np.linalg.solve(A.T @ A + np.eye(2) * eps, A.T @ b)
-    print(params)
+    params = np.linalg.solve(A.T @ A, A.T @ b)
+
+    k_est = params[0]
+    w_est = np.mean(f[moving])
+
+    print(f'k = {k_est}\nw = {w_est}')
 
     IPython.embed()
 

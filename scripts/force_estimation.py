@@ -7,16 +7,16 @@ import IPython
 
 
 # object
-ko = 200  # spring constant
+ko = 100  # spring constant
 
-fn = 50  # normal force
+fn = 10  # normal force
 mu = 1    # coefficient of friction
 wo = mu * fn
 
 
 def main():
     N = 1000
-    t = np.linspace(0, 10, N)
+    t = np.linspace(0, 3, N)
     dt = t[1] - t[0]
 
     vd = 1  # desired velocity
@@ -68,14 +68,20 @@ def main():
     k_est = params[0]
     w_est = np.mean(f[moving])
 
+    contact_idx = np.nonzero(f)[0][0]
+    moving_idx = np.nonzero(vo)[0][0]
+
     print(f'k = {k_est}\nw = {w_est}')
 
-    IPython.embed()
+    plt.plot(t, x, label='$x_{ee}$ (m)')
+    plt.plot(t, xo, label='$x_{obj}$ (m)')
+    plt.plot(t, f, label='$f_{ee}$ (N)')
 
-    plt.plot(t, x, label='x')
-    plt.plot(t, f, label='f')
-    plt.plot(t, xo, label='xo')
-    plt.plot(t, vo, label='vo')
+    plt.plot([t[contact_idx], t[contact_idx]], [0, np.max(f)], '--', color='k')
+    plt.plot([t[moving_idx], t[moving_idx]], [0, np.max(f)], '--', color='k')
+
+    plt.xlabel('Time (s)')
+    plt.title('One-dimensional push simulation')
     plt.grid()
     plt.legend()
     plt.show()

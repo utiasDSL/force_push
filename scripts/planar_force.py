@@ -44,6 +44,7 @@ def main():
     # object is a circle
     r_o = 0.5
     p_o = np.zeros((N, 2))
+    th_o = np.zeros(N)
 
     k_o = 1000  # spring constant
     fn = 100
@@ -61,88 +62,32 @@ def main():
 
         if d_ee_o < r_o:
             depth = r_o - d_ee_o
-            # contact
-            # TODO this calculation must be wrong
-            # x = p_ee[i, 0]
-            # rt = np.sqrt(r_o**2 - (p_ee[i, 0] - p_o[i, 0])**2)
-            # y = p_o[i, 1] - rt
-            # if y > p_ee[i, 1]:
-            #     y = p_o[i, 1] + rt
-            # p_contact = np.array([x, y])
-            # d = np.linalg.norm(p_ee[i, :] - p_contact)
-
-            # f_elastic = k_o * depth
+            # normal force is due to elasticity
             f_elastic_n = k_o * depth
-            # tau_elastic = (p_o[i, 0] - p_ee[i, 0]) * f_elastic
 
-            # theta = np.arctan2(p_o[i, 0] - p_ee[i, 0], p_o[i, 1] - p_ee[i, 1])
-            # f_elastic_n = f_elastic * np.cos(theta)
-            # f_elastic_t = f_elastic * np.sin(theta)
+            # tangential force is from friction
+            f_elastic_t = mu * f_elastic_n
+
+            # tangential force results in a moment
+            tau_elastic = f_elastic_t * d_ee_o
 
             if f_elastic_n > w_o:
-                # direction = np.array([np.sin(theta), np.cos(theta)])
                 direction = (p_o[i, :] - p_ee[i, :]) / d_ee_o
                 p_o[i, :] = p_o[i, :] + (depth - w_o / k_o) * direction
 
+            if tau_elastic > tau_o:
+                # need to rotate in response to tangential force, when it
+                # overcomes friction
+                pass
+
+            # recalculate now that object has moved
             d_ee_o = np.linalg.norm(p_ee[i, :] - p_o[i, :])
-            # recalculate
-            # y = p_ee[i, 1]
-            # x = p_o[i, 0] - np.sqrt(r_o**2 - (p_ee[i, 1] - p_o[i, 1])**2)
-            # d = np.linalg.norm(p_ee[i, :] - [x, y])
             f[i] = k_o * (r_o - d_ee_o)
         else:
             f[i] = 0
 
         p_o[i+1, :] = p_o[i, :]
         p_ee[i+1, :] = p_ee[i, :] + v_ee * dt
-        # if p_ee[i+1, 1] >= 0:
-        #     break
-
-
-        # if x[i] > xo[i]:
-        #     # contact
-        #     f_elastic = ko * (x[i] - xo[i])
-        #
-        #     # if elastic force overcomes friction force, the object moves
-        #     # (which should result in lower elastic force next time)
-        #     if f_elastic > wo:
-        #         # these two formulae are equivalent:
-        #         # xo[i+1] = xo[i] + (f[i+1] - wo) / ko
-        #         xo[i] = x[i] - wo / ko
-        #
-        #     f[i] = ko * (x[i] - xo[i])
-        # else:
-        #     f[i] = 0
-        #
-        # xo[i+1] = xo[i]
-        # x[i+1] = x[i] + u * dt
-
-    # to make the plot look nice
-    # f[-1] = f[-2]
-
-    # # calculate object velocity
-    # vo = np.zeros(N)
-    # vo[1:] = (xo[1:] - xo[:-1]) / dt
-    # moving = vo > 0
-    #
-    # # we only care about points when the robot and object are actually in
-    # # contact
-    # contact = f > 0
-    #
-    # # A = np.vstack((x - xo)).T
-    # A = (x - xo)[contact, None]
-    # b = f[contact]
-    #
-    # eps = 0
-    # params = np.linalg.solve(A.T @ A, A.T @ b)
-    #
-    # k_est = params[0]
-    # w_est = np.mean(f[moving])
-    #
-    # contact_idx = np.nonzero(f)[0][0]
-    # moving_idx = np.nonzero(vo)[0][0]
-    #
-    # print(f'k = {k_est}\nw = {w_est}')
 
     plt.figure(1)
     plt.plot(t, f)

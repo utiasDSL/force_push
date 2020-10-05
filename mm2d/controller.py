@@ -215,7 +215,7 @@ class OptimizingForceController(object):
 class BaselineController(object):
     ''' Baseline optimizing controller.
         Solves:
-            min  u'Wu
+            min  0.5*u'Wu
             s.t. Ju = v
                  lb <= u <= ub
         where
@@ -269,3 +269,53 @@ class BaselineController(object):
         dq = np.zeros(ni)
         qp.getPrimalSolution(dq)
         return dq
+
+
+class BaselineController2(object):
+    ''' Baseline optimizing controller.
+        Solves:
+            min  0.5*||Ju - v||^2 + 0.5*u'Wu
+            s.t. lb <= u <= ub
+        where
+            v = K*(pd-p) + vd '''
+    def __init__(self, model, W, K, lb, ub, verbose=False):
+        self.model = model
+        self.W = W
+        self.K = K
+        self.lb = lb
+        self.ub = ub
+
+        self.verbose = verbose
+
+    def solve(self, q, pd, vd, C=None):
+        ''' Solve for the optimal inputs. '''
+        ni = self.model.ni
+
+        # forward kinematics
+        p = self.model.forward(q)
+        J = self.model.jacobian(q)
+
+        # mi2 = np.linalg.det(J.dot(J.T))
+        # print(mi2)
+
+        # calculate velocity reference
+        v = self.K.dot(pd - p) + vd
+
+        # setup the QP
+        H = J.T.dot(J) + self.W
+        g = -J.T.dot(v)
+
+        # bounds on the computed input
+        lb = np.ones(ni) * self.lb
+        ub = np.ones(ni) * self.ub
+
+        qp = qpoases.PyQProblemB(ni)
+        if not self.verbose:
+            options = qpoases.PyOptions()
+            options.printLevel = qpoases.PyPrintLevel.NONE
+            qp.setOptions(options)
+        ret = qp.init(H, g, lb, ub, NUM_WSR)
+
+        u = np.zeros(ni)
+        qp.getPrimalSolution(u)
+        return u

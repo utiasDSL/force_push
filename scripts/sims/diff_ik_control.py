@@ -52,6 +52,7 @@ def main():
 
     q = q0
     p = p0
+    dq = np.zeros(model.ni)
     qs[0, :] = q0
     ps[0, :] = p0
     pds[0, :] = p0
@@ -64,7 +65,7 @@ def main():
 
         # controller
         pd, vd = trajectory.sample(t)
-        u = controller.solve(q, pd, vd)
+        u = controller.solve(q, dq, pd, vd)
 
         # step the model
         q, dq = model.step(q, u, DT)
@@ -84,14 +85,11 @@ def main():
 
     plt.ioff()
 
-    # IPython.embed()
+    xe = pds[1:, 0] - ps[1:, 0]
+    ye = pds[1:, 1] - ps[1:, 1]
+    print('RMSE(x) = {}'.format(rms(xe)))
+    print('RMSE(y) = {}'.format(rms(ye)))
 
-    # xe = pr[0::model.p] - ps[1:, 0]
-    # ye = pr[1::model.p] - ps[1:, 1]
-    # print('RMSE(x) = {}'.format(rms(xe)))
-    # print('RMSE(y) = {}'.format(rms(ye)))
-
-    # plt.plot(ts, pr, label='$\\theta_d$', color='k', linestyle='--')
     plt.figure()
     plt.plot(ts, pds[:, 0], label='$x_d$', color='b', linestyle='--')
     plt.plot(ts, pds[:, 1], label='$y_d$', color='r', linestyle='--')

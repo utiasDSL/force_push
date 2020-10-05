@@ -287,7 +287,7 @@ class BaselineController2(object):
 
         self.verbose = verbose
 
-    def solve(self, q, pd, vd, C=None):
+    def solve(self, q, dq, pd, vd, C=None):
         ''' Solve for the optimal inputs. '''
         ni = self.model.ni
 
@@ -303,7 +303,7 @@ class BaselineController2(object):
 
         # setup the QP
         H = J.T.dot(J) + self.W
-        g = -J.T.dot(v)
+        g = -J.T.dot(v) - self.W.dot(dq)
 
         # bounds on the computed input
         lb = np.ones(ni) * self.lb

@@ -20,9 +20,9 @@ DT = 0.1         # timestep (s)
 DURATION = 10.0  # duration of trajectory (s)
 
 # mpc parameters
-NUM_HORIZON = 1  # number of time steps for prediction horizon
+NUM_HORIZON = 5  # number of time steps for prediction horizon
 NUM_WSR = 100     # number of working set recalculations
-NUM_ITER = 3      # number of linearizations/iterations
+NUM_ITER = 2      # number of linearizations/iterations
 
 LB = -1.0
 UB = 1.0
@@ -31,10 +31,10 @@ UB = 1.0
 def main():
     N = int(DURATION / DT)
 
-    model = ThreeInputModel(L1, L2, LB, UB)
+    model = ThreeInputModel(L1, L2, LB, UB, output_idx=[0, 1])
 
-    Q = np.diag([1.0, 1.0, 0.00001])
-    R = np.eye(3) * 0.01
+    Q = np.eye(model.no)
+    R = np.eye(model.ni) * 0.01
     mpc = MPC(model, DT, Q, R, LB, UB)
 
     ts = np.array([i * DT for i in range(N)])
@@ -68,8 +68,8 @@ def main():
     for i in range(N - 1):
         # MPC
         # The +1 ts[i+1] is because we want to generate a u[i] such that
-        # p[i+1] = FK(q[i+1) = pd[i+1]
-        n = min(NUM_HORIZON, N - i)
+        # p[i+1] = FK(q[i+1]) = pd[i+1]
+        n = min(NUM_HORIZON, N - 1 - i)
         pd, _ = trajectory.unroll(ts[i+1:i+1+n], flatten=True)
         u, _ = mpc.solve(q, pd, n)
 
@@ -90,10 +90,10 @@ def main():
 
     plt.ioff()
 
-    # xe = pr[0::model.p] - ps[1:, 0]
-    # ye = pr[1::model.p] - ps[1:, 1]
-    # print('RMSE(x) = {}'.format(rms(xe)))
-    # print('RMSE(y) = {}'.format(rms(ye)))
+    xe = pds[1:, 0] - ps[1:, 0]
+    ye = pds[1:, 1] - ps[1:, 1]
+    print('RMSE(x) = {}'.format(rms(xe)))
+    print('RMSE(y) = {}'.format(rms(ye)))
 
     # plt.plot(ts, pr, label='$\\theta_d$', color='k', linestyle='--')
     plt.figure()

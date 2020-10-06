@@ -4,8 +4,7 @@ import matplotlib.pyplot as plt
 
 from mm2d.model import ThreeInputModel
 from mm2d.controller import BaselineController, BaselineController2
-from mm2d.plotter import RobotPlotter
-# from mm2d.obstacle import Wall, Circle
+from mm2d.plotter import RealtimePlotter, ThreeInputRenderer, TrajectoryRenderer
 from mm2d.trajectory import Line, Circle
 from mm2d.util import rms, bound_array
 
@@ -57,8 +56,10 @@ def main():
     ps[0, :] = p0
     pds[0, :] = p0
 
-    plotter = RobotPlotter(model, trajectory)
-    plotter.start(q0, ts)
+    robot_renderer = ThreeInputRenderer(model, q0)
+    trajectory_renderer = TrajectoryRenderer(trajectory, ts)
+    plotter = RealtimePlotter([robot_renderer, trajectory_renderer])
+    plotter.start()
 
     for i in range(N - 1):
         t = ts[i]
@@ -81,9 +82,9 @@ def main():
         pds[i+1, :] = pd[:model.no]
         vs[i+1, :] = v
 
-        plotter.update(q)
-
-    plt.ioff()
+        robot_renderer.set_state(q)
+        plotter.update()
+    plotter.done()
 
     xe = pds[1:, 0] - ps[1:, 0]
     ye = pds[1:, 1] - ps[1:, 1]

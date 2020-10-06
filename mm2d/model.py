@@ -1,8 +1,36 @@
+# Models for mm2d.
+# Philosophy of models is that they are actually stateless, but rather just
+# store parameters and differential equations that define the system's
+# evolution.
 import numpy as np
 from .util import bound_array
 
 
+class InvertedPendulum(object):
+    def __init__(self, length, mass, gravity=9.81):
+        self.length = length
+        self.mass = mass
+        self.gravity = gravity
+
+        # matrices of the linearized system
+        self.A = np.array([[0, 1, 0, 0],
+                           [gravity/length, 0, 0, 0],
+                           [0, 0, 0, 1],
+                           [0, 0, 0, 0]])
+        self.B = np.array([0, 1/length, 0, 1])
+
+    def step(self, X, u, dt):
+        ''' State X = [angle, dangle, x, dx] '''
+        angle = X[0]
+        angle_acc = (self.gravity * np.sin(angle) + u * np.cos(angle)) / self.length
+        dX = np.array([X[1], angle_acc, X[3], u])
+        X = X + dt * dX
+        return X
+
+
 class ThreeInputModel(object):
+    ''' Three-input 2D mobile manipulator. Consists of mobile base (1 input)
+        and 2-link arm (2 inputs). State is q = [x_b, q_1, q_2]; inputs u = dq. '''
     def __init__(self, l1, l2, lb, ub, width=1, height=0.5, output_idx=[0,1,2]):
         self.ni = 3  # number of joints (inputs/DOFs)
 

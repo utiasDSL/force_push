@@ -295,9 +295,6 @@ class BaselineController2(object):
         p = self.model.forward(q)
         J = self.model.jacobian(q)
 
-        # mi2 = np.linalg.det(J.dot(J.T))
-        # print(mi2)
-
         # calculate velocity reference
         v = self.K.dot(pd - p) + vd
 

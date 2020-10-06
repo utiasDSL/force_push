@@ -13,6 +13,8 @@ ipython = "*"
 scipy = "*"
 autograd = "*"
 sympy = "*"
+control = "*"
+slycot = "*"
 
 [requires]
 python_version = "3.7"

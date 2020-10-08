@@ -71,7 +71,7 @@ def main():
 
     # pendulum state
     X = np.zeros((N, 4))
-    X[0, :] = np.array([0.1, 0, 0, 0])
+    X[0, :] = np.array([0.3, 0, 0, 0])
 
     # real time plotting
     robot_renderer = ThreeInputRenderer(model, q0, render_path=False)

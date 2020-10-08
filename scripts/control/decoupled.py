@@ -2,7 +2,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from mm2d.plotter import RobotPlotter
 from mm2d.trajectory import Line
 from mm2d.controller import BaselineController
 from mm2d.model import ThreeInputModel
@@ -54,10 +53,6 @@ def main():
     ps[0, :] = p0
     pds[0, :] = p0
 
-    # real time plotter
-    # plotter = RobotPlotter(model, trajectory)
-    # plotter.start(q0, ts)
-
     # simulation loop
     for i in range(N - 1):
         t = ts[i+1]
@@ -82,11 +77,6 @@ def main():
         ps[i+1, :] = p
         pds[i+1, :] = pd
         vs[i+1, :] = v
-
-        # plot
-        # plotter.update(q)
-
-    plt.ioff()
 
     # plot cartesian trajectory
     plt.figure()

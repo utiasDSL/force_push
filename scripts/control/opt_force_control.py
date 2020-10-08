@@ -32,7 +32,7 @@ def main():
     ts = np.zeros(STEPS + 1)
     fs = np.zeros(STEPS + 1)
 
-    for i in xrange(STEPS):
+    for i in range(STEPS):
         p, f, I = basic(p, I)
 
         fs[i+1] = f

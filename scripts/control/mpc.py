@@ -15,6 +15,8 @@ import IPython
 # robot parameters
 L1 = 1
 L2 = 1
+VEL_LIM = 1
+ACC_LIM = 1
 
 DT = 0.1         # timestep (s)
 DURATION = 10.0  # duration of trajectory (s)
@@ -24,18 +26,15 @@ NUM_HORIZON = 5  # number of time steps for prediction horizon
 NUM_WSR = 100     # number of working set recalculations
 NUM_ITER = 2      # number of linearizations/iterations
 
-LB = -1.0
-UB = 1.0
-
 
 def main():
     N = int(DURATION / DT)
 
-    model = ThreeInputModel(L1, L2, LB, UB, output_idx=[0, 1])
+    model = ThreeInputModel(L1, L2, VEL_LIM, acc_lim=ACC_LIM, output_idx=[0, 1])
 
     Q = np.eye(model.no)
     R = np.eye(model.ni) * 0.01
-    mpc = MPC(model, DT, Q, R, LB, UB)
+    mpc = MPC(model, DT, Q, R, VEL_LIM, ACC_LIM)
 
     ts = np.array([i * DT for i in range(N)])
     qs = np.zeros((N, model.ni))
@@ -73,7 +72,7 @@ def main():
         # p[i+1] = FK(q[i+1]) = pd[i+1]
         n = min(NUM_HORIZON, N - 1 - i)
         pd, _ = trajectory.unroll(ts[i+1:i+1+n], flatten=True)
-        u, _ = mpc.solve(q, pd, n)
+        u = mpc.solve(q, pd, n)
 
         q, dq = model.step(q, u, DT)
         p = model.forward(q)

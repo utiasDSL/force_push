@@ -18,9 +18,8 @@ M_PEND = 1
 # robot parameters
 L1 = 1
 L2 = 1
-
-LB = -1.0
-UB = 1.0
+VEL_LIM = 1
+ACC_LIM = 1
 
 # simulation parameters
 DT = 0.1         # timestep (s)
@@ -30,16 +29,16 @@ NUM_WSR = 100    # number of working set recalculations
 
 
 def main():
-    N = int(DURATION / DT)
+    N = int(DURATION / DT) + 1
 
-    model = ThreeInputModel(L1, L2, LB, UB, output_idx=[0, 1])
+    model = ThreeInputModel(L1, L2, VEL_LIM, acc_lim=ACC_LIM, output_idx=[0, 1])
     pendulum = InvertedPendulum(L_PEND, M_PEND, G)
 
     W = 0.1 * np.eye(model.ni)
 
     # we don't want position feedback on x, only y
     K = np.array([[0, 0], [0, 1]])
-    controller = BaselineController2(model, W, K, LB, UB)
+    controller = BaselineController2(model, W, K, DT, VEL_LIM, acc_lim=ACC_LIM)
 
     Q = np.eye(4)
     R = 0.01*np.eye(1)
@@ -58,6 +57,7 @@ def main():
     us = np.zeros((N, model.ni))
     ps = np.zeros((N, model.no))
     vs = np.zeros((N, model.no))
+    fs = np.zeros((N, 2))
 
     q0 = np.array([0, np.pi/4.0, -np.pi/4.0])
     p0 = model.forward(q0)
@@ -91,12 +91,16 @@ def main():
         u = controller.solve(q, dq, pd, vd)
 
         # step the model
-        q, dq = model.step(q, u, DT)
+        q, dq = model.step(q, u, DT, dq_last=dq)
         p = model.forward(q)
         v = model.jacobian(q).dot(dq)
 
         x_acc = (v[0] - vs[i, 0]) / DT
+        fs[i, :] = pendulum.calc_force(X[i, :], x_acc)
         X[i+1, :] = pendulum.step(X[i, :], x_acc, DT)
+
+        angle = X[i, 0]
+        angle_est = np.arctan2(fs[i, 0], -fs[i, 1])
 
         # record
         us[i, :] = u
@@ -147,6 +151,14 @@ def main():
     plt.title('Pendulum Angle')
     plt.xlabel('Time (s)')
     plt.ylabel('Angle (rad)')
+
+    plt.figure()
+    plt.plot(ts[:-1], fs[:-1, 0], label='fx')
+    plt.plot(ts[:-1], fs[:-1, 1], label='fy')
+    plt.grid()
+    plt.title('EE Force')
+    plt.xlabel('Time (s)')
+    plt.ylabel('Force (N)')
 
     plt.show()
 

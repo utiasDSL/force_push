@@ -19,19 +19,36 @@ class InvertedPendulum(object):
                            [0, 0, 0, 0]])
         self.B = np.array([0, 1/length, 0, 1])
 
-    def step(self, X, u, dt):
-        ''' State X = [angle, dangle, x, dx] '''
+    def calc_force(self, X, x_acc):
         angle = X[0]
-        angle_acc = (self.gravity * np.sin(angle) + u * np.cos(angle)) / self.length
+        s = np.sin(angle)
+        c = np.cos(angle)
+        acc_normal = self.gravity * c - x_acc * s
+
+        # force exerted on the EE by the pendulum
+        f = np.array([self.mass * acc_normal * s, -self.mass * acc_normal * c])
+
+        return f
+
+    def step(self, X, u, dt):
+        ''' State X = [angle, dangle, x, dx], input u = ddx '''
+        angle = X[0]
+        s = np.sin(angle)
+        c = np.cos(angle)
+
+        acc_tangential = self.gravity * s + u * c
+        angle_acc = acc_tangential / self.length
+
         dX = np.array([X[1], angle_acc, X[3], u])
         X = X + dt * dX
+
         return X
 
 
 class ThreeInputModel(object):
     ''' Three-input 2D mobile manipulator. Consists of mobile base (1 input)
         and 2-link arm (2 inputs). State is q = [x_b, q_1, q_2]; inputs u = dq. '''
-    def __init__(self, l1, l2, lb, ub, width=1, height=0.5, output_idx=[0,1,2]):
+    def __init__(self, l1, l2, vel_lim, acc_lim, output_idx=[0,1,2]):
         self.ni = 3  # number of joints (inputs/DOFs)
 
         # control which outputs are used
@@ -42,8 +59,8 @@ class ThreeInputModel(object):
         self.l1 = l1
         self.l2 = l2
 
-        self.lb = lb
-        self.ub = ub
+        self.vel_lim = vel_lim
+        self.acc_lim = acc_lim
 
     def pos_all(self, q):
         # elementary points
@@ -135,35 +152,14 @@ class ThreeInputModel(object):
             [0, 0, 0]])
         return J[self.output_idx, :]
 
-    def base(self, q):
-        ''' Generate an array of points representing the base of the robot. '''
-        x0 = q[0]
-        y0 = 0
-        r = 0.5
-        h = 0.25
-
-        x = np.array([x0, x0 - r, x0 - r, x0 + r, x0 + r, x0])
-        y = np.array([y0, y0, y0 - h, y0 - h, y0, y0])
-
-        return x, y
-
-    def arm(self, q):
-        ''' Generate an array of points representing the arm of the robot. '''
-        x0 = q[0]
-        x1 = x0 + self.l1*np.cos(q[1])
-        x2 = x1 + self.l2*np.cos(q[1]+q[2])
-
-        y0 = 0
-        y1 = y0 + self.l1*np.sin(q[1])
-        y2 = y1 + self.l2*np.sin(q[1]+q[2])
-
-        x = np.array([x0, x1, x2])
-        y = np.array([y0, y1, y2])
-
-        return x, y
-
-    def step(self, q, u, dt):
+    def step(self, q, u, dt, dq_last=None):
         ''' Step forward one timestep. '''
-        dq = bound_array(u, self.lb, self.ub)
+        # velocity limits
+        dq = bound_array(u, -self.vel_lim, self.vel_lim)
+
+        # acceleration limits
+        if dq_last is not None:
+            dq = bound_array(dq, -self.acc_lim * dt + dq_last, self.acc_lim * dt + dq_last)
+
         q = q + dt * dq
         return q, dq

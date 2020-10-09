@@ -21,19 +21,21 @@ class TrajectoryRenderer(object):
 
 
 class ThreeInputRenderer(object):
-    def __init__(self, model, q0, render_path=True):
+    def __init__(self, model, q0, width=1, height=0.25, render_path=True):
         self.model = model
         self.q = q0
         self.render_path = render_path
         self.xs = []
         self.ys = []
+        self.width = width
+        self.height = height
 
     def calc_base_points(self, q):
         ''' Generate an array of points representing the base of the robot. '''
         x0 = q[0]
         y0 = 0
-        r = 0.5
-        h = 0.25
+        r = self.width * 0.5
+        h = self.height
 
         x = np.array([x0, x0 - r, x0 - r, x0 + r, x0 + r, x0])
         y = np.array([y0, y0, y0 - h, y0 - h, y0, y0])

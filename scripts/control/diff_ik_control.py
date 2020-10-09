@@ -20,19 +20,19 @@ DURATION = 10.0  # duration of trajectory (s)
 
 NUM_WSR = 100     # number of working set recalculations
 
-LB = -1.0
-UB = 1.0
+VEL_LIM = 1
+ACC_LIM = 1
 
 
 def main():
-    N = int(DURATION / DT)
+    N = int(DURATION / DT) + 1
 
-    model = ThreeInputModel(L1, L2, LB, UB, output_idx=[0, 1])
+    model = ThreeInputModel(L1, L2, VEL_LIM, acc_lim=ACC_LIM, output_idx=[0, 1])
 
     W = 0.1 * np.eye(model.ni)
     K = np.eye(model.no)
     # controller = BaselineController(model, W, K, LB, UB)
-    controller = BaselineController2(model, W, K, LB, UB)
+    controller = BaselineController2(model, W, K, DT, VEL_LIM, acc_lim=ACC_LIM)
 
     ts = np.array([i * DT for i in range(N)])
     qs = np.zeros((N, model.ni))
@@ -69,7 +69,7 @@ def main():
         u = controller.solve(q, dq, pd, vd)
 
         # step the model
-        q, dq = model.step(q, u, DT)
+        q, dq = model.step(q, u, DT, dq_last=dq)
         p = model.forward(q)
         v = model.jacobian(q).dot(dq)
 

@@ -11,13 +11,13 @@ NUM_ITER = 3     # number of linearizations/iterations
 
 class MPC(object):
     ''' Model predictive controller. '''
-    def __init__(self, model, dt, Q, R, lb, ub):
+    def __init__(self, model, dt, Q, R, vel_lim, acc_lim):
         self.model = model
         self.dt = dt
         self.Q = Q
         self.R = R
-        self.lb = lb
-        self.ub = ub
+        self.vel_lim = vel_lim
+        self.acc_lim = acc_lim
 
     def _lookahead(self, q0, pr, dq, N):
         ''' Generate lifted matrices proprogating the state N timesteps into the
@@ -86,9 +86,10 @@ class MPC(object):
         H, g = self._lookahead(q0, pr, dq, N)
 
         # TODO revisit velocity damper formulation
-        # TODO handle individual bounds for different joints
-        lb = np.ones(ni * N) * self.lb - dq
-        ub = np.ones(ni * N) * self.ub - dq
+        # TODO implement acceleration limits
+        lb = -np.ones(ni * N) * self.vel_lim - dq
+        ub = np.ones(ni * N) * self.vel_lim - dq
+
         ret = qp.init(H, g, A, lb, ub, lbA, ubA, NUM_WSR)
         delta = np.zeros(ni * N)
         qp.getPrimalSolution(delta)
@@ -98,8 +99,8 @@ class MPC(object):
         for i in range(NUM_ITER):
             H, g = self._lookahead(q0, pr, dq, N)
 
-            lb = np.ones(ni*N) * self.lb - dq
-            ub = np.ones(ni*N) * self.ub - dq
+            lb = -np.ones(ni*N) * self.vel_lim - dq
+            ub = np.ones(ni*N) * self.vel_lim - dq
             qp.hotstart(H, g, None, lb, ub, None, None, NUM_WSR)
             qp.getPrimalSolution(delta)
 
@@ -107,11 +108,7 @@ class MPC(object):
             # linearization is only locally valid
             dq = dq + delta
 
-        # TODO this isn't actually that valuable since it's for the step not
-        # the actual velocity
-        obj = qp.getObjVal()
-
-        return dq, obj
+        return dq
 
     def solve(self, q0, pr, N):
         ''' Solve the MPC problem at current state x0 given desired output
@@ -120,10 +117,10 @@ class MPC(object):
         dq = np.zeros(self.model.ni * N)
 
         # iterate to final solution
-        dq, obj = self._iterate(q0, pr, dq, N)
+        dq = self._iterate(q0, pr, dq, N)
 
         # return first optimal input
-        return dq[:self.model.ni], obj
+        return dq[:self.model.ni]
 
 
 class OptimizingForceController(object):
@@ -278,13 +275,13 @@ class BaselineController2(object):
             s.t. lb <= u <= ub
         where
             v = K*(pd-p) + vd '''
-    def __init__(self, model, W, K, lb, ub, verbose=False):
+    def __init__(self, model, W, K, dt, vel_lim, acc_lim, verbose=False):
         self.model = model
         self.W = W
         self.K = K
-        self.lb = lb
-        self.ub = ub
-
+        self.dt = dt
+        self.vel_lim = vel_lim
+        self.acc_lim = acc_lim
         self.verbose = verbose
 
     def solve(self, q, dq, pd, vd, C=None):
@@ -303,8 +300,14 @@ class BaselineController2(object):
         g = -J.T.dot(v) - self.W.dot(dq)
 
         # bounds on the computed input
-        lb = np.ones(ni) * self.lb
-        ub = np.ones(ni) * self.ub
+        vel_ub = np.ones(ni) * self.vel_lim
+        vel_lb = -vel_ub
+
+        acc_ub = np.ones(ni) * self.acc_lim * self.dt + dq
+        acc_lb = -np.ones(ni) * self.acc_lim * self.dt + dq
+
+        ub = np.maximum(vel_ub, acc_ub)
+        lb = np.minimum(vel_lb, acc_lb)
 
         qp = qpoases.PyQProblemB(ni)
         if not self.verbose:

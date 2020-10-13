@@ -16,13 +16,13 @@ import IPython
 L1 = 1
 L2 = 1
 VEL_LIM = 1
-ACC_LIM = 1
+ACC_LIM = 0.3
 
 DT = 0.1         # timestep (s)
 DURATION = 10.0  # duration of trajectory (s)
 
 # mpc parameters
-NUM_HORIZON = 5  # number of time steps for prediction horizon
+NUM_HORIZON = 10  # number of time steps for prediction horizon
 NUM_WSR = 100     # number of working set recalculations
 NUM_ITER = 2      # number of linearizations/iterations
 
@@ -57,6 +57,7 @@ def main():
 
     q = q0
     p = p0
+    dq = np.zeros(model.ni)
     qs[0, :] = q0
     ps[0, :] = p0
     pds[0, :] = p0
@@ -72,9 +73,9 @@ def main():
         # p[i+1] = FK(q[i+1]) = pd[i+1]
         n = min(NUM_HORIZON, N - 1 - i)
         pd, _ = trajectory.unroll(ts[i+1:i+1+n], flatten=True)
-        u = mpc.solve(q, pd, n)
+        u = mpc.solve(q, dq, pd, n)
 
-        q, dq = model.step(q, u, DT)
+        q, dq = model.step(q, u, DT, dq_last=dq)
         p = model.forward(q)
         v = model.jacobian(q).dot(dq)
 
@@ -112,6 +113,16 @@ def main():
     plt.plot(ts, dqs[:, 0], label='$\\dot{q}_x$')
     plt.plot(ts, dqs[:, 1], label='$\\dot{q}_1$')
     plt.plot(ts, dqs[:, 2], label='$\\dot{q}_2$')
+    plt.grid()
+    plt.legend()
+    plt.title('Actual joint velocity')
+    plt.xlabel('Time (s)')
+    plt.ylabel('Velocity')
+
+    plt.figure()
+    plt.plot(ts, us[:, 0], label='$u_x$')
+    plt.plot(ts, us[:, 1], label='$u_1$')
+    plt.plot(ts, us[:, 2], label='$u_2$')
     plt.grid()
     plt.legend()
     plt.title('Commanded joint velocity')

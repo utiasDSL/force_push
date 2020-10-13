@@ -1,4 +1,5 @@
 import numpy as np
+from scipy import sparse
 import qpoases
 import IPython
 
@@ -19,14 +20,14 @@ class MPC(object):
         self.vel_lim = vel_lim
         self.acc_lim = acc_lim
 
-    def _lookahead(self, q0, pr, dq, N):
+    def _lookahead(self, q0, pr, u, N):
         ''' Generate lifted matrices proprogating the state N timesteps into the
             future.
 
             sys: System model.
             q0:  Current joint positions.
             pr:  Desired Cartesian output trajectory.
-            dq:  Input joint velocties from the last iteration.
+            u:   Input joint velocties from the last iteration.
             Q:   Tracking error weighting matrix.
             R:   Input magnitude weighting matrix.
             N:   Number of timesteps into the future. '''
@@ -34,22 +35,17 @@ class MPC(object):
         ni = self.model.ni  # number of joints
         no = self.model.no  # number of Cartesian outputs
 
-        qbar = np.zeros(ni*(N+1))
-        qbar[:ni] = q0
-
-        # Integrate joint positions from the last iteration
-        for k in range(1, N+1):
-            q_prev = qbar[(k-1)*ni:k*ni]
-            dq_prev = dq[(k-1)*ni:k*ni]
-            q = q_prev + self.dt * dq_prev
-
-            qbar[k*ni:(k+1)*ni] = q
-
         fbar = np.zeros(no*N)         # Lifted forward kinematics
         Jbar = np.zeros((no*N, ni*N))  # Lifted Jacobian
         Qbar = np.zeros((no*N, no*N))
         Rbar = np.zeros((ni*N, ni*N))
-        Ebar = np.tril(np.ones((ni*N, ni*N)))
+
+        # lower triangular matrix of ni*ni identity matrices
+        Ebar = np.kron(np.tril(np.ones((N, N))), np.eye(ni))
+
+        # Integrate joint positions from the last iteration
+        qbar = np.tile(q0, N+1)
+        qbar[ni:] += self.dt * Ebar.dot(u)
 
         for k in range(N):
             q = qbar[(k+1)*ni:(k+2)*ni]
@@ -63,68 +59,94 @@ class MPC(object):
         dbar = fbar - pr
 
         H = Rbar + self.dt**2*Ebar.T.dot(Jbar.T).dot(Qbar).dot(Jbar).dot(Ebar)
-        g = dq.T.dot(Rbar) + self.dt*dbar.T.dot(Qbar).dot(Jbar).dot(Ebar)
+        g = u.T.dot(Rbar) + self.dt*dbar.T.dot(Qbar).dot(Jbar).dot(Ebar)
 
         return H, g
 
-    def _iterate(self, q0, pr, dq, N):
+    def _calc_vel_limits(self, u, ni, N):
+        L = np.ones(ni * N) * self.vel_lim
+        lb = -L - u
+        ub = L - u
+        return lb, ub
+
+    def _calc_acc_limits(self, u, dq0, ni, N):
+        # u_prev consists of [dq0, u_0, u_1, ..., u_{N-2}]
+        # u is [u_0, ..., u_{N-1}]
+        u_prev = np.zeros(ni * N)
+        u_prev[:ni] = dq0
+        u_prev[ni:] = u[:-ni]
+
+        L = self.dt * np.ones(ni * N) * self.acc_lim
+        lbA = -L - u + u_prev
+        ubA = L - u + u_prev
+
+        d1 = np.ones(N)
+        d2 = -np.ones(N - 1)
+
+        # A0 is NxN
+        A0 = sparse.diags((d1, d2), [0, -1]).toarray()
+
+        # kron to make it work for n-dimensional inputs
+        A = np.kron(A0, np.eye(ni))
+
+        return A, lbA, ubA
+
+    def _iterate(self, q0, dq0, pr, u, N):
         ni = self.model.ni
 
         # Create the QP, which we'll solve sequentially.
         # num vars, num constraints (note that constraints only refer to matrix
         # constraints rather than bounds)
-        qp = qpoases.PySQProblem(ni * N, 0)
+        num_var = ni * N
+        num_constraints = ni * N
+        qp = qpoases.PySQProblem(num_var, num_constraints)
         options = qpoases.PyOptions()
         options.printLevel = qpoases.PyPrintLevel.NONE
         qp.setOptions(options)
 
-        # Zeros, because we currently do not have a constraint matrix A.
-        A = np.zeros((ni * N, ni * N))
-        lbA = ubA = np.zeros(ni * N)
-
         # Initial opt problem.
-        H, g = self._lookahead(q0, pr, dq, N)
+        H, g = self._lookahead(q0, pr, u, N)
 
         # TODO revisit velocity damper formulation
-        # TODO implement acceleration limits
-        lb = -np.ones(ni * N) * self.vel_lim - dq
-        ub = np.ones(ni * N) * self.vel_lim - dq
+        lb, ub = self._calc_vel_limits(u, ni, N)
+        A, lbA, ubA = self._calc_acc_limits(u, dq0, ni, N)
+        # A = np.zeros((ni * N, ni * N))
+        # lbA = ubA = np.zeros(ni * N)
 
         ret = qp.init(H, g, A, lb, ub, lbA, ubA, NUM_WSR)
         delta = np.zeros(ni * N)
         qp.getPrimalSolution(delta)
-        dq = dq + delta
+        u = u + delta
 
         # Remaining sequence is hotstarted from the first.
         for i in range(NUM_ITER):
-            H, g = self._lookahead(q0, pr, dq, N)
+            H, g = self._lookahead(q0, pr, u, N)
+            lb, ub = self._calc_vel_limits(u, ni, N)
+            A, lbA, ubA = self._calc_acc_limits(u, dq0, ni, N)
 
-            lb = -np.ones(ni*N) * self.vel_lim - dq
-            ub = np.ones(ni*N) * self.vel_lim - dq
-            qp.hotstart(H, g, None, lb, ub, None, None, NUM_WSR)
+            qp.hotstart(H, g, A, lb, ub, lbA, ubA, NUM_WSR)
             qp.getPrimalSolution(delta)
 
             # TODO we could have a different step size here, since the
             # linearization is only locally valid
-            dq = dq + delta
+            u = u + delta
 
-        return dq
+        return u
 
-    def solve(self, q0, pr, N):
+    def solve(self, q0, dq0, pr, N):
         ''' Solve the MPC problem at current state x0 given desired output
             trajectory Yd. '''
         # initialize optimal inputs
-        dq = np.zeros(self.model.ni * N)
+        u = np.zeros(self.model.ni * N)
 
         # iterate to final solution
-        dq = self._iterate(q0, pr, dq, N)
+        u = self._iterate(q0, dq0, pr, u, N)
 
         # return first optimal input
-        return dq[:self.model.ni]
+        return u[:self.model.ni]
 
 
 class OptimizingForceController(object):
-    ''' Optimizing controller. '''
     def __init__(self, model, dt, Q, R, lb, ub):
         self.model = model
         self.dt = dt
@@ -134,8 +156,6 @@ class OptimizingForceController(object):
         self.ub = ub
 
     def solve(self, q, pr, f, fd):
-        ''' Solve the MPC problem at current state x0 given desired output
-            trajectory Yd. '''
         n = self.model.n
 
         pe = self.model.forward(q)

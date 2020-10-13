@@ -14,14 +14,13 @@ import IPython
 # robot parameters
 L1 = 1
 L2 = 1
+VEL_LIM = 1
+ACC_LIM = 1
 
 DT = 0.1        # timestep (s)
 DURATION = 10.0  # duration of trajectory (s)
 
 NUM_WSR = 100     # number of working set recalculations
-
-VEL_LIM = 1
-ACC_LIM = 1
 
 
 def main():

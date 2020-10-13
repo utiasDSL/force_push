@@ -31,8 +31,7 @@ python setup.py install
 ## Organization
 
 * `mm2d`: The main Python package.
-* `sims`: Simulations making use of the `mm2d` utilities.
-* `tools`: Miscellaneous additional utilities.
+* `scripts`: Simulations and other scripts making use of the `mm2d` utilities.
 
 ## License
 

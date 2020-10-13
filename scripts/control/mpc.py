@@ -6,7 +6,7 @@ from mm2d.model import ThreeInputModel
 from mm2d.controller import MPC
 from mm2d.plotter import RealtimePlotter, ThreeInputRenderer, TrajectoryRenderer
 # from mm2d.obstacle import Wall, Circle
-from mm2d.trajectory import Line, Circle
+from mm2d.trajectory import Line, Circle, Polygon
 from mm2d.util import rms, bound_array
 
 import IPython
@@ -16,7 +16,7 @@ import IPython
 L1 = 1
 L2 = 1
 VEL_LIM = 1
-ACC_LIM = 0.3
+ACC_LIM = 1
 
 DT = 0.1         # timestep (s)
 DURATION = 10.0  # duration of trajectory (s)
@@ -28,7 +28,7 @@ NUM_ITER = 2      # number of linearizations/iterations
 
 
 def main():
-    N = int(DURATION / DT)
+    N = int(DURATION / DT) + 1
 
     model = ThreeInputModel(L1, L2, VEL_LIM, acc_lim=ACC_LIM, output_idx=[0, 1])
 
@@ -49,7 +49,9 @@ def main():
 
     # reference trajectory
     # trajectory = Line(p0, v=np.array([0.1, 0, 0]))
-    trajectory = Circle(p0, r=0.5, duration=10)
+    # trajectory = Circle(p0, r=0.5, duration=10)
+    points = np.array([p0, p0 + [1, 0], p0 + [1, -1], p0 + [0, -1], p0])
+    trajectory = Polygon(points, v=0.4)
 
     # obstacles
     # obs = Wall(x=2.5)

@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from mm2d.model import ThreeInputModel
 from mm2d.controller import BaselineController, BaselineController2
 from mm2d.plotter import RealtimePlotter, ThreeInputRenderer, TrajectoryRenderer
-from mm2d.trajectory import Line, Circle
+from mm2d.trajectory import Line, Circle, Polygon
 from mm2d.util import rms, bound_array
 
 import IPython
@@ -46,7 +46,9 @@ def main():
 
     # reference trajectory
     # trajectory = Line(p0, v=np.array([0.1, 0, 0]))
-    trajectory = Circle(p0, r=0.5, duration=10)
+    # trajectory = Circle(p0, r=0.5, duration=10)
+    points = np.array([p0, p0 + [1, 0], p0 + [1, -1], p0 + [0, -1], p0])
+    trajectory = Polygon(points, v=0.4)
 
     q = q0
     p = p0

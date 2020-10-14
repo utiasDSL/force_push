@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from mm2d.model import ThreeInputModel
 from mm2d.controller import BaselineController, BaselineController2, AccelerationController
 from mm2d.plotter import RealtimePlotter, ThreeInputRenderer, TrajectoryRenderer
-from mm2d.trajectory import Line, Circle, Polygon
+from mm2d.trajectory import Line, Circle, Polygon, PointToPoint, CubicTimeScaling, QuinticTimeScaling
 from mm2d.util import rms, bound_array
 
 import IPython
@@ -41,12 +41,15 @@ def main():
     ps = np.zeros((N, model.no))
     vs = np.zeros((N, model.no))
     pds = np.zeros((N, model.no))
+    dq_cmds = np.zeros((N, model.ni))
 
     q0 = np.array([0, np.pi/4.0, -np.pi/4.0])
     p0 = model.forward(q0)
 
     # reference trajectory
-    trajectory = Line(p0, v0=np.zeros(2), a=np.array([0.01, 0]))
+    # trajectory = Line(p0, v0=np.zeros(2), a=np.array([0.01, 0]))
+    timescaling = QuinticTimeScaling(DURATION)
+    trajectory = PointToPoint(p0, p0 + [1, 0], timescaling, DURATION)
     # trajectory = Circle(p0, r=0.5, duration=10)
     # points = np.array([p0, p0 + [1, 0], p0 + [1, -1], p0 + [0, -1], p0])
     # trajectory = Polygon(points, v=0.4)
@@ -78,6 +81,7 @@ def main():
 
         # record
         us[i, :] = u
+        dq_cmds[i, :] = dq_cmd
 
         dqs[i+1, :] = dq
         qs[i+1, :] = q
@@ -111,9 +115,29 @@ def main():
     plt.plot(ts, dqs[:, 2], label='$\\dot{q}_2$')
     plt.grid()
     plt.legend()
-    plt.title('Commanded joint velocity')
+    plt.title('Joint velocity')
     plt.xlabel('Time (s)')
     plt.ylabel('Velocity')
+
+    plt.figure()
+    plt.plot(ts, dq_cmds[:, 0], label='$\\dot{q}_x$')
+    plt.plot(ts, dq_cmds[:, 1], label='$\\dot{q}_1$')
+    plt.plot(ts, dq_cmds[:, 2], label='$\\dot{q}_2$')
+    plt.grid()
+    plt.legend()
+    plt.title('Commanded Joint Velocity')
+    plt.xlabel('Time (s)')
+    plt.ylabel('Velocity')
+
+    plt.figure()
+    plt.plot(ts, us[:, 0], label='$u_x$')
+    plt.plot(ts, us[:, 1], label='$u_1$')
+    plt.plot(ts, us[:, 2], label='$u_2$')
+    plt.grid()
+    plt.legend()
+    plt.title('Commanded joint acceleration')
+    plt.xlabel('Time (s)')
+    plt.ylabel('Acceleration')
 
     plt.figure()
     plt.plot(ts, qs[:, 0], label='$q_x$')

@@ -10,6 +10,67 @@ def spiral(p0, ts):
     return x, y
 
 
+class CubicTimeScaling:
+    ''' Cubic time-scaling: zero velocity at end points. '''
+    def __init__(self, duration):
+        self.coeffs = np.array([0, 0, 3 / duration**2, -2 / duration**3])
+
+    def eval(self, t):
+        s = self.coeffs.dot([np.ones_like(t), t, t**2, t**3])
+        ds = self.coeffs[1:].dot([np.ones_like(t), 2*t, 3*t**2])
+        dds = self.coeffs[2:].dot([2*np.ones_like(t), 6*t])
+        # s, ds, dds = np.atleast_1d(s, ds, dds)
+        return s, ds, dds
+
+
+class QuinticTimeScaling:
+    ''' Quintic time-scaling: zero velocity and acceleration at end points. '''
+    def __init__(self, T):
+        A = np.array([[1, 0, 0, 0, 0, 0],
+                      [1, T, T**2, T**3, T**4, T**5],
+                      [0, 1, 0, 0, 0, 0],
+                      [0, 1, 2*T, 3*T**2, 4*T**3, 5*T**4],
+                      [0, 0, 2, 0, 0, 0],
+                      [0, 0, 2, 6*T, 12*T**2, 20*T**3]])
+        b = np.array([0, 1, 0, 0, 0, 0])
+        self.coeffs = np.linalg.solve(A, b)
+
+    def eval(self, t):
+        s = self.coeffs.dot([np.ones_like(t), t, t**2, t**3, t**4, t**5])
+        ds = self.coeffs[1:].dot([np.ones_like(t), 2*t, 3*t**2, 4*t**3, 5*t**4])
+        dds = self.coeffs[2:].dot([2*np.ones_like(t), 6*t, 12*t**2, 20*t**3])
+        return s, ds, dds
+
+
+class TrapezoidalTimeScaling:
+    def __init__(self, duration):
+        pass
+
+
+class PointToPoint:
+    def __init__(self, p0, p1, timescaling, duration):
+        self.p0 = p0
+        self.p1 = p1
+        self.timescaling = timescaling
+        self.duration = duration
+
+    def sample(self, t):
+        s, ds, dds = self.timescaling.eval(t)
+        p = self.p0 + s * (self.p1 - self.p0)
+        v = ds * (self.p1 - self.p0)
+        a = dds * (self.p1 - self.p0)
+        return p, v, a
+
+    def unroll(self, ts, flatten=False):
+        s, ds, dds = self.timescaling.eval(ts)
+        p = self.p0 + s[:, None] * (self.p1 - self.p0)
+        v = ds[:, None] * (self.p1 - self.p0)
+        a = dds[:, None] * (self.p1 - self.p0)
+        if flatten:
+            return p.flatten(), v.flatten(), a.flatten()
+        return p, v, a
+
+
 class Point(object):
     def __init__(self, x0):
         self.x0 = x0

@@ -10,7 +10,7 @@ class TrajectoryRenderer(object):
     def render(self, ax):
         # reference trajectory doesn't change, so we can just unroll and plot
         # the whole thing now
-        pr, _ = self.trajectory.unroll(self.ts)
+        pr, *other = self.trajectory.unroll(self.ts)
         xr = pr[:, 0]
         yr = pr[:, 1]
         self.ref, = ax.plot(xr, yr, linestyle='--')

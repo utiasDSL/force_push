@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from mm2d.model import ThreeInputModel
-from mm2d.controller import BaselineController, BaselineController2
+from mm2d.controller import BaselineController, BaselineController2, AccelerationController
 from mm2d.plotter import RealtimePlotter, ThreeInputRenderer, TrajectoryRenderer
 from mm2d.trajectory import Line, Circle, Polygon
 from mm2d.util import rms, bound_array
@@ -29,9 +29,10 @@ def main():
     model = ThreeInputModel(L1, L2, VEL_LIM, acc_lim=ACC_LIM, output_idx=[0, 1])
 
     W = 0.1 * np.eye(model.ni)
-    K = np.eye(model.no)
+    Kp = np.eye(model.no)
+    Kv = 0.1 * np.eye(model.no)
     # controller = BaselineController(model, W, K, LB, UB)
-    controller = BaselineController2(model, W, K, DT, VEL_LIM, acc_lim=ACC_LIM)
+    controller = AccelerationController(model, W, Kp, Kv, DT, VEL_LIM, acc_lim=ACC_LIM)
 
     ts = np.array([i * DT for i in range(N)])
     qs = np.zeros((N, model.ni))
@@ -45,10 +46,10 @@ def main():
     p0 = model.forward(q0)
 
     # reference trajectory
-    # trajectory = Line(p0, v=np.array([0.1, 0, 0]))
+    trajectory = Line(p0, v0=np.zeros(2), a=np.array([0.01, 0]))
     # trajectory = Circle(p0, r=0.5, duration=10)
-    points = np.array([p0, p0 + [1, 0], p0 + [1, -1], p0 + [0, -1], p0])
-    trajectory = Polygon(points, v=0.4)
+    # points = np.array([p0, p0 + [1, 0], p0 + [1, -1], p0 + [0, -1], p0])
+    # trajectory = Polygon(points, v=0.4)
 
     q = q0
     p = p0
@@ -66,11 +67,12 @@ def main():
         t = ts[i]
 
         # controller
-        pd, vd = trajectory.sample(t)
-        u = controller.solve(q, dq, pd, vd)
+        pd, vd, ad = trajectory.sample(t)
+        u = controller.solve(q, dq, pd, vd, ad)
+        dq_cmd = dq + DT * u
 
         # step the model
-        q, dq = model.step(q, u, DT, dq_last=dq)
+        q, dq = model.step(q, dq_cmd, DT, dq_last=dq)
         p = model.forward(q)
         v = model.jacobian(q).dot(dq)
 

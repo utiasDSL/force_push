@@ -304,7 +304,7 @@ class BaselineController2(object):
         self.acc_lim = acc_lim
         self.verbose = verbose
 
-    def solve(self, q, dq, pd, vd, C=None):
+    def solve(self, q, dq, pd, vd):
         ''' Solve for the optimal inputs. '''
         ni = self.model.ni
 
@@ -328,6 +328,55 @@ class BaselineController2(object):
 
         ub = np.maximum(vel_ub, acc_ub)
         lb = np.minimum(vel_lb, acc_lb)
+
+        qp = qpoases.PyQProblemB(ni)
+        if not self.verbose:
+            options = qpoases.PyOptions()
+            options.printLevel = qpoases.PyPrintLevel.NONE
+            qp.setOptions(options)
+        ret = qp.init(H, g, lb, ub, NUM_WSR)
+
+        u = np.zeros(ni)
+        qp.getPrimalSolution(u)
+        return u
+
+
+class AccelerationController(object):
+    def __init__(self, model, W, Kp, Kv, dt, vel_lim, acc_lim, verbose=False):
+        self.model = model
+        self.W = W
+        self.dt = dt
+        self.vel_lim = vel_lim
+        self.acc_lim = acc_lim
+        self.verbose = verbose
+
+        self.Kp = Kp
+        self.Kv = Kv
+
+    def solve(self, q, dq, pd, vd, ad):
+        ''' Solve for the optimal inputs. '''
+        ni = self.model.ni
+
+        # forward kinematics
+        p = self.model.forward(q)
+        J = self.model.jacobian(q)
+        Jdot = self.model.dJdt(q, dq)
+
+        # calculate acceleration reference
+        v = J.dot(dq)
+        a_ref = self.Kp.dot(pd - p) + self.Kv.dot(vd - v) + ad
+
+        # setup the QP
+        d = Jdot.dot(dq) - a_ref
+        H = J.T.dot(J) + self.W
+        g = J.T.dot(d)
+
+        # bounds on the computed input
+        acc_ub = np.ones(ni) * self.acc_lim
+        acc_lb = -acc_ub
+
+        ub = acc_ub
+        lb = acc_lb
 
         qp = qpoases.PyQProblemB(ni)
         if not self.verbose:

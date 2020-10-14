@@ -1,7 +1,5 @@
 import numpy as np
 
-import IPython
-
 
 # TODO rewrite
 def spiral(p0, ts):
@@ -28,31 +26,32 @@ class Point(object):
 
 
 class Line(object):
-    ''' Constant-velocity linear trajectory.
+    ''' Constant-acceleration linear trajectory.
         Parameters:
           p0: starting position
           v:  desired velocity
     '''
-    def __init__(self, p0, v):
+    def __init__(self, p0, v0, a):
         self.p0 = p0
-
-        # TODO v should be a scalar and handled like the polygon class below
-        self.v = v
+        self.v0 = v0
+        self.a = a
 
     def sample(self, t):
-        pd = self.p0 + self.v * t
-        vd = self.v
-        return pd, vd
+        ad = self.a
+        vd = self.v0 + ad * t
+        pd = self.p0 + vd * t
+        return pd, vd, ad
 
     def unroll(self, ts, flatten=False):
         ''' Unroll the trajectory over the given times ts.
             Returns the desired position and velocity arrays.
             If flatten=True, then the arrays are flattened before returning. '''
-        pds = self.p0 + np.array([self.v * t for t in ts])
-        vds = np.array([self.v for _ in ts])
+        ads = np.tile(self.a, (len(ts), 1))
+        vds = self.v0 + ads * ts[:, None]
+        pds = self.p0 + vds * ts[:, None]
         if flatten:
-            return pds.flatten(), vds.flatten()
-        return pds, vds
+            return pds.flatten(), vds.flatten(), ads.flatten()
+        return pds, vds, ads
 
 
 class Polygon(object):

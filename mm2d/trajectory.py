@@ -10,6 +10,18 @@ def spiral(p0, ts):
     return x, y
 
 
+class LinearTimeScaling:
+    ''' Linear time-scaling: constant velocity. '''
+    def __init__(self, duration):
+        self.duration = duration
+
+    def eval(self, t):
+        s = t / self.duration
+        ds = np.ones_like(t) / self.duration
+        dds = np.zeros_like(t)
+        return s, ds, dds
+
+
 class CubicTimeScaling:
     ''' Cubic time-scaling: zero velocity at end points. '''
     def __init__(self, duration):
@@ -47,6 +59,49 @@ class TrapezoidalTimeScaling:
         pass
 
 
+class CubicBezier:
+    def __init__(self, points, timescaling, duration):
+        ''' Points should be a (4*2) array of control points, with p[0, :]
+            being the initial position and p[-1, :] the final. '''
+        self.points = points
+        self.timescaling = timescaling
+        self.duration = duration
+
+    def sample(self, t):
+        s, ds, dds = self.timescaling.eval(t)
+
+        cp = np.array([(1-s)**3, 3*(1-s)**2*s, 3*(1-s)*s**2, s**3])
+        p = cp.T.dot(self.points)
+
+        cv = np.array([3*(1-s)**2, 6*(1-s)*s, 3*s**2])
+        dpds = cv.T.dot(self.points[1:, :] - self.points[:-1, :])
+        v = (dpds.T * ds).T
+
+        ca = np.array([6*(1-s), 6*s])
+        dpds2 = ca.T.dot(self.points[2:, :] - 2*self.points[1:-1, :] + self.points[:-2, :])
+        a = (dpds.T * dds + dpds2.T * ds**2).T
+
+        return p, v, a
+
+    # def unroll(self, ts, flatten=False):
+    #     s, ds, dds = self.timescaling.eval(ts)
+    #
+    #     cp = np.array([(1-s)**3, 3*(1-s)**2*s, 3*(1-s)*s**2, s**3])
+    #     p = cp.T.dot(self.points)
+    #
+    #     cv = np.array([3*(1-s)**2, 6*(1-s)*s, 3*s**2])
+    #     dpds = cv.T.dot(self.points[1:, :] - self.points[:-1, :])
+    #     v = dpds * ds[:, None]
+    #
+    #     ca = np.array([6*(1-s), 6*s])
+    #     dpds2 = ca.T.dot(self.points[2:, :] - 2*self.points[1:-1, :] + self.points[:-2, :])
+    #     a = dpds * dds[:, None] + dpds2 * ds[:, None]**2
+    #
+    #     if flatten:
+    #         return p.flatten(), v.flatten(), a.flatten()
+    #     return p, v, a
+
+
 class PointToPoint:
     def __init__(self, p0, p1, timescaling, duration):
         self.p0 = p0
@@ -66,6 +121,46 @@ class PointToPoint:
         p = self.p0 + s[:, None] * (self.p1 - self.p0)
         v = ds[:, None] * (self.p1 - self.p0)
         a = dds[:, None] * (self.p1 - self.p0)
+        if flatten:
+            return p.flatten(), v.flatten(), a.flatten()
+        return p, v, a
+
+
+class CircleS:
+    def __init__(self, p0, r, timescaling, duration):
+        self.r = r
+        self.pc = p0 + [r, 0]  # start midway up left side of circle
+        self.timescaling = timescaling
+        self.duration = duration
+
+    def sample(self, t):
+        s, ds, dds = self.timescaling.eval(t)
+
+        cs = np.cos(2*np.pi*s - np.pi)
+        ss = np.sin(2*np.pi*s - np.pi)
+        p = self.pc + self.r * np.array([cs, ss])
+
+        dpds = 2*np.pi*self.r * np.array([-ss, cs])
+        v = dpds * ds
+
+        dpds2 = 4*np.pi**2*self.r * np.array([-cs, -ss])
+        a = dpds * dds + dpds2 * ds**2
+
+        return p, v, a
+
+    def unroll(self, ts, flatten=False):
+        s, ds, dds = self.timescaling.eval(ts)
+
+        cs = np.cos(2*np.pi*s - np.pi)
+        ss = np.sin(2*np.pi*s - np.pi)
+        p = self.pc + self.r * np.array([cs, ss]).T
+
+        dpds = 2*np.pi*self.r * np.array([-ss, cs]).T
+        v = dpds * ds[:, None]
+
+        dpds2 = 4*np.pi**2*self.r * np.array([-cs, -ss]).T
+        a = dpds * dds[:, None] + dpds2 * ds[:, None]**2
+
         if flatten:
             return p.flatten(), v.flatten(), a.flatten()
         return p, v, a

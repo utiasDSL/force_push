@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from mm2d.model import ThreeInputModel
 from mm2d.controller import BaselineController, BaselineController2, AccelerationController
 from mm2d.plotter import RealtimePlotter, ThreeInputRenderer, TrajectoryRenderer
-from mm2d.trajectory import Line, Circle, Polygon, PointToPoint, CubicTimeScaling, QuinticTimeScaling
+from mm2d.trajectory import Line, Circle, Polygon, PointToPoint, CubicTimeScaling, QuinticTimeScaling, CircleS, LinearTimeScaling, CubicBezier
 from mm2d.util import rms, bound_array
 
 import IPython
@@ -31,8 +31,8 @@ def main():
     W = 0.1 * np.eye(model.ni)
     Kp = np.eye(model.no)
     Kv = 0.1 * np.eye(model.no)
-    # controller = BaselineController(model, W, K, LB, UB)
-    controller = AccelerationController(model, W, Kp, Kv, DT, VEL_LIM, acc_lim=ACC_LIM)
+    # controller = BaselineController2(model, W, Kp, DT, VEL_LIM, ACC_LIM)
+    controller = AccelerationController(model, W, Kp, Kv, DT, VEL_LIM, ACC_LIM)
 
     ts = np.array([i * DT for i in range(N)])
     qs = np.zeros((N, model.ni))
@@ -49,10 +49,31 @@ def main():
     # reference trajectory
     # trajectory = Line(p0, v0=np.zeros(2), a=np.array([0.01, 0]))
     timescaling = QuinticTimeScaling(DURATION)
-    trajectory = PointToPoint(p0, p0 + [1, 0], timescaling, DURATION)
+    # trajectory = PointToPoint(p0, p0 + [1, 0], timescaling, DURATION)
+    points = np.array([p0, p0 + [1, 1], p0 + [2, -1], p0 + [3, 0]])
+    trajectory = CubicBezier(points, timescaling, DURATION)
+
+    trajectory.sample(1)
+    trajectory.sample(np.array([0, 1, 2, 3]))
+    return
+
+
+    # trajectory = CircleS(p0, 0.5, timescaling, DURATION)
     # trajectory = Circle(p0, r=0.5, duration=10)
     # points = np.array([p0, p0 + [1, 0], p0 + [1, -1], p0 + [0, -1], p0])
     # trajectory = Polygon(points, v=0.4)
+
+    # pref, vref, aref = trajectory.unroll(ts)
+    # plt.figure()
+    # plt.plot(ts, pref[:, 0], label='$p$')
+    # plt.plot(ts, vref[:, 0], label='$v$')
+    # plt.plot(ts, aref[:, 0], label='$a$')
+    # plt.grid()
+    # plt.legend()
+    # plt.title('EE reference trajectory')
+    # plt.xlabel('Time (s)')
+    # plt.ylabel('Reference signal')
+    # plt.show()
 
     q = q0
     p = p0
@@ -67,10 +88,13 @@ def main():
     plotter.start()
 
     for i in range(N - 1):
+
         t = ts[i]
 
         # controller
         pd, vd, ad = trajectory.sample(t)
+        # u = controller.solve(q, dq, pd, vd)
+        # dq_cmd = u
         u = controller.solve(q, dq, pd, vd, ad)
         dq_cmd = dq + DT * u
 

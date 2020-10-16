@@ -1,14 +1,7 @@
 import numpy as np
 
 
-# TODO rewrite
-def spiral(p0, ts):
-    a = 0.1
-    b = 0.08
-    x = p0[0] + (a + b*ts) * np.cos(ts)
-    y = p0[1] + (a + b*ts) * np.sin(ts)
-    return x, y
-
+# == Time-scalings == #
 
 class LinearTimeScaling:
     ''' Linear time-scaling: constant velocity. '''
@@ -54,10 +47,13 @@ class QuinticTimeScaling:
         return s, ds, dds
 
 
+# TODO
 class TrapezoidalTimeScaling:
     def __init__(self, duration):
         pass
 
+
+# == Paths == #
 
 class CubicBezier:
     ''' Cubic Bezier curve trajectory. '''
@@ -145,6 +141,13 @@ class Point(object):
         return p, v
 
 
+class Waypoints:
+    def __init__(self, waypoints):
+        # waypoints consist of (p, t): need to figure out code to interpolate
+        # all of them
+        pass
+
+
 # TODO this needs to be revised to either:
 # * a composition of Lines
 # * a set of waypoints between which we interpolate
@@ -213,3 +216,12 @@ class Polygon(object):
         if flatten:
             return p.flatten(), v.flatten()
         return p, v
+
+
+# TODO rewrite
+def spiral(p0, ts):
+    a = 0.1
+    b = 0.08
+    x = p0[0] + (a + b*ts) * np.cos(ts)
+    y = p0[1] + (a + b*ts) * np.sin(ts)
+    return x, y

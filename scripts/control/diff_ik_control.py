@@ -78,7 +78,6 @@ def main():
     plotter.start()
 
     for i in range(N - 1):
-
         t = ts[i]
 
         # controller
@@ -92,13 +91,13 @@ def main():
 
         # record
         us[i, :] = u
-
         dqs[i+1, :] = dq
         qs[i+1, :] = q
         ps[i+1, :] = p
         pds[i+1, :] = pd[:model.no]
         vs[i+1, :] = v
 
+        # render
         robot_renderer.set_state(q)
         plotter.update()
     plotter.done()

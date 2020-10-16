@@ -6,8 +6,8 @@ from mm2d.model import ThreeInputModel
 from mm2d.controller import MPC
 from mm2d.plotter import RealtimePlotter, ThreeInputRenderer, TrajectoryRenderer
 # from mm2d.obstacle import Wall, Circle
-from mm2d.trajectory import Line, Circle, Polygon
-from mm2d.util import rms, bound_array
+from mm2d.trajectory import CubicBezier, QuinticTimeScaling
+from mm2d.util import rms
 
 import IPython
 
@@ -48,10 +48,9 @@ def main():
     p0 = model.forward(q0)
 
     # reference trajectory
-    # trajectory = Line(p0, v=np.array([0.1, 0, 0]))
-    # trajectory = Circle(p0, r=0.5, duration=10)
-    points = np.array([p0, p0 + [1, 0], p0 + [1, -1], p0 + [0, -1], p0])
-    trajectory = Polygon(points, v=0.4)
+    timescaling = QuinticTimeScaling(DURATION)
+    points = np.array([p0, p0 + [1, 1], p0 + [2, -1], p0 + [3, 0]])
+    trajectory = CubicBezier(points, timescaling, DURATION)
 
     # obstacles
     # obs = Wall(x=2.5)
@@ -74,7 +73,7 @@ def main():
         # The +1 ts[i+1] is because we want to generate a u[i] such that
         # p[i+1] = FK(q[i+1]) = pd[i+1]
         n = min(NUM_HORIZON, N - 1 - i)
-        pd, _ = trajectory.unroll(ts[i+1:i+1+n], flatten=True)
+        pd, _, _ = trajectory.sample(ts[i+1:i+1+n], flatten=True)
         u = mpc.solve(q, dq, pd, n)
 
         q, dq = model.step(q, u, DT, dq_last=dq)
@@ -99,7 +98,6 @@ def main():
     print('RMSE(x) = {}'.format(rms(xe)))
     print('RMSE(y) = {}'.format(rms(ye)))
 
-    # plt.plot(ts, pr, label='$\\theta_d$', color='k', linestyle='--')
     plt.figure()
     plt.plot(ts, pds[:, 0], label='$x_d$', color='b', linestyle='--')
     plt.plot(ts, pds[:, 1], label='$y_d$', color='r', linestyle='--')

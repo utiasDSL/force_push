@@ -288,8 +288,8 @@ class BaselineController(object):
         return dq
 
 
-class BaselineController2(object):
-    ''' Baseline optimizing controller.
+class DiffIKController(object):
+    ''' Basic differential IK controller.
         Solves:
             min  0.5*||Ju - v||^2 + 0.5*u'Wu
             s.t. lb <= u <= ub
@@ -317,7 +317,7 @@ class BaselineController2(object):
 
         # setup the QP
         H = J.T.dot(J) + self.W
-        g = -J.T.dot(v) - self.W.dot(dq)
+        g = -J.T.dot(v)
 
         # bounds on the computed input
         vel_ub = np.ones(ni) * self.vel_lim
@@ -341,6 +341,7 @@ class BaselineController2(object):
         return u
 
 
+# TODO for some reason this has trouble tracking an EE reference exactly
 class AccelerationController(object):
     def __init__(self, model, W, Kp, Kv, dt, vel_lim, acc_lim, verbose=False):
         self.model = model

@@ -10,7 +10,7 @@ class TrajectoryRenderer(object):
     def render(self, ax):
         # reference trajectory doesn't change, so we can just unroll and plot
         # the whole thing now
-        pr, *other = self.trajectory.unroll(self.ts)
+        pr, *other = self.trajectory.sample(self.ts)
         xr = pr[:, 0]
         yr = pr[:, 1]
         self.ref, = ax.plot(xr, yr, linestyle='--')
@@ -130,12 +130,15 @@ class RealtimePlotter(object):
     def __init__(self, renderers):
         self.renderers = renderers
 
-    def start(self):
+    def start(self, grid=False):
         ''' Launch the plot. '''
         plt.ion()
 
         self.fig = plt.figure()
         self.ax = plt.gca()
+
+        if grid:
+            plt.grid()
 
         self.ax.set_xlabel('x (m)')
         self.ax.set_ylabel('y (m)')

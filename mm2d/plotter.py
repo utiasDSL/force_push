@@ -142,8 +142,11 @@ class RealtimePlotter(object):
 
         self.ax.set_xlabel('x (m)')
         self.ax.set_ylabel('y (m)')
-        self.ax.set_xlim([-1, 6])
-        self.ax.set_ylim([-1, 2])
+        # self.ax.set_xlim([-1, 6])
+        # self.ax.set_ylim([-1, 2])
+
+        self.ax.set_xlim([-3, 3])
+        self.ax.set_ylim([-3, 3])
 
         for renderer in self.renderers:
             renderer.render(self.ax)

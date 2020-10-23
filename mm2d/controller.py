@@ -6,7 +6,7 @@ import IPython
 
 # mpc parameters
 NUM_HORIZON = 1  # number of time steps for prediction horizon
-NUM_WSR = 100    # number of working set recalculations
+NUM_WSR = 10    # number of working set recalculations
 NUM_ITER = 3     # number of linearizations/iterations
 
 
@@ -113,7 +113,7 @@ class MPC(object):
         # A = np.zeros((ni * N, ni * N))
         # lbA = ubA = np.zeros(ni * N)
 
-        ret = qp.init(H, g, A, lb, ub, lbA, ubA, NUM_WSR)
+        ret = qp.init(H, g, A, lb, ub, lbA, ubA, np.array([NUM_WSR]))
         delta = np.zeros(ni * N)
         qp.getPrimalSolution(delta)
         u = u + delta
@@ -124,7 +124,7 @@ class MPC(object):
             lb, ub = self._calc_vel_limits(u, ni, N)
             A, lbA, ubA = self._calc_acc_limits(u, dq0, ni, N)
 
-            qp.hotstart(H, g, A, lb, ub, lbA, ubA, NUM_WSR)
+            qp.hotstart(H, g, A, lb, ub, lbA, ubA, np.array([NUM_WSR]))
             qp.getPrimalSolution(delta)
 
             # TODO we could have a different step size here, since the
@@ -216,13 +216,13 @@ class OptimizingForceController(object):
             options = qpoases.PyOptions()
             options.printLevel = qpoases.PyPrintLevel.NONE
             qp.setOptions(options)
-            ret = qp.init(H, g, lb, ub, NUM_WSR)
+            ret = qp.init(H, g, lb, ub, np.array([NUM_WSR]))
         else:
             qp = qpoases.PyQProblemB(n)
             options = qpoases.PyOptions()
             options.printLevel = qpoases.PyPrintLevel.NONE
             qp.setOptions(options)
-            ret = qp.init(H, g, lb, ub, NUM_WSR)
+            ret = qp.init(H, g, lb, ub, np.array([NUM_WSR]))
 
         dq = np.zeros(n)
         qp.getPrimalSolution(dq)
@@ -281,7 +281,7 @@ class BaselineController(object):
             options = qpoases.PyOptions()
             options.printLevel = qpoases.PyPrintLevel.NONE
             qp.setOptions(options)
-        ret = qp.init(H, g, A, lb, ub, lbA, ubA, NUM_WSR)
+        ret = qp.init(H, g, A, lb, ub, lbA, ubA, np.array([NUM_WSR]))
 
         dq = np.zeros(ni)
         qp.getPrimalSolution(dq)
@@ -334,7 +334,7 @@ class DiffIKController(object):
             options = qpoases.PyOptions()
             options.printLevel = qpoases.PyPrintLevel.NONE
             qp.setOptions(options)
-        ret = qp.init(H, g, lb, ub, NUM_WSR)
+        ret = qp.init(H, g, lb, ub, np.array([NUM_WSR]))
 
         u = np.zeros(ni)
         qp.getPrimalSolution(u)
@@ -384,7 +384,7 @@ class AccelerationController(object):
             options = qpoases.PyOptions()
             options.printLevel = qpoases.PyPrintLevel.NONE
             qp.setOptions(options)
-        ret = qp.init(H, g, lb, ub, NUM_WSR)
+        ret = qp.init(H, g, lb, ub, np.array([NUM_WSR]))
 
         u = np.zeros(ni)
         qp.getPrimalSolution(u)

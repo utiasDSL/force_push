@@ -55,6 +55,38 @@ class TrapezoidalTimeScaling:
 
 # == Paths == #
 
+
+class Chain:
+    ''' Chain multiple independent trajectories together. '''
+    def __init__(self, trajectories):
+        self.trajectories = trajectories
+
+        durations = np.array([traj.duration for traj in trajectories])
+        self.times = np.zeros(1 + durations.shape[0])
+        self.times[1:] = np.cumsum(durations)
+
+    def sample(self, t, flatten=False):
+        samples = []
+
+        for idx, trajectory in enumerate(self.trajectories):
+            t0 = self.times[idx]  # start
+            t1 = self.times[idx+1]  # end
+
+            # all times beyond the total duration are passed to the last
+            # trajectory, which is expected to handle it
+            if idx == len(self.trajectories) - 1:
+                ts = t[(t >= t0)]
+            else:
+                ts = t[(t >= t0) & (t < t1)]
+            samples.append(trajectory.sample(ts - t0, flatten=flatten))
+
+        p = np.concatenate([sample[0] for sample in samples])
+        v = np.concatenate([sample[1] for sample in samples])
+        a = np.concatenate([sample[2] for sample in samples])
+
+        return p, v, a
+
+
 class CubicBezier:
     ''' Cubic Bezier curve trajectory. '''
     def __init__(self, points, timescaling, duration):

@@ -2,10 +2,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from mm2d.model import ThreeInputModel
+from mm2d.model import TopDownHolonomicModel
 from mm2d.controller import DiffIKController
-from mm2d.plotter import RealtimePlotter, ThreeInputRenderer, TrajectoryRenderer
-from mm2d.trajectory import Circle, Polygon, PointToPoint, CubicTimeScaling, QuinticTimeScaling, LinearTimeScaling, CubicBezier, Chain, Reverse
+from mm2d.plotter import RealtimePlotter, TopDownHolonomicRenderer, TrajectoryRenderer, CircleRenderer
+from mm2d.trajectory import Circle, Polygon, PointToPoint, CubicTimeScaling, QuinticTimeScaling, LinearTimeScaling, CubicBezier
+from mm2d.obstacle import Circle as CircleObstacle
 from mm2d.util import rms
 
 import IPython
@@ -26,7 +27,7 @@ NUM_WSR = 100     # number of working set recalculations
 def main():
     N = int(DURATION / DT) + 1
 
-    model = ThreeInputModel(L1, L2, VEL_LIM, acc_lim=ACC_LIM, output_idx=[0, 1])
+    model = TopDownHolonomicModel(L1, L2, VEL_LIM, acc_lim=ACC_LIM, output_idx=[0, 1])
 
     W = 0.1 * np.eye(model.ni)
     K = np.eye(model.no)
@@ -40,45 +41,34 @@ def main():
     vs = np.zeros((N, model.no))
     pds = np.zeros((N, model.no))
 
-    q0 = np.array([0, np.pi/4.0, -np.pi/4.0])
-    p0 = model.forward(q0)
+    # initial state
+    q = np.array([0, 0, 0, 0])
+    p = model.forward(q)
+    dq = np.zeros(model.ni)
 
     # reference trajectory
     # trajectory = Line(p0, v0=np.zeros(2), a=np.array([0.01, 0]))
     timescaling = QuinticTimeScaling(DURATION)
-    # trajectory = PointToPoint(p0, p0 + [1, 0], timescaling, DURATION)
+    trajectory = PointToPoint(p, p + [1, 0], timescaling, DURATION)
     # trajectory2 = PointToPoint(p0 + [1, 0], p0 + [2, 0], timescaling, 0.5*DURATION)
     # trajectory = Chain([trajectory1, trajectory2])
 
     # points = np.array([p0, p0 + [1, 1], p0 + [2, -1], p0 + [3, 0]])
     # trajectory = CubicBezier(points, timescaling, DURATION)
-    trajectory = Circle(p0, 0.5, timescaling, DURATION)
-    trajectory = Reverse(trajectory)
+    # trajectory = Circle(p, 0.5, timescaling, DURATION)
     # points = np.array([p0, p0 + [1, 0], p0 + [1, -1], p0 + [0, -1], p0])
     # trajectory = Polygon(points, v=0.4)
 
-    # pref, vref, aref = trajectory.sample(ts)
-    # plt.figure()
-    # plt.plot(ts, pref[:, 0], label='$p$')
-    # plt.plot(ts, vref[:, 0], label='$v$')
-    # plt.plot(ts, aref[:, 0], label='$a$')
-    # plt.grid()
-    # plt.legend()
-    # plt.title('EE reference trajectory')
-    # plt.xlabel('Time (s)')
-    # plt.ylabel('Reference signal')
-    # plt.show()
+    obs = CircleObstacle(np.array([3., 0.1]), 0.5, 1000)
 
-    q = q0
-    p = p0
-    dq = np.zeros(model.ni)
-    qs[0, :] = q0
-    ps[0, :] = p0
-    pds[0, :] = p0
+    qs[0, :] = q
+    ps[0, :] = p
+    pds[0, :] = p
 
-    robot_renderer = ThreeInputRenderer(model, q0)
+    circle_renderer = CircleRenderer(obs)
+    robot_renderer = TopDownHolonomicRenderer(model, q)
     trajectory_renderer = TrajectoryRenderer(trajectory, ts)
-    plotter = RealtimePlotter([robot_renderer, trajectory_renderer])
+    plotter = RealtimePlotter([robot_renderer, trajectory_renderer, circle_renderer])
     plotter.start()
 
     for i in range(N - 1):
@@ -92,6 +82,9 @@ def main():
         q, dq = model.step(q, u, DT, dq_last=dq)
         p = model.forward(q)
         v = model.jacobian(q).dot(dq)
+
+        f, movement = obs.force(p)
+        obs.c += movement
 
         # record
         us[i, :] = u

@@ -6,7 +6,7 @@ import numpy as np
 from .util import bound_array
 
 
-class InvertedPendulum(object):
+class InvertedPendulum:
     def __init__(self, length, mass, gravity=9.81):
         self.length = length
         self.mass = mass
@@ -45,7 +45,57 @@ class InvertedPendulum(object):
         return X
 
 
-class ThreeInputModel(object):
+class TopDownHolonomicModel:
+    ''' Holonomic top-down model. Four inputs: base x and y velocity, and two
+        arm joint velocities. '''
+    def __init__(self, l1, l2, vel_lim, acc_lim, output_idx=[0,1,2]):
+        self.ni = 4  # number of joints (inputs/DOFs)
+
+        # control which outputs are used
+        # possible outputs are: x, y, theta
+        self.no = len(output_idx)
+        self.output_idx = output_idx
+
+        self.l1 = l1
+        self.l2 = l2
+
+        self.vel_lim = vel_lim
+        self.acc_lim = acc_lim
+
+    def forward(self, q):
+        ''' Forward kinematic transform for the end effector. '''
+        xb, yb, θ1, θ2 = q
+        p = np.array([xb + self.l1*np.cos(θ1) + self.l2*np.cos(θ1+θ2),
+                      yb + self.l1*np.sin(θ1) + self.l2*np.sin(θ1+θ2),
+                      θ1 + θ2])
+        return p[self.output_idx]
+
+    def jacobian(self, q):
+        ''' End effector Jacobian. '''
+        _, _, θ1, θ2 = q
+        J = np.array([
+            [1, 0, -self.l1*np.sin(θ1)-self.l2*np.sin(θ1+θ2), -self.l2*np.sin(θ1+θ2)],
+            [0, 1,  self.l1*np.cos(θ1)+self.l2*np.cos(θ1+θ2),  self.l2*np.cos(θ1+θ2)],
+            [0, 0, 1, 1]])
+        return J[self.output_idx, :]
+
+    def step(self, q, u, dt, dq_last=None):
+        ''' Step forward one timestep. '''
+        # velocity limits
+        dq = bound_array(u, -self.vel_lim, self.vel_lim)
+
+        # acceleration limits
+        if dq_last is not None:
+            dq = bound_array(dq, -self.acc_lim * dt + dq_last, self.acc_lim * dt + dq_last)
+
+        if not (u == dq).all():
+            print('limits hit')
+
+        q = q + dt * dq
+        return q, dq
+
+
+class ThreeInputModel:
     ''' Three-input 2D mobile manipulator. Consists of mobile base (1 input)
         and 2-link arm (2 inputs). State is q = [x_b, q_1, q_2]; inputs u = dq. '''
     def __init__(self, l1, l2, vel_lim, acc_lim, output_idx=[0,1,2]):
@@ -103,7 +153,6 @@ class ThreeInputModel(object):
         J2s = J1s[-1, :, :] + np.kron(l2s[:, None], J2)
 
         Js = np.concatenate((J0s, J1s, J2s))
-
 
         Js = np.zeros((5, 2, 3))
         Js[0, :, :] = Js[1, :, :] = Js[2, :, :] = np.array([[1, 0, 0], [0, 0, 0]])

@@ -2,6 +2,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
+class CircleRenderer:
+    def __init__(self, circle):
+        self.circle = circle
+
+    def render(self, ax):
+        ax.add_patch(plt.Circle(self.circle.c, self.circle.r, color='k', fill=False))
+
+    def update_render(self):
+        pass
+
+
 class TrajectoryRenderer(object):
     def __init__(self, trajectory, ts):
         self.trajectory = trajectory
@@ -18,6 +29,76 @@ class TrajectoryRenderer(object):
     def update_render(self):
         # only renders once, no need to update
         pass
+
+
+class TopDownHolonomicRenderer:
+    def __init__(self, model, q0, length=1, width=0.5, render_path=True):
+        self.model = model
+        self.q = q0
+        self.render_path = render_path
+        self.xs = []
+        self.ys = []
+        self.length = length
+        self.width = width
+
+    def calc_base_points(self, q):
+        ''' Generate an array of points representing the base of the robot. '''
+        x0 = q[0]
+        y0 = q[1]
+        rx = self.length * 0.5
+        ry = self.width * 0.5
+
+        x = np.array([x0 - rx, x0 + rx, x0 + rx, x0 - rx, x0 - rx])
+        y = np.array([y0 - ry, y0 - ry, y0 + ry, y0 + ry, y0 - ry])
+
+        return x, y
+
+    def calc_arm_points(self, q):
+        ''' Generate an array of points representing the arm of the robot. '''
+        xb, yb, θ1, θ2 = q
+        x1 = xb + self.model.l1*np.cos(θ1)
+        x2 = x1 + self.model.l2*np.cos(θ1+θ2)
+
+        y1 = yb + self.model.l1*np.sin(θ1)
+        y2 = y1 + self.model.l2*np.sin(θ1+θ2)
+
+        x = np.array([xb, x1, x2])
+        y = np.array([yb, y1, y2])
+
+        return x, y
+
+    def set_state(self, q):
+        self.q = q
+
+    def render(self, ax):
+        xa, ya = self.calc_arm_points(self.q)
+        xb, yb = self.calc_base_points(self.q)
+
+        self.xs.append(xa[-1])
+        self.ys.append(ya[-1])
+
+        self.arm_plot, = ax.plot(xa, ya, color='k')
+        self.body_plot, = ax.plot(xb, yb, color='k')
+
+        if self.render_path:
+            self.path_plot, = ax.plot(self.xs, self.ys, color='r')
+
+    def update_render(self):
+        xa, ya = self.calc_arm_points(self.q)
+        xb, yb = self.calc_base_points(self.q)
+
+        self.xs.append(xa[-1])
+        self.ys.append(ya[-1])
+
+        self.arm_plot.set_xdata(xa)
+        self.arm_plot.set_ydata(ya)
+
+        self.body_plot.set_xdata(xb)
+        self.body_plot.set_ydata(yb)
+
+        if self.render_path:
+            self.path_plot.set_xdata(self.xs)
+            self.path_plot.set_ydata(self.ys)
 
 
 class ThreeInputRenderer(object):
@@ -142,11 +223,11 @@ class RealtimePlotter(object):
 
         self.ax.set_xlabel('x (m)')
         self.ax.set_ylabel('y (m)')
-        # self.ax.set_xlim([-1, 6])
-        # self.ax.set_ylim([-1, 2])
+        self.ax.set_xlim([-1, 6])
+        self.ax.set_ylim([-1, 2])
 
-        self.ax.set_xlim([-3, 3])
-        self.ax.set_ylim([-3, 3])
+        # self.ax.set_xlim([-3, 3])
+        # self.ax.set_ylim([-3, 3])
 
         for renderer in self.renderers:
             renderer.render(self.ax)

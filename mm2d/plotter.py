@@ -3,11 +3,15 @@ import matplotlib.pyplot as plt
 
 
 class CircleRenderer:
-    def __init__(self, circle):
+    def __init__(self, circle, pc):
         self.circle = circle
+        self.pc = pc
 
     def render(self, ax):
-        ax.add_patch(plt.Circle(self.circle.c, self.circle.r, color='k', fill=False))
+        ax.add_patch(plt.Circle(self.pc, self.circle.r, color='k', fill=False))
+
+    def set_state(self, pc):
+        self.pc = pc
 
     def update_render(self):
         pass

@@ -4,9 +4,8 @@ import matplotlib.pyplot as plt
 
 from mm2d.model import TopDownHolonomicModel
 from mm2d.controller import DiffIKController
-from mm2d.plotter import RealtimePlotter, TopDownHolonomicRenderer, TrajectoryRenderer, CircleRenderer
 from mm2d.trajectory import Circle, Polygon, PointToPoint, CubicTimeScaling, QuinticTimeScaling, LinearTimeScaling, CubicBezier
-from mm2d.obstacle import Circle as CircleObstacle
+from mm2d import obstacle, plotter
 from mm2d.util import rms
 
 import IPython
@@ -47,29 +46,22 @@ def main():
     dq = np.zeros(model.ni)
 
     # reference trajectory
-    # trajectory = Line(p0, v0=np.zeros(2), a=np.array([0.01, 0]))
     timescaling = QuinticTimeScaling(DURATION)
     trajectory = PointToPoint(p, p + [1, 0], timescaling, DURATION)
-    # trajectory2 = PointToPoint(p0 + [1, 0], p0 + [2, 0], timescaling, 0.5*DURATION)
-    # trajectory = Chain([trajectory1, trajectory2])
 
-    # points = np.array([p0, p0 + [1, 1], p0 + [2, -1], p0 + [3, 0]])
-    # trajectory = CubicBezier(points, timescaling, DURATION)
-    # trajectory = Circle(p, 0.5, timescaling, DURATION)
-    # points = np.array([p0, p0 + [1, 0], p0 + [1, -1], p0 + [0, -1], p0])
-    # trajectory = Polygon(points, v=0.4)
-
-    obs = CircleObstacle(np.array([3., 0.1]), 0.5, 1000)
+    # obstacle
+    pc = np.array([3., 0.1])
+    obs = obstacle.Circle(0.5, 1000)
 
     qs[0, :] = q
     ps[0, :] = p
     pds[0, :] = p
 
-    circle_renderer = CircleRenderer(obs)
-    robot_renderer = TopDownHolonomicRenderer(model, q)
-    trajectory_renderer = TrajectoryRenderer(trajectory, ts)
-    plotter = RealtimePlotter([robot_renderer, trajectory_renderer, circle_renderer])
-    plotter.start()
+    circle_renderer = plotter.CircleRenderer(obs, pc)
+    robot_renderer = plotter.TopDownHolonomicRenderer(model, q)
+    trajectory_renderer = plotter.TrajectoryRenderer(trajectory, ts)
+    plot = plotter.RealtimePlotter([robot_renderer, trajectory_renderer, circle_renderer])
+    plot.start()
 
     for i in range(N - 1):
         t = ts[i]
@@ -83,8 +75,8 @@ def main():
         p = model.forward(q)
         v = model.jacobian(q).dot(dq)
 
-        f, movement = obs.force(p)
-        obs.c += movement
+        f, movement = obs.force(pc, p)
+        pc += movement
 
         # record
         us[i, :] = u
@@ -96,8 +88,9 @@ def main():
 
         # render
         robot_renderer.set_state(q)
-        plotter.update()
-    plotter.done()
+        circle_renderer.set_state(pc)
+        plot.update()
+    plot.done()
 
     xe = pds[1:, 0] - ps[1:, 0]
     ye = pds[1:, 1] - ps[1:, 1]

@@ -2,11 +2,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from mm2d.model import ThreeInputModel
-from mm2d.controller import MPC
-from mm2d.plotter import RealtimePlotter, ThreeInputRenderer, TrajectoryRenderer
-# from mm2d.obstacle import Wall, Circle
-from mm2d.trajectory import CubicBezier, QuinticTimeScaling
+from mm2d.model import TopDownHolonomicModel
+from mm2d import obstacle, plotter
+from mm2d import controller as control
 from mm2d.util import rms
 
 import IPython
@@ -18,21 +16,21 @@ L2 = 1
 VEL_LIM = 1
 ACC_LIM = 1
 
-DT = 0.1         # timestep (s)
-DURATION = 10.0  # duration of trajectory (s)
+DT = 0.1      # simulation timestep (s)
+MPC_DT = 0.2  # timestep for MPC
+DURATION = 30.0  # duration of trajectory (s)
 
-# mpc parameters
 NUM_HORIZON = 10  # number of time steps for prediction horizon
 
 
 def main():
     N = int(DURATION / DT) + 1
 
-    model = ThreeInputModel(L1, L2, VEL_LIM, acc_lim=ACC_LIM, output_idx=[0, 1])
+    model = TopDownHolonomicModel(L1, L2, VEL_LIM, acc_lim=ACC_LIM, output_idx=[0, 1])
 
     Q = np.eye(model.no)
-    R = np.eye(model.ni) * 0.01
-    mpc = MPC(model, DT, Q, R, VEL_LIM, ACC_LIM)
+    R = np.eye(model.ni) * 0.1
+    controller = control.MPC(model, MPC_DT, Q, R, VEL_LIM, ACC_LIM)
 
     ts = np.array([i * DT for i in range(N)])
     qs = np.zeros((N, model.ni))
@@ -42,54 +40,53 @@ def main():
     vs = np.zeros((N, model.no))
     pds = np.zeros((N, model.no))
 
-    q0 = np.array([0, np.pi/4.0, -np.pi/4.0])
-    p0 = model.forward(q0)
-
-    # reference trajectory
-    timescaling = QuinticTimeScaling(DURATION)
-    points = np.array([p0, p0 + [1, 1], p0 + [2, -1], p0 + [3, 0]])
-    trajectory = CubicBezier(points, timescaling, DURATION)
-
-    # obstacles
-    # obs = Wall(x=2.5)
-    # obs = Circle(c=np.array([3.0, 1.5]), r=1)
-
-    q = q0
-    p = p0
+    # initial state
+    q = np.array([0, 0, 0.25*np.pi, -0.5*np.pi])
+    p = model.forward(q)
     dq = np.zeros(model.ni)
-    qs[0, :] = q0
-    ps[0, :] = p0
-    pds[0, :] = p0
 
-    robot_renderer = ThreeInputRenderer(model, q0)
-    trajectory_renderer = TrajectoryRenderer(trajectory, ts)
-    plotter = RealtimePlotter([robot_renderer, trajectory_renderer])
-    plotter.start()
+    # obstacle
+    pc = np.array([3., 0])
+    obs = obstacle.Circle(0.5, 1000)
+
+    pg = np.array([5., 0])
+
+    qs[0, :] = q
+    ps[0, :] = p
+    pds[0, :] = p
+
+    circle_renderer = plotter.CircleRenderer(obs, pc)
+    robot_renderer = plotter.TopDownHolonomicRenderer(model, q)
+    plot = plotter.RealtimePlotter([robot_renderer, circle_renderer])
+    plot.start(limits=[-5, 10, -5, 10], grid=True)
 
     for i in range(N - 1):
-        # MPC
-        # The +1 ts[i+1] is because we want to generate a u[i] such that
-        # p[i+1] = FK(q[i+1]) = pd[i+1]
         n = min(NUM_HORIZON, N - 1 - i)
-        pd, _, _ = trajectory.sample(ts[i+1:i+1+n], flatten=True)
-        u = mpc.solve(q, dq, pd, n)
+        pd = np.tile(pg, n)
+        u = controller.solve(q, dq, pd, n, pc)
 
+        # step the model
         q, dq = model.step(q, u, DT, dq_last=dq)
         p = model.forward(q)
         v = model.jacobian(q).dot(dq)
 
+        # obstacle interaction
+        f, movement = obs.force(pc, p)
+        pc += movement
+
         # record
         us[i, :] = u
-
         dqs[i+1, :] = dq
         qs[i+1, :] = q
         ps[i+1, :] = p
         pds[i+1, :] = pd[:model.no]
         vs[i+1, :] = v
 
+        # render
         robot_renderer.set_state(q)
-        plotter.update()
-    plotter.done()
+        circle_renderer.set_state(pc)
+        plot.update()
+    plot.done()
 
     xe = pds[1:, 0] - ps[1:, 0]
     ye = pds[1:, 1] - ps[1:, 1]
@@ -126,6 +123,16 @@ def main():
     plt.title('Commanded joint velocity')
     plt.xlabel('Time (s)')
     plt.ylabel('Velocity')
+
+    plt.figure()
+    plt.plot(ts, qs[:, 0], label='$q_x$')
+    plt.plot(ts, qs[:, 1], label='$q_1$')
+    plt.plot(ts, qs[:, 2], label='$q_2$')
+    plt.grid()
+    plt.legend()
+    plt.title('Joint positions')
+    plt.xlabel('Time (s)')
+    plt.ylabel('Joint positions')
 
     plt.show()
 

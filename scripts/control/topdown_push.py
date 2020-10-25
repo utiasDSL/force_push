@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 from mm2d.model import TopDownHolonomicModel
 from mm2d import obstacle, plotter
 from mm2d import controller as control
-from mm2d import trajectory as trajectories
 from mm2d.util import rms
 
 import IPython
@@ -18,10 +17,8 @@ L2 = 1
 VEL_LIM = 1
 ACC_LIM = 1
 
-DT = 0.05        # timestep (s)
+DT = 0.1      # simulation timestep (s)
 DURATION = 30.0  # duration of trajectory (s)
-
-NUM_WSR = 100     # number of working set recalculations
 
 
 def unit(a):
@@ -34,9 +31,7 @@ def main():
     model = TopDownHolonomicModel(L1, L2, VEL_LIM, acc_lim=ACC_LIM, output_idx=[0, 1])
 
     W = 0.1 * np.eye(model.ni)
-    K = 2*np.eye(model.no)
-    C = 1*np.eye(model.no)
-    Cinv = np.eye(model.no)
+    K = np.eye(model.no)
     controller = control.ConstrainedDiffIKController(model, W, K, DT, VEL_LIM, ACC_LIM)
 
     ts = np.array([i * DT for i in range(N)])
@@ -48,19 +43,16 @@ def main():
     pds = np.zeros((N, model.no))
 
     # initial state
-    q = np.array([0, 0, 0, 0])
+    q = np.array([0, 0, 0.25*np.pi, -0.5*np.pi])
     p = model.forward(q)
     dq = np.zeros(model.ni)
     f = np.zeros(2)
-
-    # reference trajectory
-    timescaling = trajectories.QuinticTimeScaling(DURATION)
-    trajectory = trajectories.PointToPoint(p, p + [1, 0], timescaling, DURATION)
 
     # obstacle
     pc = np.array([-2., 1.])
     obs = obstacle.Circle(0.5, 1000)
 
+    # goal position
     pg = np.array([5., 0])
 
     qs[0, :] = q
@@ -69,29 +61,29 @@ def main():
 
     circle_renderer = plotter.CircleRenderer(obs, pc)
     robot_renderer = plotter.TopDownHolonomicRenderer(model, q)
-    trajectory_renderer = plotter.TrajectoryRenderer(trajectory, ts)
-    plot = plotter.RealtimePlotter([robot_renderer, trajectory_renderer, circle_renderer])
+    plot = plotter.RealtimePlotter([robot_renderer, circle_renderer])
     plot.start(limits=[-5, 10, -5, 10], grid=True)
 
     for i in range(N - 1):
-        t = ts[i]
-
         # experimental controller for aligning and pushing object to a goal
         # point - generates a desired set point pd; the admittance portion
         # doesn't really seem helpful at this point (since we actually *want*
         # to hit/interact with the environment)
-        b = 0.1
+        b = 0.25
         cos_alpha = np.cos(np.pi * 0.25)
         p1 = pc - 0.25 * unit(pg - pc)
+
         d = np.linalg.norm(p - pc)
         J = model.jacobian(q)
 
         # distance from obstacle constraints
-        A = 2*DT*(p - pc).T.dot(J)
+        A = DT*(p - pc).T.dot(J) / d
         A = A.reshape((model.ni, 1))
         lbA = np.array([obs.r + b - d])
 
         # only enforced away from the push location
+        # TODO other option is to revisit the cardioid stuff, which has the
+        # advantage of not being discontinous in distance
         cos_angle = unit(p - pc).dot(unit(p1 - pc))
         if cos_angle >= cos_alpha:
             lbA = np.zeros_like(lbA)

@@ -5,8 +5,7 @@ import IPython
 
 
 # mpc parameters
-NUM_HORIZON = 1  # number of time steps for prediction horizon
-NUM_WSR = 10    # number of working set recalculations
+NUM_WSR = 100    # number of working set recalculations
 NUM_ITER = 3     # number of linearizations/iterations
 
 
@@ -20,7 +19,7 @@ class MPC(object):
         self.vel_lim = vel_lim
         self.acc_lim = acc_lim
 
-    def _lookahead(self, q0, pr, u, N):
+    def _lookahead(self, q0, pr, u, N, pc):
         ''' Generate lifted matrices proprogating the state N timesteps into the
             future.
 
@@ -45,13 +44,22 @@ class MPC(object):
 
         # Integrate joint positions from the last iteration
         qbar = np.tile(q0, N+1)
-        qbar[ni:] += self.dt * Ebar.dot(u)
+        qbar[ni:] = qbar[ni:] + self.dt * Ebar.dot(u)
+
+        Abar = np.zeros((N, ni*N))
+        lbA = np.zeros(N)
 
         for k in range(N):
             q = qbar[(k+1)*ni:(k+2)*ni]
+            p = self.model.forward(q)
+            J = self.model.jacobian(q)
+            d = np.linalg.norm(p - pc)
 
-            fbar[k*no:(k+1)*no] = self.model.forward(q)
-            Jbar[k*no:(k+1)*no, k*ni:(k+1)*ni] = self.model.jacobian(q)
+            fbar[k*no:(k+1)*no] = p
+            Jbar[k*no:(k+1)*no, k*ni:(k+1)*ni] = J
+
+            Abar[k, k*ni:(k+1)*ni] = (p - pc).T.dot(J) / np.linalg.norm(p - pc)
+            lbA[k] = 0.5 - d
 
             Qbar[k*no:(k+1)*no, k*no:(k+1)*no] = self.Q
             Rbar[k*ni:(k+1)*ni, k*ni:(k+1)*ni] = self.R
@@ -60,8 +68,9 @@ class MPC(object):
 
         H = Rbar + self.dt**2*Ebar.T.dot(Jbar.T).dot(Qbar).dot(Jbar).dot(Ebar)
         g = u.T.dot(Rbar) + self.dt*dbar.T.dot(Qbar).dot(Jbar).dot(Ebar)
+        A = self.dt*Abar.dot(Ebar)
 
-        return H, g
+        return H, g, A, lbA
 
     def _calc_vel_limits(self, u, ni, N):
         L = np.ones(ni * N) * self.vel_lim
@@ -91,27 +100,31 @@ class MPC(object):
 
         return A, lbA, ubA
 
-    def _iterate(self, q0, dq0, pr, u, N):
+    def _iterate(self, q0, dq0, pr, u, N, pc):
         ni = self.model.ni
 
         # Create the QP, which we'll solve sequentially.
         # num vars, num constraints (note that constraints only refer to matrix
         # constraints rather than bounds)
+        # num constraints = N obstacle constraints and ni*N joint acceleration
+        # constraints
         num_var = ni * N
-        num_constraints = ni * N
+        num_constraints = N + ni * N
         qp = qpoases.PySQProblem(num_var, num_constraints)
         options = qpoases.PyOptions()
         options.printLevel = qpoases.PyPrintLevel.NONE
         qp.setOptions(options)
 
         # Initial opt problem.
-        H, g = self._lookahead(q0, pr, u, N)
+        H, g, A_obs, lbA_obs = self._lookahead(q0, pr, u, N, pc)
+        ubA_obs = np.infty * np.ones_like(lbA_obs)
 
-        # TODO revisit velocity damper formulation
         lb, ub = self._calc_vel_limits(u, ni, N)
-        A, lbA, ubA = self._calc_acc_limits(u, dq0, ni, N)
-        # A = np.zeros((ni * N, ni * N))
-        # lbA = ubA = np.zeros(ni * N)
+        A_acc, lbA_acc, ubA_acc = self._calc_acc_limits(u, dq0, ni, N)
+
+        A = np.vstack((A_obs, A_acc))
+        lbA = np.concatenate((lbA_obs, lbA_acc))
+        ubA = np.concatenate((ubA_obs, ubA_acc))
 
         ret = qp.init(H, g, A, lb, ub, lbA, ubA, np.array([NUM_WSR]))
         delta = np.zeros(ni * N)
@@ -119,28 +132,29 @@ class MPC(object):
         u = u + delta
 
         # Remaining sequence is hotstarted from the first.
-        for i in range(NUM_ITER):
-            H, g = self._lookahead(q0, pr, u, N)
+        for i in range(NUM_ITER - 1):
+            H, g, A_obs, lbA_obs = self._lookahead(q0, pr, u, N, pc)
             lb, ub = self._calc_vel_limits(u, ni, N)
-            A, lbA, ubA = self._calc_acc_limits(u, dq0, ni, N)
+            A_acc, lbA_acc, ubA_acc = self._calc_acc_limits(u, dq0, ni, N)
+            A = np.vstack((A_obs, A_acc))
+            lbA = np.concatenate((lbA_obs, lbA_acc))
+            ubA = np.concatenate((ubA_obs, ubA_acc))
 
             qp.hotstart(H, g, A, lb, ub, lbA, ubA, np.array([NUM_WSR]))
             qp.getPrimalSolution(delta)
 
-            # TODO we could have a different step size here, since the
-            # linearization is only locally valid
             u = u + delta
 
         return u
 
-    def solve(self, q0, dq0, pr, N):
+    def solve(self, q0, dq0, pr, N, pc):
         ''' Solve the MPC problem at current state x0 given desired output
             trajectory Yd. '''
         # initialize optimal inputs
         u = np.zeros(self.model.ni * N)
 
         # iterate to final solution
-        u = self._iterate(q0, dq0, pr, u, N)
+        u = self._iterate(q0, dq0, pr, u, N, pc)
 
         # return first optimal input
         return u[:self.model.ni]

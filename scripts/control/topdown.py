@@ -76,83 +76,31 @@ def main():
     for i in range(N - 1):
         t = ts[i]
 
-        # controller
-        # pd, vd, ad = trajectory.sample(t, flatten=True)
-        # pd = pc
-
         # experimental controller for aligning and pushing object to a goal
         # point - generates a desired set point pd; the admittance portion
         # doesn't really seem helpful at this point (since we actually *want*
         # to hit/interact with the environment)
-        vd = np.zeros(2)
-        # a = pg - pc
-        # b = pc - p
-        # e_norm = np.linalg.norm(pg - pc)
-        # r = 0.3   # radius
-        # pd = pc - r * unit(pg - pc)
-        # closest = pc - (a.dot(b)) * a / a.dot(a)
-        # closest_dist = np.linalg.norm(closest - p)
-        # r = 0.1  # radius
-        # if closest_dist < r:
-        #     d = np.sqrt(r**2 - closest_dist**2)
-        #     pd = pc - d * unit(pg - closest)
-        # else:
-        #     pd = p + r * unit(closest - p)
         b = 0.1
         cos_alpha = np.cos(np.pi * 0.25)
         p1 = pc - 0.25 * unit(pg - pc)
-        # p2 = pc + obs.r * unit(pg - pc)
         d = np.linalg.norm(p - pc)
         J = model.jacobian(q)
 
+        # distance from obstacle constraints
         A = 2*DT*(p - pc).T.dot(J)
         A = A.reshape((model.ni, 1))
-
-        pd = p1
-
-        cos_angle = unit(p - pc).dot(unit(p1 - pc))
         lbA = np.array([obs.r + b - d])
 
+        # only enforced away from the push location
+        cos_angle = unit(p - pc).dot(unit(p1 - pc))
         if cos_angle >= cos_alpha:
             lbA = np.zeros_like(lbA)
             A = np.zeros_like(A)
 
-        # K1 = np.eye(2)
-        # K2 = 0.5*np.eye(2)
-        #
-        # a = 0.5*obs.r
-        # cardioid_center = pc - a*unit(pg - pc)
-        # r_cardioid = 2*a*(1 - unit(p - pc).dot(unit(p1 - pc)))
-        # grad_r_cardioid = -2*a*norm(p1-pc)*( norm(p-pc)*(p1-pc) + 2*(p1-pc).dot(p-pc)*(p-pc) )
-        #
-        # d_cardioid = norm(p - cardioid_center) - r_cardioid
-        # grad_d_cardioid = 2*(p - cardioid_center) - grad_r_cardioid
-        #
-        # grad_Ua = K1.dot(p - p1)
-        # eta = 0.1
-        # b = -0.1
-        # if d_cardioid <= b:
-        #     grad_Ur = eta*(1./b - 1./d_cardioid) / d_cardioid**2 * grad_d_cardioid
-        # else:
-        #     grad_Ur = np.zeros_like(p)
-        # print(d_cardioid)
-        # grad_U = grad_Ua + grad_Ur
-
-        # vd = K1.dot(p1 - p)
-        # if np.linalg.norm(p2 - p) < obs.r:
-        #     vd = K1.dot(p1 - p) - K2.dot(p2 - p)
-        # else:
-        #     vd = K1.dot(p1 - p)
-        # pnext = p + DT * v
-        # if np.linalg.norm(pnext - pc) <= obs.r + 0.1:
-        # vd = K1.dot(p1 - p) - K2.dot(unit(p2 - p))
-        # vd = -unit(grad_U) * 0.3
-        # vd = -grad_U
+        vd = np.zeros(2)
+        pd = p1
 
         u = controller.solve(q, dq, pd, vd, A, lbA)
-        if np.linalg.norm(pg - pc) < 0.1:
-            print('done')
-            break
 
         # step the model
         q, dq = model.step(q, u, DT, dq_last=dq)
@@ -162,6 +110,11 @@ def main():
         # obstacle interaction
         f, movement = obs.force(pc, p)
         pc += movement
+
+        # if object is close enough to the goal position, stop
+        if np.linalg.norm(pg - pc) < 0.1:
+            print('done')
+            break
 
         # record
         us[i, :] = u

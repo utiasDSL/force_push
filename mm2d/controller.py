@@ -288,6 +288,67 @@ class BaselineController(object):
         return dq
 
 
+class ConstrainedDiffIKController(object):
+    ''' Constrained differential IK controller.
+        Solves:
+            min  0.5*||Ju - v||^2 + 0.5*u'Wu
+            s.t. lb <= u <= ub
+                 d >= d_min
+        where
+            v = K*(pd-p) + vd '''
+    def __init__(self, model, W, K, dt, vel_lim, acc_lim, verbose=False):
+        self.model = model
+        self.W = W
+        self.K = K
+        self.dt = dt
+        self.vel_lim = vel_lim
+        self.acc_lim = acc_lim
+        self.verbose = verbose
+
+    def solve(self, q, dq, pd, vd, A, lbA):
+        ''' Solve for the optimal inputs. '''
+        ni = self.model.ni
+
+        # forward kinematics
+        p = self.model.forward(q)
+        J = self.model.jacobian(q)
+
+        # calculate velocity reference
+        v = self.K.dot(pd - p) + vd
+
+        # setup the QP
+        H = J.T.dot(J) + self.W
+        g = -J.T.dot(v)
+
+        # bounds on the computed input
+        vel_ub = np.ones(ni) * self.vel_lim
+        vel_lb = -vel_ub
+
+        acc_ub = np.ones(ni) * self.acc_lim * self.dt + dq
+        acc_lb = -np.ones(ni) * self.acc_lim * self.dt + dq
+
+        ub = np.maximum(vel_ub, acc_ub)
+        lb = np.minimum(vel_lb, acc_lb)
+
+        # qp = qpoases.PyQProblemB(ni)
+        # if not self.verbose:
+        #     options = qpoases.PyOptions()
+        #     options.printLevel = qpoases.PyPrintLevel.NONE
+        #     qp.setOptions(options)
+        # ret = qp.init(H, g, lb, ub, np.array([NUM_WSR]))
+
+        qp = qpoases.PyQProblem(ni, 1)
+        if not self.verbose:
+            options = qpoases.PyOptions()
+            options.printLevel = qpoases.PyPrintLevel.NONE
+            qp.setOptions(options)
+        ret = qp.init(H, g, A, lb, ub, lbA, None, np.array([NUM_WSR]))
+
+        u = np.zeros(ni)
+        qp.getPrimalSolution(u)
+        return u
+
+
 class DiffIKController(object):
     ''' Basic differential IK controller.
         Solves:
@@ -314,6 +375,62 @@ class DiffIKController(object):
 
         # calculate velocity reference
         v = self.K.dot(pd - p) + vd
+
+        # setup the QP
+        H = J.T.dot(J) + self.W
+        g = -J.T.dot(v)
+
+        # bounds on the computed input
+        vel_ub = np.ones(ni) * self.vel_lim
+        vel_lb = -vel_ub
+
+        acc_ub = np.ones(ni) * self.acc_lim * self.dt + dq
+        acc_lb = -np.ones(ni) * self.acc_lim * self.dt + dq
+
+        ub = np.maximum(vel_ub, acc_ub)
+        lb = np.minimum(vel_lb, acc_lb)
+
+        qp = qpoases.PyQProblemB(ni)
+        if not self.verbose:
+            options = qpoases.PyOptions()
+            options.printLevel = qpoases.PyPrintLevel.NONE
+            qp.setOptions(options)
+        ret = qp.init(H, g, lb, ub, np.array([NUM_WSR]))
+
+        u = np.zeros(ni)
+        qp.getPrimalSolution(u)
+        return u
+
+
+class AdmittanceController(object):
+    ''' Basic EE admittance controller. This is a minor variation of the
+        DiffIKController with a different reference velocity.
+        Solves:
+            min  0.5*||Ju - v||^2 + 0.5*u'Wu
+            s.t. lb <= u <= ub
+        where
+            v = K*(pd-p) + vd - inv(C)f '''
+    def __init__(self, model, W, K, C, dt, vel_lim, acc_lim, verbose=False):
+        self.model = model
+        self.W = W
+        self.K = K
+        self.Cinv = np.linalg.inv(C)
+        self.dt = dt
+        self.vel_lim = vel_lim
+        self.acc_lim = acc_lim
+        self.verbose = verbose
+
+    def solve(self, q, dq, pd, vd, f):
+        ''' Solve for the optimal inputs. '''
+        ni = self.model.ni
+
+        # forward kinematics
+        p = self.model.forward(q)
+        J = self.model.jacobian(q)
+
+        # calculate velocity reference
+        # v = self.K.dot(pd - p) + vd - self.Cinv @ f
+        v = vd
 
         # setup the QP
         H = J.T.dot(J) + self.W

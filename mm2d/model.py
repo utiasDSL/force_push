@@ -88,8 +88,8 @@ class TopDownHolonomicModel:
         if dq_last is not None:
             dq = bound_array(dq, -self.acc_lim * dt + dq_last, self.acc_lim * dt + dq_last)
 
-        if not (u == dq).all():
-            print('limits hit')
+        # if not (u == dq).all():
+        #     print('limits hit')
 
         q = q + dt * dq
         return q, dq
@@ -210,8 +210,8 @@ class ThreeInputModel:
         if dq_last is not None:
             dq = bound_array(dq, -self.acc_lim * dt + dq_last, self.acc_lim * dt + dq_last)
 
-        if not (u == dq).all():
-            print('limits hit')
+        # if not (u == dq).all():
+        #     print('limits hit')
 
         q = q + dt * dq
         return q, dq

@@ -215,7 +215,7 @@ class RealtimePlotter(object):
     def __init__(self, renderers):
         self.renderers = renderers
 
-    def start(self, grid=False):
+    def start(self, limits=[-1, 6, -1, 2], grid=False):
         ''' Launch the plot. '''
         plt.ion()
 
@@ -227,8 +227,8 @@ class RealtimePlotter(object):
 
         self.ax.set_xlabel('x (m)')
         self.ax.set_ylabel('y (m)')
-        self.ax.set_xlim([-1, 6])
-        self.ax.set_ylim([-1, 2])
+        self.ax.set_xlim(limits[:2])
+        self.ax.set_ylim(limits[2:])
 
         # self.ax.set_xlim([-3, 3])
         # self.ax.set_ylim([-3, 3])

@@ -6,7 +6,7 @@ class TopDownHolonomicModel:
     ''' Holonomic top-down model. Four inputs: base x and y velocity, and two
         arm joint velocities. '''
     def __init__(self, l1, l2, vel_lim, acc_lim, output_idx=[0,1,2]):
-        self.ni = 4  # number of joints (inputs/DOFs)
+        self.ni = 5  # number of joints (inputs/DOFs)
 
         # control which outputs are used
         # possible outputs are: x, y, theta
@@ -21,19 +21,23 @@ class TopDownHolonomicModel:
 
     def forward(self, q):
         ''' Forward kinematic transform for the end effector. '''
-        xb, yb, θ1, θ2 = q
-        p = np.array([xb + self.l1*np.cos(θ1) + self.l2*np.cos(θ1+θ2),
-                      yb + self.l1*np.sin(θ1) + self.l2*np.sin(θ1+θ2),
-                      θ1 + θ2])
+        xb, yb, θb, θ1, θ2 = q
+        p = np.array([xb + self.l1*np.cos(θb+θ1) + self.l2*np.cos(θb+θ1+θ2),
+                      yb + self.l1*np.sin(θb+θ1) + self.l2*np.sin(θb+θ1+θ2),
+                      θb + θ1 + θ2])
         return p[self.output_idx]
 
     def jacobian(self, q):
         ''' End effector Jacobian. '''
-        _, _, θ1, θ2 = q
+        _, _, θb, θ1, θ2 = q
+        dp1dθb = -self.l1*np.sin(θb+θ1)-self.l2*np.sin(θb+θ1+θ2)
+        dp1dθ1 = dp1dθb
+        dp2dθb = self.l1*np.cos(θb+θ1)+self.l2*np.cos(θb+θ1+θ2)
+        dp2dθ1 = dp2dθb
         J = np.array([
-            [1, 0, -self.l1*np.sin(θ1)-self.l2*np.sin(θ1+θ2), -self.l2*np.sin(θ1+θ2)],
-            [0, 1,  self.l1*np.cos(θ1)+self.l2*np.cos(θ1+θ2),  self.l2*np.cos(θ1+θ2)],
-            [0, 0, 1, 1]])
+            [1, 0, dp1dθb, dp1dθ1, -self.l2*np.sin(θb+θ1+θ2)],
+            [0, 1, dp2dθb, dp2dθ1,  self.l2*np.cos(θb+θ1+θ2)],
+            [0, 0, 1, 1, 1]])
         return J[self.output_idx, :]
 
     def step(self, q, u, dt, dq_last=None):

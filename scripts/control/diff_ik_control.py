@@ -2,10 +2,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from mm2d.model import ThreeInputModel
-from mm2d.controller import DiffIKController
-from mm2d.plotter import RealtimePlotter, ThreeInputRenderer, TrajectoryRenderer
-from mm2d.trajectory import Circle, Polygon, PointToPoint, CubicTimeScaling, QuinticTimeScaling, LinearTimeScaling, CubicBezier, Chain, Reverse
+from mm2d import models, control, plotter
+from mm2d import trajectory as trajectories
 from mm2d.util import rms
 
 import IPython
@@ -20,17 +18,15 @@ ACC_LIM = 1
 DT = 0.1        # timestep (s)
 DURATION = 10.0  # duration of trajectory (s)
 
-NUM_WSR = 100     # number of working set recalculations
-
 
 def main():
     N = int(DURATION / DT) + 1
 
-    model = ThreeInputModel(L1, L2, VEL_LIM, acc_lim=ACC_LIM, output_idx=[0, 1])
+    model = models.ThreeInputModel(L1, L2, VEL_LIM, acc_lim=ACC_LIM, output_idx=[0, 1])
 
     W = 0.1 * np.eye(model.ni)
     K = np.eye(model.no)
-    controller = DiffIKController(model, W, K, DT, VEL_LIM, ACC_LIM)
+    controller = control.DiffIKController(model, W, K, DT, VEL_LIM, ACC_LIM)
 
     ts = np.array([i * DT for i in range(N)])
     qs = np.zeros((N, model.ni))
@@ -45,15 +41,14 @@ def main():
 
     # reference trajectory
     # trajectory = Line(p0, v0=np.zeros(2), a=np.array([0.01, 0]))
-    timescaling = QuinticTimeScaling(DURATION)
+    timescaling = trajectories.QuinticTimeScaling(DURATION)
     # trajectory = PointToPoint(p0, p0 + [1, 0], timescaling, DURATION)
     # trajectory2 = PointToPoint(p0 + [1, 0], p0 + [2, 0], timescaling, 0.5*DURATION)
     # trajectory = Chain([trajectory1, trajectory2])
 
     # points = np.array([p0, p0 + [1, 1], p0 + [2, -1], p0 + [3, 0]])
     # trajectory = CubicBezier(points, timescaling, DURATION)
-    trajectory = Circle(p0, 0.5, timescaling, DURATION)
-    trajectory = Reverse(trajectory)
+    trajectory = trajectories.Circle(p0, 0.5, timescaling, DURATION)
     # points = np.array([p0, p0 + [1, 0], p0 + [1, -1], p0 + [0, -1], p0])
     # trajectory = Polygon(points, v=0.4)
 
@@ -76,10 +71,10 @@ def main():
     ps[0, :] = p0
     pds[0, :] = p0
 
-    robot_renderer = ThreeInputRenderer(model, q0)
-    trajectory_renderer = TrajectoryRenderer(trajectory, ts)
-    plotter = RealtimePlotter([robot_renderer, trajectory_renderer])
-    plotter.start()
+    robot_renderer = plotter.ThreeInputRenderer(model, q0)
+    trajectory_renderer = plotter.TrajectoryRenderer(trajectory, ts)
+    plot = plotter.RealtimePlotter([robot_renderer, trajectory_renderer])
+    plot.start()
 
     for i in range(N - 1):
         t = ts[i]
@@ -103,8 +98,8 @@ def main():
 
         # render
         robot_renderer.set_state(q)
-        plotter.update()
-    plotter.done()
+        plot.update()
+    plot.done()
 
     xe = pds[1:, 0] - ps[1:, 0]
     ye = pds[1:, 1] - ps[1:, 1]

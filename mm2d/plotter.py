@@ -65,24 +65,26 @@ class TopDownHolonomicRenderer:
 
     def calc_base_points(self, q):
         ''' Generate an array of points representing the base of the robot. '''
-        x0 = q[0]
-        y0 = q[1]
+        pb = q[:2]
+        θb = q[2]
         rx = self.length * 0.5
         ry = self.width * 0.5
 
-        x = np.array([x0 - rx, x0 + rx, x0 + rx, x0 - rx, x0 - rx])
-        y = np.array([y0 - ry, y0 - ry, y0 + ry, y0 + ry, y0 - ry])
+        R = np.array([[ np.cos(θb), np.sin(θb)],
+                      [-np.sin(θb), np.cos(θb)]])
+        p = pb + R.dot([[-rx, rx, rx, -rx, -rx],
+                        [-ry, -ry, ry, ry, -ry]]).T
 
-        return x, y
+        return p[:, 0], p[:, 1]
 
     def calc_arm_points(self, q):
         ''' Generate an array of points representing the arm of the robot. '''
-        xb, yb, θ1, θ2 = q
-        x1 = xb + self.model.l1*np.cos(θ1)
-        x2 = x1 + self.model.l2*np.cos(θ1+θ2)
+        xb, yb, θb, θ1, θ2 = q
+        x1 = xb + self.model.l1*np.cos(θb+θ1)
+        x2 = x1 + self.model.l2*np.cos(θb+θ1+θ2)
 
-        y1 = yb + self.model.l1*np.sin(θ1)
-        y2 = y1 + self.model.l2*np.sin(θ1+θ2)
+        y1 = yb + self.model.l1*np.sin(θb+θ1)
+        y2 = y1 + self.model.l2*np.sin(θb+θ1+θ2)
 
         x = np.array([xb, x1, x2])
         y = np.array([yb, y1, y2])
@@ -105,7 +107,7 @@ class TopDownHolonomicRenderer:
         if self.render_path:
             self.path_plot, = ax.plot(self.xs, self.ys, color='r')
 
-        self.patch = plt.Circle(self.q[:2], self.base_r, color='r', fill=False)
+        self.patch = plt.Circle(self.q[:2], self.base_r, linestyle='--', color='b', fill=False)
         if self.render_collision:
             ax.add_patch(self.patch)
 

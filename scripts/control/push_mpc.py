@@ -43,7 +43,7 @@ def main():
     pds = np.zeros((N, model.no))
 
     # initial state
-    q = np.array([0, 0, 0.25*np.pi, -0.5*np.pi])
+    q = np.array([0, 0, 0, 0.25*np.pi, -0.5*np.pi])
     p = model.forward(q)
     dq = np.zeros(model.ni)
     f = np.zeros(2)
@@ -63,15 +63,17 @@ def main():
     circle_renderer = plotter.CircleRenderer(obs.r, pc)
     robot_renderer = plotter.TopDownHolonomicRenderer(model, q, render_collision=True)
     plot = plotter.RealtimePlotter([robot_renderer, circle_renderer, goal_renderer])
-    plot.start(limits=[-5, 10, -5, 10], grid=True)
+    plot.start(limits=[-5, 6, -5, 6], grid=True)
 
     for i in range(N - 1):
         # experimental controller for aligning and pushing object to a goal
-        # point - generates a desired set point pd; the admittance portion
-        # doesn't really seem helpful at this point (since we actually *want*
-        # to hit/interact with the environment)
+        # point
         cos_alpha = np.cos(np.pi * 0.25)
-        p1 = pc - 0.25 * unit(pg - pc)
+
+        p1_depth_max = 0.5 * obs.r
+        p1_depth = min(np.linalg.norm(pg - pc), p1_depth_max)
+
+        p1 = pc - (obs.r - p1_depth) * unit(pg - pc)
         p2 = pc - obs.r * unit(pg - pc)
 
         n = min(NUM_HORIZON, N - 1 - i)
@@ -97,9 +99,9 @@ def main():
         pc += movement
 
         # if object is close enough to the goal position, stop
-        if np.linalg.norm(pg - pc) < 0.1:
-            print('done')
-            break
+        # if np.linalg.norm(pg - pc) < 0.01:
+        #     print('done')
+        #     break
 
         # record
         us[i, :] = u

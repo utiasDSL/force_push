@@ -21,16 +21,7 @@ class ObstacleAvoidingMPC(object):
 
     def _lookahead(self, q0, pr, u, N, pc):
         ''' Generate lifted matrices proprogating the state N timesteps into the
-            future.
-
-            sys: System model.
-            q0:  Current joint positions.
-            pr:  Desired Cartesian output trajectory.
-            u:   Input joint velocties from the last iteration.
-            Q:   Tracking error weighting matrix.
-            R:   Input magnitude weighting matrix.
-            N:   Number of timesteps into the future. '''
-
+            future. '''
         ni = self.model.ni  # number of joints
         no = self.model.no  # number of Cartesian outputs
 
@@ -66,8 +57,8 @@ class ObstacleAvoidingMPC(object):
 
             # base and obstacle
             pb = q[:2]
-            Jb = np.array([[1, 0, 0, 0],
-                           [0, 1, 0, 0]])
+            Jb = np.array([[1, 0, 0, 0, 0],
+                           [0, 1, 0, 0, 0]])
             d_base_obs = np.linalg.norm(pb - pc) - 0.5 - 0.56
             Abar[k*num_body_pts+1, k*ni:(k+1)*ni] = (pb - pc).T.dot(Jb) / np.linalg.norm(pb - pc)
             lbA[k*num_body_pts+1] = -d_base_obs

@@ -46,20 +46,31 @@ class ObstacleAvoidingMPC(object):
         qbar = np.tile(q0, N+1)
         qbar[ni:] = qbar[ni:] + self.dt * Ebar.dot(u)
 
-        Abar = np.zeros((N, ni*N))
-        lbA = np.zeros(N)
+        num_body_pts = 2
+        Abar = np.zeros((N*num_body_pts, ni*N))
+        lbA = np.zeros(N*num_body_pts)
 
         for k in range(N):
             q = qbar[(k+1)*ni:(k+2)*ni]
             p = self.model.forward(q)
             J = self.model.jacobian(q)
-            d = np.linalg.norm(p - pc)
 
             fbar[k*no:(k+1)*no] = p
             Jbar[k*no:(k+1)*no, k*ni:(k+1)*ni] = J
 
-            Abar[k, k*ni:(k+1)*ni] = (p - pc).T.dot(J) / np.linalg.norm(p - pc)
-            lbA[k] = 0.5 - d
+            # TODO hardcoded radius
+            # EE and obstacle
+            d_ee_obs = np.linalg.norm(p - pc) - 0.5
+            Abar[k*num_body_pts, k*ni:(k+1)*ni] = (p - pc).T.dot(J) / np.linalg.norm(p - pc)
+            lbA[k*num_body_pts] = -d_ee_obs
+
+            # base and obstacle
+            pb = q[:2]
+            Jb = np.array([[1, 0, 0, 0],
+                           [0, 1, 0, 0]])
+            d_base_obs = np.linalg.norm(pb - pc) - 0.5 - 0.56
+            Abar[k*num_body_pts+1, k*ni:(k+1)*ni] = (pb - pc).T.dot(Jb) / np.linalg.norm(pb - pc)
+            lbA[k*num_body_pts+1] = -d_base_obs
 
             Qbar[k*no:(k+1)*no, k*no:(k+1)*no] = self.Q
             Rbar[k*ni:(k+1)*ni, k*ni:(k+1)*ni] = self.R
@@ -109,7 +120,7 @@ class ObstacleAvoidingMPC(object):
         # num constraints = N obstacle constraints and ni*N joint acceleration
         # constraints
         num_var = ni * N
-        num_constraints = N + ni * N
+        num_constraints = 2*N + ni * N
         qp = qpoases.PySQProblem(num_var, num_constraints)
         options = qpoases.PyOptions()
         options.printLevel = qpoases.PyPrintLevel.NONE

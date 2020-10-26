@@ -3,9 +3,7 @@ import numpy as np
 from numpy.linalg import norm
 import matplotlib.pyplot as plt
 
-from mm2d.model import TopDownHolonomicModel
-from mm2d import obstacle, plotter
-from mm2d import control
+from mm2d import models, control, obstacle, plotter
 from mm2d.util import rms
 
 import IPython
@@ -28,7 +26,7 @@ def unit(a):
 def main():
     N = int(DURATION / DT) + 1
 
-    model = TopDownHolonomicModel(L1, L2, VEL_LIM, acc_lim=ACC_LIM, output_idx=[0, 1])
+    model = models.TopDownHolonomicModel(L1, L2, VEL_LIM, acc_lim=ACC_LIM, output_idx=[0, 1])
 
     W = 0.1 * np.eye(model.ni)
     K = np.eye(model.no)
@@ -81,7 +79,7 @@ def main():
         A = A.reshape((1, model.ni))
         lbA = np.array([obs.r + b - d])
 
-        # TODO could also do velocity damper constraints
+        # TODO velocity damper constraints - these are not working correctly
         # d = d - obs.r
         # xi = 1
         # ds = 0.1
@@ -101,8 +99,6 @@ def main():
         # advantage of not being discontinous in distance
         cos_angle = unit(p - pc).dot(unit(p1 - pc))
         if cos_angle >= cos_alpha:
-            # lbA = np.zeros_like(lbA)
-            # A = np.zeros_like(A)
             lbA = None
             A = None
 

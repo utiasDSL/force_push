@@ -1,11 +1,8 @@
 #!/usr/bin/env python
 import numpy as np
-from numpy.linalg import norm
 import matplotlib.pyplot as plt
 
-from mm2d.model import TopDownHolonomicModel
-from mm2d import obstacle, plotter
-from mm2d import control
+from mm2d import models, control, obstacle, plotter
 from mm2d.util import rms
 
 import IPython
@@ -30,7 +27,7 @@ def unit(a):
 def main():
     N = int(DURATION / DT) + 1
 
-    model = TopDownHolonomicModel(L1, L2, VEL_LIM, acc_lim=ACC_LIM, output_idx=[0, 1])
+    model = models.TopDownHolonomicModel(L1, L2, VEL_LIM, acc_lim=ACC_LIM, output_idx=[0, 1])
 
     Q = np.eye(model.no)
     R = np.eye(model.ni) * 0.1
@@ -62,9 +59,10 @@ def main():
     ps[0, :] = p
     pds[0, :] = p
 
-    circle_renderer = plotter.CircleRenderer(obs, pc)
-    robot_renderer = plotter.TopDownHolonomicRenderer(model, q)
-    plot = plotter.RealtimePlotter([robot_renderer, circle_renderer])
+    goal_renderer = plotter.PointRenderer(pg)
+    circle_renderer = plotter.CircleRenderer(obs.r, pc)
+    robot_renderer = plotter.TopDownHolonomicRenderer(model, q, render_collision=True)
+    plot = plotter.RealtimePlotter([robot_renderer, circle_renderer, goal_renderer])
     plot.start(limits=[-5, 10, -5, 10], grid=True)
 
     for i in range(N - 1):

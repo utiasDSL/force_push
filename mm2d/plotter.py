@@ -2,19 +2,35 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
+class PointRenderer:
+    def __init__(self, p):
+        self.p = p
+
+    def render(self, ax):
+        self.plot, = ax.plot(self.p[0], self.p[1], 'o', color='k')
+
+    def set_state(self, p):
+        self.p = p
+
+    def update_render(self):
+        self.plot.set_xdata(self.p[0])
+        self.plot.set_ydata(self.p[1])
+
+
 class CircleRenderer:
-    def __init__(self, circle, pc):
-        self.circle = circle
+    def __init__(self, r, pc):
+        self.r = r
         self.pc = pc
 
     def render(self, ax):
-        ax.add_patch(plt.Circle(self.pc, self.circle.r, color='k', fill=False))
+        self.patch = plt.Circle(self.pc, self.r, color='k', fill=False)
+        ax.add_patch(self.patch)
 
     def set_state(self, pc):
         self.pc = pc
 
     def update_render(self):
-        pass
+        self.patch.center = self.pc
 
 
 class TrajectoryRenderer(object):
@@ -36,14 +52,16 @@ class TrajectoryRenderer(object):
 
 
 class TopDownHolonomicRenderer:
-    def __init__(self, model, q0, length=1, width=0.5, render_path=True):
+    def __init__(self, model, q0, length=1, width=0.5, render_path=True, render_collision=False):
         self.model = model
         self.q = q0
         self.render_path = render_path
+        self.render_collision = render_collision
         self.xs = []
         self.ys = []
         self.length = length
         self.width = width
+        self.base_r = np.sqrt(0.25*width**2 + 0.25*length**2)
 
     def calc_base_points(self, q):
         ''' Generate an array of points representing the base of the robot. '''
@@ -87,6 +105,10 @@ class TopDownHolonomicRenderer:
         if self.render_path:
             self.path_plot, = ax.plot(self.xs, self.ys, color='r')
 
+        self.patch = plt.Circle(self.q[:2], self.base_r, color='r', fill=False)
+        if self.render_collision:
+            ax.add_patch(self.patch)
+
     def update_render(self):
         xa, ya = self.calc_arm_points(self.q)
         xb, yb = self.calc_base_points(self.q)
@@ -103,6 +125,8 @@ class TopDownHolonomicRenderer:
         if self.render_path:
             self.path_plot.set_xdata(self.xs)
             self.path_plot.set_ydata(self.ys)
+
+        self.patch.center = self.q[:2]
 
 
 class ThreeInputRenderer(object):

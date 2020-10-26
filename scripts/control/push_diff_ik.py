@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 from mm2d.model import TopDownHolonomicModel
 from mm2d import obstacle, plotter
-from mm2d import controller as control
+from mm2d import control
 from mm2d.util import rms
 
 import IPython
@@ -78,21 +78,38 @@ def main():
 
         # distance from obstacle constraints
         A = DT*(p - pc).T.dot(J) / d
-        A = A.reshape((model.ni, 1))
+        A = A.reshape((1, model.ni))
         lbA = np.array([obs.r + b - d])
+
+        # TODO could also do velocity damper constraints
+        # d = d - obs.r
+        # xi = 1
+        # ds = 0.1
+        # di = 1
+        # no = unit(pc - p)
+        # A = no.dot(J)
+        # A = A.reshape((model.ni, 1))
+        # lbA = np.array([-xi * (d - ds) / (di - ds)])
+        #
+        # if d >= di:
+        #     print(d)
+        #     lbA = np.zeros_like(lbA)
+        #     A = np.zeros_like(A)
 
         # only enforced away from the push location
         # TODO other option is to revisit the cardioid stuff, which has the
         # advantage of not being discontinous in distance
         cos_angle = unit(p - pc).dot(unit(p1 - pc))
         if cos_angle >= cos_alpha:
-            lbA = np.zeros_like(lbA)
-            A = np.zeros_like(A)
+            # lbA = np.zeros_like(lbA)
+            # A = np.zeros_like(A)
+            lbA = None
+            A = None
 
         vd = np.zeros(2)
         pd = p1
 
-        u = controller.solve(q, dq, pd, vd, A, lbA)
+        u = controller.solve(q, dq, pd, vd, A=A, lbA=lbA, ubA=None)
 
         # step the model
         q, dq = model.step(q, u, DT, dq_last=dq)

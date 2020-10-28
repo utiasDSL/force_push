@@ -27,6 +27,19 @@ class TopDownHolonomicModel:
                       θb + θ1 + θ2])
         return p[self.output_idx]
 
+    def forward_f(self, q):
+        pb = q[:2]
+        θb = q[2]
+        rx = 0.5
+        pf = pb + np.array([rx*np.cos(θb), -rx*np.sin(θb)])
+        return pf
+
+    def forward_m(self, q):
+        pf = self.forward_f(q)
+        pe = self.forward(q)
+        pm = 0.5*(pf + pe)
+        return pm
+
     def jacobian(self, q):
         ''' End effector Jacobian. '''
         _, _, θb, θ1, θ2 = q
@@ -39,6 +52,19 @@ class TopDownHolonomicModel:
             [0, 1, dp2dθb, dp2dθ1,  self.l2*np.cos(θb+θ1+θ2)],
             [0, 0, 1, 1, 1]])
         return J[self.output_idx, :]
+
+    def jacobian_f(self, q):
+        θb = q[2]
+        rx = 0.5
+        Jf = np.array([[1, 0, -rx*np.sin(θb), 0, 0],
+                       [0, 1, -rx*np.cos(θb), 0, 0]])
+        return Jf
+
+    def jacobian_m(self, q):
+        Jf = self.jacobian_f(q)
+        Je = self.jacobian(q)
+        Jm = 0.5*(Jf + Je)
+        return Jm
 
     def step(self, q, u, dt, dq_last=None):
         ''' Step forward one timestep. '''

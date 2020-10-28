@@ -3,11 +3,12 @@ import matplotlib.pyplot as plt
 
 
 class PointRenderer:
-    def __init__(self, p):
+    def __init__(self, p, color='k'):
         self.p = p
+        self.color = color
 
     def render(self, ax):
-        self.plot, = ax.plot(self.p[0], self.p[1], 'o', color='k')
+        self.plot, = ax.plot(self.p[0], self.p[1], 'o', color=self.color)
 
     def set_state(self, p):
         self.p = p
@@ -70,8 +71,8 @@ class TopDownHolonomicRenderer:
         rx = self.length * 0.5
         ry = self.width * 0.5
 
-        R = np.array([[ np.cos(θb), np.sin(θb)],
-                      [-np.sin(θb), np.cos(θb)]])
+        R = np.array([[np.cos(θb), -np.sin(θb)],
+                      [np.sin(θb),  np.cos(θb)]])
         p = pb + R.dot([[-rx, rx, rx, -rx, -rx],
                         [-ry, -ry, ry, ry, -ry]]).T
 

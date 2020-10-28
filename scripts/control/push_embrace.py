@@ -11,7 +11,7 @@ import IPython
 # robot parameters
 L1 = 1
 L2 = 1
-VEL_LIM = 1
+VEL_LIM = 0.5
 ACC_LIM = 1
 
 DT = 0.1      # simulation timestep (s)
@@ -31,8 +31,8 @@ def main():
 
     Q = np.eye(model.no)
     R = np.eye(model.ni) * 0.1
-    controller = control.MPC(model, MPC_DT, Q, R, VEL_LIM, ACC_LIM)
-    controller_obs = control.ObstacleAvoidingMPC(model, MPC_DT, Q, R, VEL_LIM, ACC_LIM)
+    controller = control.MPC2(model, MPC_DT, Q, R, VEL_LIM, ACC_LIM)
+    controller_obs = control.ObstacleAvoidingMPC2(model, MPC_DT, Q, R, VEL_LIM, ACC_LIM)
 
     ts = np.array([i * DT for i in range(N)])
     qs = np.zeros((N, model.ni))
@@ -59,10 +59,14 @@ def main():
     ps[0, :] = p
     pds[0, :] = p
 
+    using_obs_controller = True
+
     goal_renderer = plotter.PointRenderer(pg)
+    pm_renderer = plotter.PointRenderer(model.forward_m(q), color='b')
+    p1_renderer = plotter.PointRenderer(np.zeros(2), color='g')
     circle_renderer = plotter.CircleRenderer(obs.r, pc)
     robot_renderer = plotter.TopDownHolonomicRenderer(model, q, render_collision=True)
-    plot = plotter.RealtimePlotter([robot_renderer, circle_renderer, goal_renderer])
+    plot = plotter.RealtimePlotter([robot_renderer, circle_renderer, goal_renderer, pm_renderer, p1_renderer])
     plot.start(limits=[-5, 6, -5, 6], grid=True)
 
     for i in range(N - 1):
@@ -75,17 +79,24 @@ def main():
 
         p1 = pc - (obs.r - p1_depth) * unit(pg - pc)
         p2 = pc - obs.r * unit(pg - pc)
+        pm = model.forward_m(q)
 
         n = min(NUM_HORIZON, N - 1 - i)
 
         # if EE is near push location, use MPC without obstacle avoidance
         # constraints, since we actually want to contact the obstacle to push
         # it.
-        cos_angle = unit(p - pc).dot(unit(p1 - pc))
+        cos_angle = unit(pm - pc).dot(unit(p1 - pc))
         if cos_angle >= cos_alpha:
+            if using_obs_controller:
+                print('switch to non obs controller')
+            using_obs_controller = False
             pd = np.tile(p1, n)
-            u = controller.solve(q, dq, pd, n)
+            u = controller.solve(q, dq, pd, n, pc)
         else:
+            if not using_obs_controller:
+                print('switch to obs controller')
+            using_obs_controller = True
             pd = np.tile(p2, n)
             u = controller_obs.solve(q, dq, pd, n, pc)
 
@@ -94,10 +105,15 @@ def main():
         p = model.forward(q)
         v = model.jacobian(q).dot(dq)
 
-        # obstacle interaction
-        f = obs.calc_point_force(pc, p)
-        f, movement = obs.apply_force(f)
-        pc += movement
+        # obstacle interaction TODO refactor
+        f1 = obs.calc_point_force(pc, p)
+        xbase, ybase = robot_renderer.calc_base_points(q)
+        pb1 = np.array([xbase[1], ybase[1]])
+        pb2 = np.array([xbase[2], ybase[2]])
+        f2 = obs.calc_line_segment_force(pc, pb1, pb2)
+        f, movement = obs.apply_force(f1+f2)
+        if pc[0] <= 2:
+            pc += movement
 
         # if object is close enough to the goal position, stop
         # if np.linalg.norm(pg - pc) < 0.01:
@@ -113,6 +129,8 @@ def main():
         vs[i+1, :] = v
 
         # render
+        p1_renderer.set_state(p1)
+        pm_renderer.set_state(pm)
         robot_renderer.set_state(q)
         circle_renderer.set_state(pc)
         plot.update()

@@ -32,7 +32,7 @@ def main():
     controller = control.MPC(model, MPC_DT, Q, R, VEL_LIM, ACC_LIM)
     controller_obs = control.ObstacleAvoidingMPC(model, MPC_DT, Q, R, VEL_LIM, ACC_LIM)
 
-    ts = np.array([i * DT for i in range(N)])
+    ts = DT * np.arange(N)
     qs = np.zeros((N, model.ni))
     dqs = np.zeros((N, model.ni))
     us = np.zeros((N, model.ni))
@@ -60,7 +60,7 @@ def main():
     goal_renderer = plotter.PointRenderer(pg)
     circle_renderer = plotter.CircleRenderer(obs.r, pc)
     robot_renderer = plotter.TopDownHolonomicRenderer(model, q, render_collision=True)
-    plot = plotter.RealtimePlotter([robot_renderer, circle_renderer, goal_renderer])
+    plot = plotter.RealtimePlotter([robot_renderer, circle_renderer, goal_renderer], fps=1./DT)
     plot.start(limits=[-5, 6, -5, 6], grid=True)
 
     for i in range(N - 1):

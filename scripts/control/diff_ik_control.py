@@ -28,7 +28,7 @@ def main():
     K = np.eye(model.no)
     controller = control.DiffIKController(model, W, K, DT, VEL_LIM, ACC_LIM)
 
-    ts = np.array([i * DT for i in range(N)])
+    ts = DT * np.arange(N)
     qs = np.zeros((N, model.ni))
     dqs = np.zeros((N, model.ni))
     us = np.zeros((N, model.ni))

@@ -17,14 +17,15 @@ def right_pseudoinverse(J):
 
 
 def rotation_matrix(θ):
+    ''' 2D rotation matrix: rotates points counter-clockwise. '''
     return np.array([[np.cos(θ), -np.sin(θ)],
                      [np.sin(θ),  np.cos(θ)]])
+
 
 def rotation_jacobian(θ):
     ''' Derivative of rotation matrix (above) w.r.t θ. '''
     return np.array([[-np.sin(θ), -np.cos(θ)],
                      [ np.cos(θ), -np.sin(θ)]])
-
 
 
 def dist_to_line_segment(p, p1, p2):

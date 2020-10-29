@@ -34,7 +34,7 @@ def main():
     R = np.eye(model.ni) * 0.01
     mpc = MPC(model, DT, Q, R, VEL_LIM, ACC_LIM)
 
-    ts = np.array([i * DT for i in range(N)])
+    ts = DT * np.arange(N)
     qs = np.zeros((N, model.ni))
     dqs = np.zeros((N, model.ni))
     us = np.zeros((N, model.ni))

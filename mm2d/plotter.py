@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.animation import FFMpegWriter
 
 
 class PointRenderer:
@@ -237,10 +238,21 @@ class PendulumRenderer(object):
         self.plot.set_ydata([yo, y])
 
 
+class Video:
+    ''' Writer for a video recording of the real time plot. '''
+    def __init__(self, name='recording.mp4', fps=10):
+        self.name = name
+        self.writer = FFMpegWriter(fps=fps)
+
+    def setup(self, fig):
+        self.writer.setup(fig, self.name)
+
+
 class RealtimePlotter(object):
     ''' Real time plotter for the robot and associated trajectories. '''
-    def __init__(self, renderers):
+    def __init__(self, renderers, video=None):
         self.renderers = renderers
+        self.video = video
 
     def start(self, limits=[-1, 6, -1, 2], grid=False):
         ''' Launch the plot. '''
@@ -257,11 +269,12 @@ class RealtimePlotter(object):
         self.ax.set_xlim(limits[:2])
         self.ax.set_ylim(limits[2:])
 
-        # self.ax.set_xlim([-3, 3])
-        # self.ax.set_ylim([-3, 3])
-
         for renderer in self.renderers:
             renderer.render(self.ax)
+
+        if self.video:
+            self.video.setup(self.fig)
+            self.video.writer.grab_frame()
 
     def update(self):
         ''' Update plot based on current transforms. '''
@@ -272,5 +285,10 @@ class RealtimePlotter(object):
         self.fig.canvas.draw()
         self.fig.canvas.flush_events()
 
+        if self.video:
+            self.video.writer.grab_frame()
+
     def done(self):
         plt.ioff()
+        if self.video:
+            self.video.writer.finish()

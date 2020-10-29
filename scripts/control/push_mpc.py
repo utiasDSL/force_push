@@ -1,9 +1,6 @@
 #!/usr/bin/env python
 import numpy as np
-import matplotlib.pyplot as plt
-
 from mm2d import models, control, obstacle, plotter
-from mm2d.util import rms
 
 import IPython
 
@@ -27,7 +24,8 @@ def unit(a):
 def main():
     N = int(DURATION / DT) + 1
 
-    model = models.TopDownHolonomicModel(L1, L2, VEL_LIM, acc_lim=ACC_LIM, output_idx=[0, 1])
+    # model = models.TopDownHolonomicModel(L1, L2, VEL_LIM, acc_lim=ACC_LIM, output_idx=[0, 1])
+    model = models.TopDownHolonomicModelAD(L1, L2, VEL_LIM, acc_lim=ACC_LIM)
 
     Q = np.eye(model.no)
     R = np.eye(model.ni) * 0.1

@@ -4,4 +4,5 @@
 # evolution.
 from .objects import InvertedPendulum
 from .topdown import TopDownHolonomicModel
+from .topdown_ad import TopDownHolonomicModelAD
 from .side import ThreeInputModel

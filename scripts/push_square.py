@@ -2,8 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import jax.numpy as jnp
 import jax
-from functools import partial
 from scipy import optimize
+import time
 import IPython
 
 
@@ -15,10 +15,12 @@ M = np.diag([MASS, MASS, MOMENT_INERTIA])
 
 P1 = np.array([1, 1, 0])
 
+DT = 0.1
 pe1 = P1[:2] + np.array([-0.5*SIDE, 0.25*SIDE])
-ve = np.array([0.1, 0])
-pe2 = pe1 + ve
-pe3 = pe2 + ve
+ve = np.array([1., 0.])
+pe2 = pe1 + DT*ve
+pe3 = pe2 + DT*ve
+
 
 def square_pts(P):
     p = P[:2]
@@ -30,13 +32,16 @@ def square_pts(P):
     return p[:, None] + R.dot(square0)
 
 
-def objective(var, P):
-    return 0.5*jnp.dot(jnp.dot(P-var, M), P-var)
+def square_obj(Pc, Pc0):
+    # Pc is the opt variable
+    e = Pc0 - Pc
+    return 0.5*jnp.dot(jnp.dot(e, M), e)
 
 
-def eq_constraint(var, pe, embed=False):
-    pc = var[:2]
-    theta = var[2]
+def square_constr(Pc, pe):
+    # Pc is the opt var, pe is the new position of the EE
+    pc = Pc[:2]
+    theta = Pc[2]
     R = jnp.array([[jnp.cos(theta), -jnp.sin(theta)],
                    [jnp.sin(theta),  jnp.cos(theta)]]).T
     pb2 = 0.5*jnp.array([-SIDE, SIDE])
@@ -44,57 +49,141 @@ def eq_constraint(var, pe, embed=False):
     pb21 = pb2 - pb1
     x = jnp.dot(R, pe - pc) - pb1
     eq = jnp.dot(x, pb21) - SIDE*jnp.linalg.norm(x)
-    if embed:
-        IPython.embed()
     return eq
 
 
-# obj_fun = partial(objective, P1)
-# obj_jac = jax.jit(jax.jacfwd(obj_fun))
-# eq_fun = partial(eq_constraint, pe2)
-# eq_jac = jax.jit(jax.jacfwd(eq_fun))
-# eq_constr = {
-#         'type': 'eq',
-#         'fun': eq_fun,
-#         'jac': eq_jac
-# }
-#
-# res = optimize.minimize(obj_fun, P1, jac=obj_jac, constraints=eq_constr, method='slsqp')
-# P2 = res.x
-
-obj_jac = jax.jit(jax.jacfwd(objective, argnums=0))
-eq_jac = jax.jit(jax.jacfwd(eq_constraint, argnums=0))
+def square_lagrangian(var, Pc0, pe0):
+    # var is the full set of opt variables now: pc_k+1 (3), λ (1), ve (2)
+    Pc = var[:3]
+    λ = var[3]
+    ve = var[4:]
+    pe = pe0 + DT*ve
+    L = square_obj(Pc, Pc0) + λ*square_constr(Pc, pe)
+    return L
 
 
-def solve_opt(pe, Pc):
-    obj_args = (Pc,)
-    eq_args = (pe,)
-    eq_constr = {
-            'type': 'eq',
-            'fun': eq_constraint,
-            'jac': eq_jac,
-            'args': eq_args
-    }
-    res = optimize.minimize(objective, Pc, args=obj_args, jac=obj_jac,
+def control_obj(var, pg):
+    pc = var[:2]
+    e = pg - pc
+    return 0.5*jnp.dot(e, e)
+
+
+def radial_constr(var, limit):
+    ve = var[4:]
+    return limit**2 - jnp.dot(ve, ve)
+
+
+# new equality constraint is the derivative of the Lagrangian
+eq_fun_full = jax.jit(jax.grad(square_lagrangian, argnums=0))
+def eq_fun(var, Pc0, pe0):
+    return eq_fun_full(var, Pc0, pe0)[:4]
+
+eq_jac = jax.jit(jax.jacfwd(eq_fun, argnums=0))
+obj_jac = jax.jit(jax.jacfwd(control_obj, argnums=0))
+ineq_jac = jax.jit(jax.jacfwd(radial_constr, argnums=0))
+
+
+def solve_opt(Pc0, pe0, pg):
+    guess = np.concatenate((Pc0, np.array([0, 1, 0])))
+    obj_args = (pg,)
+    eq_args = (Pc0, pe0)
+    ineq_args = (1.0,)
+    eq_constr = [{
+        'type': 'eq',
+        'fun': eq_fun,
+        'jac': eq_jac,
+        'args': eq_args
+    }, {
+        'type': 'ineq',
+        'fun': radial_constr,
+        'jac': ineq_jac,
+        'args': ineq_args
+    }]
+    res = optimize.minimize(control_obj, guess, args=obj_args, jac=obj_jac,
                             constraints=eq_constr, method='slsqp')
     return res.x
 
 
-P2 = solve_opt(pe2, P1)
-P3 = solve_opt(pe3, P2)
+Pc0 = np.array([1, 1, 0])
+pe0 = Pc0[:2] + np.array([-0.5*SIDE, 0*SIDE])
+pg = Pc0[:2] + np.array([1, 0])
 
-# IPython.embed()
+# var1 = solve_opt(Pc0, pe0, pg)
+# Pc1 = var1[:3]
+# ve0 = var1[4:]
+# pe1 = pe0 + DT*ve0
+# var2 = solve_opt(Pc1, pe1, pg)
+# Pc2 = var2[:3]
+# ve1 = var2[4:]
+# pe2 = pe1 + DT*ve1
+Pc = Pc0
+pe = pe0
 
-square1 = square_pts(P1)
-square2 = square_pts(P2)
-square3 = square_pts(P3)
+N = 10
+pes = np.zeros((N, 2))
 
-plt.plot(square1[0, :], square1[1, :], label='1')
-plt.plot(square2[0, :], square2[1, :], label='2')
-plt.plot(square3[0, :], square3[1, :], label='3')
-plt.plot([pe1[0], pe2[0], pe3[0]], [pe1[1], pe2[1], pe3[1]], color='k')
+for i in range(N):
+    var = solve_opt(Pc, pe, pg)
+    Pc = var[:3]
+    ve = var[4:]
+    pe = pe + DT*ve
+    pes[i, :] = pe
+
+    square = square_pts(Pc)
+    plt.plot(square[0, :], square[1, :], label=str(i))
+
+
+# square0 = square_pts(Pc0)
+# square1 = square_pts(Pc1)
+# square2 = square_pts(Pc2)
+#
+# plt.plot(square0[0, :], square0[1, :], label='0')
+# plt.plot(square1[0, :], square1[1, :], label='1')
+# plt.plot(square2[0, :], square2[1, :], label='2')
+# plt.plot([pe0[0], pe1[0], pe2[0]], [pe0[1], pe1[1], pe2[1]], color='k')
+plt.plot(pes[:, 0], pes[:, 1], color='k')
 plt.xlim([-1, 3])
 plt.ylim([-1, 3])
 plt.legend()
 plt.grid()
 plt.show()
+
+# IPython.embed()
+# import sys; sys.exit()
+
+# obj_jac = jax.jit(jax.jacfwd(square_obj, argnums=0))
+# eq_jac = jax.jit(jax.jacfwd(square_constr, argnums=0))
+#
+#
+# def solve_opt(pe, Pc):
+#     obj_args = (Pc,)
+#     eq_args = (pe,)
+#     eq_constr = {
+#             'type': 'eq',
+#             'fun': eq_constraint,
+#             'jac': eq_jac,
+#             'args': eq_args
+#     }
+#     res = optimize.minimize(objective, Pc, args=obj_args, jac=obj_jac,
+#                             constraints=eq_constr, method='slsqp')
+#     return res.x
+#
+#
+# P2 = solve_opt(pe2, P1)
+# P3 = solve_opt(pe3, P2)
+#
+# # IPython.embed()
+#
+# square1 = square_pts(P1)
+# square2 = square_pts(P2)
+# square3 = square_pts(P3)
+#
+# plt.plot(square1[0, :], square1[1, :], label='1')
+# plt.plot(square2[0, :], square2[1, :], label='2')
+# plt.plot(square3[0, :], square3[1, :], label='3')
+# plt.plot([pe1[0], pe2[0], pe3[0]], [pe1[1], pe2[1], pe3[1]], color='k')
+# plt.xlim([-1, 3])
+# plt.ylim([-1, 3])
+# plt.legend()
+# plt.grid()
+# plt.show()

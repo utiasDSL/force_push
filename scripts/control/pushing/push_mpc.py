@@ -60,10 +60,12 @@ def main():
     goal_renderer = plotter.PointRenderer(pg)
     circle_renderer = plotter.CircleRenderer(obs.r, pc)
     robot_renderer = plotter.TopDownHolonomicRenderer(model, q, render_collision=True)
-    plot = plotter.RealtimePlotter([robot_renderer, circle_renderer, goal_renderer], fps=1./DT)
+    plot = plotter.RealtimePlotter([robot_renderer, circle_renderer, goal_renderer])
     plot.start(limits=[-5, 6, -5, 6], grid=True)
 
     for i in range(N - 1):
+        t = ts[i]
+        pg += np.array([0, DT*0.2])
         # experimental controller for aligning and pushing object to a goal
         # point
         cos_alpha = np.cos(np.pi * 0.25)

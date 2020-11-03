@@ -41,7 +41,7 @@ def main():
     pds = np.zeros((N, model.no))
 
     # initial state
-    q = np.array([0, 0, 0.25*np.pi, -0.5*np.pi])
+    q = np.array([0, 0, 0, 0.25*np.pi, -0.5*np.pi])
     p = model.forward(q)
     dq = np.zeros(model.ni)
     f = np.zeros(2)
@@ -57,7 +57,7 @@ def main():
     ps[0, :] = p
     pds[0, :] = p
 
-    circle_renderer = plotter.CircleRenderer(obs, pc)
+    circle_renderer = plotter.CircleRenderer(obs.r, pc)
     robot_renderer = plotter.TopDownHolonomicRenderer(model, q)
     plot = plotter.RealtimePlotter([robot_renderer, circle_renderer])
     plot.start(limits=[-5, 10, -5, 10], grid=True)
@@ -113,7 +113,8 @@ def main():
         v = model.jacobian(q).dot(dq)
 
         # obstacle interaction
-        f, movement = obs.force(pc, p)
+        f = obs.calc_point_force(pc, p)
+        f, movement = obs.apply_force(f)
         pc += movement
 
         # if object is close enough to the goal position, stop

@@ -1,3 +1,6 @@
+# An effort to create a model for a square as an energy-minimization problem,
+# which I then tried to include via Lagrangian constraints in a higher-level
+# control optimization.
 import numpy as np
 import matplotlib.pyplot as plt
 import jax.numpy as jnp
@@ -22,6 +25,11 @@ pe2 = pe1 + DT*ve
 pe3 = pe2 + DT*ve
 
 
+def rotation_matrix(θ):
+    return jnp.array([[jnp.cos(θ), -jnp.sin(θ)],
+                      [jnp.sin(θ),  jnp.cos(θ)]])
+
+
 def square_pts(P):
     p = P[:2]
     theta = P[2]
@@ -38,27 +46,44 @@ def square_obj(Pc, Pc0):
     return 0.5*jnp.dot(jnp.dot(e, M), e)
 
 
+def square_constr2(Pc1, pe1, Pc0, pe0, embed=False):
+    # this constraint assumes no slipping on the object surface, so that points
+    # should be the same in the body frame
+    pc0 = Pc0[:2]
+    θ0 = Pc0[2]
+    b0_R_w = rotation_matrix(-θ0)
+
+    pc1 = Pc1[:2]
+    θ1 = Pc1[2]
+    w_R_b1 = rotation_matrix(θ1)
+
+    eq = jnp.dot(jnp.dot(w_R_b1, b0_R_w), pe0 - pc0) - pe1 + pc1
+    if embed:
+        IPython.embed()
+    return eq
+
+
 def square_constr(Pc, pe):
     # Pc is the opt var, pe is the new position of the EE
     pc = Pc[:2]
-    theta = Pc[2]
-    R = jnp.array([[jnp.cos(theta), -jnp.sin(theta)],
-                   [jnp.sin(theta),  jnp.cos(theta)]]).T
+    θ = Pc[2]
+    b2_R_w = rotation_matrix(-θ)
     pb2 = 0.5*jnp.array([-SIDE, SIDE])
     pb1 = 0.5*jnp.array([-SIDE, -SIDE])
     pb21 = pb2 - pb1
-    x = jnp.dot(R, pe - pc) - pb1
+    x = jnp.dot(b2_R_w, pe - pc) - pb1
     eq = jnp.dot(x, pb21) - SIDE*jnp.linalg.norm(x)
     return eq
 
 
 def square_lagrangian(var, Pc0, pe0):
-    # var is the full set of opt variables now: pc_k+1 (3), λ (1), ve (2)
+    # var is the full set of opt variables now: pc_k+1 (3), λ (2), ve (2)
     Pc = var[:3]
     λ = var[3]
     ve = var[4:]
     pe = pe0 + DT*ve
     L = square_obj(Pc, Pc0) + λ*square_constr(Pc, pe)
+    # L = square_obj(Pc, Pc0) + jnp.dot(λ, square_constr2(Pc, pe, Pc0, pe0))
     return L
 
 
@@ -69,7 +94,7 @@ def control_obj(var, pg):
 
 
 def radial_constr(var, limit):
-    ve = var[4:]
+    ve = var[5:]
     return limit**2 - jnp.dot(ve, ve)
 
 
@@ -105,7 +130,7 @@ def solve_opt(Pc0, pe0, pg):
 
 
 Pc0 = np.array([1, 1, 0])
-pe0 = Pc0[:2] + np.array([-0.5*SIDE, 0*SIDE])
+pe0 = Pc0[:2] + np.array([-0.5*SIDE, 0.25*SIDE])
 pg = Pc0[:2] + np.array([1, 0])
 
 # var1 = solve_opt(Pc0, pe0, pg)
@@ -120,17 +145,27 @@ Pc = Pc0
 pe = pe0
 
 N = 10
-pes = np.zeros((N, 2))
+pes = np.zeros((N+1, 2))
+pes[0, :] = pe
+
+square = square_pts(Pc)
+plt.plot(square[0, :], square[1, :], label='0')
+# plt.plot(Pc[0], Pc[1], 'o', color='r')
+ax = plt.gca()
 
 for i in range(N):
     var = solve_opt(Pc, pe, pg)
     Pc = var[:3]
     ve = var[4:]
     pe = pe + DT*ve
-    pes[i, :] = pe
+    # square_constr2(Pc, pe, Pc0, pe0, embed=True)
+    pes[i+1, :] = pe
 
     square = square_pts(Pc)
-    plt.plot(square[0, :], square[1, :], label=str(i))
+    plt.plot(square[0, :], square[1, :], label=str(i+1))
+    # plt.plot(Pc[0], Pc[1], 'o', color='g')
+
+    # ax.add_patch(plt.Circle((Pc[0], Pc[1]), 0.5, color='g', fill=False))
 
 
 # square0 = square_pts(Pc0)

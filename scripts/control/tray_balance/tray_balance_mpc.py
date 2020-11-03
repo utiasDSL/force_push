@@ -26,13 +26,13 @@ MASS = 1.0
 MOMENT_INERTIA = 0.5*MASS*RADIUS**2
 MU = 10.0
 
-DT = 0.05        # timestep (s)
-DURATION = 2.0  # duration of trajectory (s)
+DT = 0.1        # timestep (s)
+DURATION = 5.0  # duration of trajectory (s)
 
 NUM_ITER = 3
 NUM_WSR = 100     # number of working set recalculations
 
-n = 3   # num iterations
+n = 5   # num horizon
 ns = 6  # num states
 ni = 3  # num inputs
 nf = 4  # num force variables
@@ -48,6 +48,10 @@ def skew1(x):
 
 def perp(v):
     return skew1(1).dot(v)
+
+
+def hessian(f, argnums=0):
+    return jax.jacfwd(jax.jacrev(f, argnums=argnums), argnums=argnums)
 
 
 class MPC(object):
@@ -76,13 +80,14 @@ class MPC(object):
         lbA_eq = ubA_eq = -self.eq_fun(x0, xd, var)
         ubA_ineq = -self.ineq_fun(x0, xd, var)
         lbA_ineq = -np.infty * np.ones(nc_ineq * n)  # no lower bound
-        lbA = np.vstack((lbA_eq, lbA_ineq))
-        ubA = np.vstack((ubA_eq, ubA_ineq))
+        lbA = np.concatenate((lbA_eq, lbA_ineq))
+        ubA = np.concatenate((ubA_eq, ubA_ineq))
 
-        return H, g, A, lbA, ubA
+
+        return np.array(H, dtype=np.float64), np.array(g, dtype=np.float64), np.array(A, dtype=np.float64), np.array(lbA, dtype=np.float64), np.array(ubA, dtype=np.float64)
 
     def _iterate(self, x0, xd, var):
-        qp = qpoases.PySQProblem(nv, nc)
+        qp = qpoases.PySQProblem(nv*n, nc*n)
         options = qpoases.PyOptions()
         options.printLevel = qpoases.PyPrintLevel.NONE
         qp.setOptions(options)
@@ -129,15 +134,15 @@ def main():
     t_p_1 = e_p_1 - e_p_t
     t_p_2 = e_p_2 - e_p_t
 
-
     # linear system
-    Z = jnp.zeros((3, 3))
-    A = jnp.eye(ns) + 0.1*jnp.block([[Z, jnp.eye(3)], [Z, Z]])
-    B = jnp.block([[Z], [jnp.eye(3)]])
+    Z = np.zeros((3, 3))
+    A = np.eye(ns) + DT*np.block([[Z, np.eye(3)], [Z, Z]])
+    B = DT*np.block([[Z], [np.eye(3)]])
 
     # MPC weights
-    Q = np.eye(ns)
-    R = 0.1*np.eye(ni)
+    Q = np.diag([1, 1, 0, 0, 0, 0])
+    # R = 0.1*np.eye(ni)
+    R = np.diag([0.01, 0.01, 0.01, 0.0001, 0.0001, 0.0001, 0.0001])
 
     # constant optimization matrices
     E = np.array([[0, 0, 0, 0, -1, 0, 0],
@@ -146,32 +151,34 @@ def main():
                   [0, 0, 0, -1, -MU, 0, 0],
                   [0, 0, 0, 0, 0, 1, -MU],
                   [0, 0, 0, 0, 0, -1, -MU]])
+    Ebar = np.kron(np.eye(n), E)
 
-    # ts = DT * np.arange(N)
-    # us = np.zeros((N, 3))
-    # pes = np.zeros((N, 3))
-    # ves = np.zeros((N, 3))
-    # pts = np.zeros((N, 3))
-    # fs = np.zeros((N, 4))
-    #
-    # pe = np.array([0, 0, 0])
-    # ve = np.array([0, 0, 0])
-    # pes[0, :] = pe
-    #
+    ts = DT * np.arange(N+n)
+    us = np.zeros((N, 3))
+    pes = np.zeros((N, 3))
+    pds = np.zeros((N, 3))
+    ves = np.zeros((N, 3))
+    pts = np.zeros((N, 3))
+    fs = np.zeros((N, 4))
+
+    x = np.zeros(ns)
+    pe = x[:3]
+    ve = x[3:]
+    pes[0, :] = pe
+    ves[0, :] = ve
+
     # timescaling = trajectories.CubicTimeScaling(0.5*DURATION)
     # traj1 = trajectories.PointToPoint(pe, pe + [2, 0, 0], timescaling, 0.5*DURATION)
     # traj2 = trajectories.PointToPoint(pe + [2, 0, 0], pe, timescaling, 0.5*DURATION)
     # trajectory = trajectories.Chain([traj1, traj2])
-    # # timescaling = trajectories.CubicTimeScaling(DURATION)
-    # # trajectory = trajectories.PointToPoint(pe, pe + [2, 0, 0], timescaling, DURATION)
-    #
-    # pds, *other = trajectory.sample(ts)
-    #
-    # tray_renderer = TrayRenderer(RADIUS, e_p_t, e_p_1, e_p_2, pe)
-    # trajectory_renderer = plotting.TrajectoryRenderer(trajectory, ts)
-    # video = plotting.Video(name='tray_balance.mp4', fps=1./DT)
-    # plotter = plotting.RealtimePlotter([tray_renderer, trajectory_renderer], video=None)
-    # plotter.start()
+    timescaling = trajectories.CubicTimeScaling(DURATION)
+    trajectory = trajectories.PointToPoint(pe, pe + [2, 0, 0], timescaling, DURATION)
+
+    tray_renderer = TrayRenderer(RADIUS, e_p_t, e_p_1, e_p_2, pe)
+    trajectory_renderer = plotting.TrajectoryRenderer(trajectory, ts)
+    video = plotting.Video(name='tray_balance_mpc.mp4', fps=1./DT)
+    plotter = plotting.RealtimePlotter([tray_renderer, trajectory_renderer], video=None)
+    plotter.start()
 
 
     def force_balance_equations(x, u, f):
@@ -192,10 +199,12 @@ def main():
         x = x0
 
         for i in range(n):
-            u = var[i*nv:i*nv+ni]
+            v = var[i*nv:(i+1)*nv]
+            # u = var[i*nv:i*nv+ni]
+            u = v[:ni]
             x = jnp.dot(A, x) + jnp.dot(B, u)
             e = xd[i*ns:(i+1)*ns] - x
-            obj = obj + jnp.linalg.multi_dot([e, Q, e]) + jnp.linalg.multi_dot([u, R, u])
+            obj = obj + jnp.linalg.multi_dot([e, Q, e]) + jnp.linalg.multi_dot([v, R, v])
 
         return obj
 
@@ -217,123 +226,41 @@ def main():
         return eq_con
 
     def ineq_con_unrolled(x0, xd, var):
-        Ebar = np.tile(E, (n, 1))
         return np.dot(Ebar, var)
 
     def ineq_con_unrolled_jac(x0, xd, var):
         # trivial Jacobian since ineq constraints are already linear
-        Ebar = np.tile(E, (n, 1))
         return Ebar
 
-    # def opt_unrolled(x0, xd, var):
-    #     # TODO need to figure out if it is possible to have a variable n
-    #     # is it actually needed? what if we optimize by propagating out the
-    #     # last state over the horizon?
-    #     # var is nv * n, where nv = 3 + 4
-    #     obj = 0
-    #     con = jnp.zeros(n * nc)
-    #     xi = x0
-    #
-    #     for i in range(n):
-    #         vari = var[i*nv:(i+1)*nv]
-    #         ui = vari[:ni]
-    #         fi = vari[ni:]
-    #
-    #         # constraints
-    #         # TODO we could keep all the eq constraints first and add the
-    #         # (linear) ineq constraints later (w.o the auto-diff fuss)
-    #         eq_con = force_balance_equations(xi, ui, fi)
-    #         ineq_con = jnp.dot(E, vari)
-    #         con = jax.ops.index_update(con, jax.ops.index[i*nc:i*nc+nc_eq], eq_con)
-    #         con = jax.ops.index_update(con, jax.ops.index[i*nc+nc_eq:(i+1)*nc], ineq_con)
-    #
-    #         # propagate state and update objective
-    #         xi = jnp.dot(A, xi) + jnp.dot(B, ui)  # propagate state
-    #         ei = xd[i*ns:(i+1)*ns] - xi
-    #         obj = obj + jnp.linalg.multi_dot([ei, Q, ei]) + jnp.linalg.multi_dot([ui, R, ui])
-    #
-    #     return obj, con
-
-    # x0 = np.zeros(ns)
-    # xd = np.ones(n*ns)
-    # var = np.ones(n*nv)
-
     obj_fun = jax.jit(objective_unrolled)
-    eq_fun = jax.jit(eq_con_unrolled)
     obj_jac = jax.jit(jax.jacfwd(objective_unrolled, argnums=2))
+    obj_hess = jax.jit(hessian(objective_unrolled, argnums=2))
+    eq_fun = jax.jit(eq_con_unrolled)
     eq_jac = jax.jit(jax.jacfwd(eq_con_unrolled, argnums=2))
 
     controller = MPC(obj_fun, obj_jac, obj_hess, eq_fun, eq_jac,
                      ineq_con_unrolled, ineq_con_unrolled_jac)
 
-    J_obj, J_con = jac(x0, xd, var)
-    IPython.embed()
-    return
-
     for i in range(N - 1):
-        t = ts[i]
-
-        pd, vd, ad = trajectory.sample(t, flatten=True)
-
-        # solve opt problem
-        nv = 7
-        nc = 9
-
-        # Reference values determined by PD with feedforward
-        ddx_ref = kp*(pd[0] - pe[0]) + kv*(vd[0] - ve[0]) + ad[0]
-        ddy_ref = kp*(pd[1] - pe[1]) + kv*(vd[1] - ve[1]) + ad[1]
-
-        # Construct reference for opt variables: first 3 are x, y, θ; last four
-        # are the two contact forces (2 components each). For now, we only care about x
-        # and y and let the angle be a free DOF.
-        Xref = np.zeros(nv)
-        Xref[0] = ddx_ref
-        Xref[1] = ddy_ref
-
-        # cost
-        H = Q + R
-        g = -Q.dot(Xref)
-
-        # constraints
-        theta = pe[2]
-        w_R_e = util.rotation_matrix(theta)
-
-        # LHS of force balance equality constraints
-        D = np.block([[w_R_e,       w_R_e],
-                      [perp(t_p_1), perp(t_p_2)]])
-        M2 = np.block([[MASS*np.eye(2), skew1(1).dot(w_R_e).dot(e_p_t)[:, None]],
-                       [0, 0,        MOMENT_INERTIA]])
-        A = np.block([[M2, -D],
-                      [E]])
-
-        # RHS of force balance equality constraints
-        eqA = np.array([0, -MASS*GRAVITY, 0]) + np.append(MASS*ve[2]**2*w_R_e.dot(e_p_t), 0)
-
-        lbA = np.concatenate((eqA, lbA_E))
-        ubA = np.concatenate((eqA, ubA_E))
-
-        # solve the QP
-        qp = qpoases.PyQProblem(nv, nc)
-        options = qpoases.PyOptions()
-        options.printLevel = qpoases.PyPrintLevel.NONE
-        qp.setOptions(options)
-        ret = qp.init(H, g, A, None, None, lbA, ubA, np.array([NUM_WSR]))
-
-        X = np.zeros(7)
-        qp.getPrimalSolution(X)
-        f = X[3:]
-        f1 = f[:2]
-        f2 = f[2:]
-        print(f'f1 = {f1}; f2 = {f2}')
+        t = np.minimum(ts[i+1:i+1+n], DURATION)
+        pd, vd, _ = trajectory.sample(t, flatten=True)
+        xd = np.zeros(ns*n)
+        try:
+            for j in range(n):
+                xd[j*ns:j*ns+3] = pd[j*3:(j+1)*3]
+                xd[j*ns+3:(j+1)*ns] = vd[j*3:(j+1)*3]
+        except ValueError:
+            IPython.embed()
+        u = controller.solve(x, xd)
 
         # integrate the system
-        u = X[:3]  # EE accel input is first three values
-        ve = ve + DT * u
-        pe = pe + DT * ve
+        x = A.dot(x) + B.dot(u)
+        pe = x[:3]
+        ve = x[3:]
 
         # tray position is a constant offset from EE frame
-        theta = pe[2]
-        w_R_e = util.rotation_matrix(theta)
+        θ = pe[2]
+        w_R_e = util.rotation_matrix(θ)
         pt = pe + np.append(w_R_e.dot(e_p_t), 0)
 
         # record
@@ -341,14 +268,12 @@ def main():
         pes[i+1, :] = pe
         ves[i+1, :] = ve
         pts[i+1, :] = pt
-        pds[i, :] = pd
-        fs[i, :] = f
+        pds[i+1, :] = pd[:3]
+        # fs[i, :] = f
 
         tray_renderer.set_state(pt)
         plotter.update()
     plotter.done()
-
-    # IPython.embed()
 
     # xe = pds[1:, 0] - ps[1:, 0]
     # ye = pds[1:, 1] - ps[1:, 1]
@@ -356,10 +281,10 @@ def main():
     # print('RMSE(y) = {}'.format(rms(ye)))
 
     plt.figure()
-    plt.plot(ts, pds[:, 0], label='$x_d$', color='b', linestyle='--')
-    plt.plot(ts, pds[:, 1], label='$y_d$', color='r', linestyle='--')
-    plt.plot(ts, pes[:, 0],  label='$x$', color='b')
-    plt.plot(ts, pes[:, 1],  label='$y$', color='r')
+    plt.plot(ts[:N], pds[:, 0], label='$x_d$', color='b', linestyle='--')
+    plt.plot(ts[:N], pds[:, 1], label='$y_d$', color='r', linestyle='--')
+    plt.plot(ts[:N], pes[:, 0],  label='$x$', color='b')
+    plt.plot(ts[:N], pes[:, 1],  label='$y$', color='r')
     plt.grid()
     plt.legend()
     plt.xlabel('Time (s)')

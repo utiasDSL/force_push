@@ -52,48 +52,34 @@ def perp(v):
 
 class MPC(object):
     ''' Model predictive controller. '''
-    def __init__(self, fun, jac, hess):
-        self.fun = fun
-        self.jac = jac
-        self.hess = hess
+    def __init__(self, obj_fun, obj_jac, obj_hess, eq_fun, eq_jac, ineq_fun, ineq_jac):
+        self.obj_fun = obj_fun
+        self.obj_jac = obj_jac
+        self.obj_hess = obj_hess
+
+        self.eq_fun = eq_fun
+        self.eq_jac = eq_jac
+
+        self.ineq_fun = ineq_fun
+        self.ineq_jac = ineq_jac
 
     def _lookahead(self, x0, xd, var):
         ''' Generate lifted matrices proprogating the state N timesteps into the
             future. '''
-        # TODO I think I'll need to restructure things a bit: divide up the
-        # functions for these different things
-        obj, con = self.fun(x0, vd, var)
-        J_obj, J_con = self.jac(x0, vd, var)
-        H = self.hess(x0, vd, var)
-        
-        # ni = self.model.ni  # number of joints
-        # no = self.model.no  # number of Cartesian outputs
-        #
-        # fbar = np.zeros(no*N)         # Lifted forward kinematics
-        # Jbar = np.zeros((no*N, ni*N))  # Lifted Jacobian
-        # Qbar = np.kron(np.eye(N), self.Q)
-        # Rbar = np.kron(np.eye(N), self.R)
-        #
-        # # lower triangular matrix of ni*ni identity matrices
-        # Ebar = np.kron(np.tril(np.ones((N, N))), np.eye(ni))
-        #
-        # # Integrate joint positions from the last iteration
-        # qbar = np.tile(q0, N+1)
-        # qbar[ni:] = qbar[ni:] + self.dt * Ebar.dot(u)
-        #
-        # for k in range(N):
-        #     q = qbar[(k+1)*ni:(k+2)*ni]
-        #     p = self.model.forward(q)
-        #     J = self.model.jacobian(q)
-        #
-        #     fbar[k*no:(k+1)*no] = p
-        #     Jbar[k*no:(k+1)*no, k*ni:(k+1)*ni] = J
-        #
-        # dbar = fbar - pr
-        # H = Rbar + self.dt**2*Ebar.T.dot(Jbar.T).dot(Qbar).dot(Jbar).dot(Ebar)
-        # g = u.T.dot(Rbar) + self.dt*dbar.T.dot(Qbar).dot(Jbar).dot(Ebar)
-        #
-        # return H, g
+        H = self.obj_hess(x0, xd, var)
+        g = self.obj_jac(x0, xd, var)
+
+        A_eq = self.eq_jac(x0, xd, var)
+        A_ineq = self.ineq_jac(x0, xd, var)
+        A = np.vstack((A_eq, A_ineq))
+
+        lbA_eq = ubA_eq = -self.eq_fun(x0, xd, var)
+        ubA_ineq = -self.ineq_fun(x0, xd, var)
+        lbA_ineq = -np.infty * np.ones(nc_ineq * n)  # no lower bound
+        lbA = np.vstack((lbA_eq, lbA_ineq))
+        ubA = np.vstack((ubA_eq, ubA_ineq))
+
+        return H, g, A, lbA, ubA
 
     def _iterate(self, x0, xd, var):
         qp = qpoases.PySQProblem(nv, nc)
@@ -102,16 +88,16 @@ class MPC(object):
         qp.setOptions(options)
 
         # Initial opt problem.
-        H, g = self._lookahead(q0, pr, u, N)
-        ret = qp.init(H, g, A, lb, ub, lbA, ubA, np.array([NUM_WSR]))
+        H, g, A, lbA, ubA = self._lookahead(x0, xd, var)
+        qp.init(H, g, A, None, None, lbA, ubA, np.array([NUM_WSR]))
         delta = np.zeros(nv * n)
         qp.getPrimalSolution(delta)
         var = var + delta
 
         # Remaining sequence is hotstarted from the first.
         for i in range(NUM_ITER - 1):
-            H, g = self._lookahead(q0, pr, u, N)
-            qp.hotstart(H, g, A, lb, ub, lbA, ubA, np.array([NUM_WSR]))
+            H, g, A, lbA, ubA = self._lookahead(x0, xd, var)
+            qp.hotstart(H, g, A, None, None, lbA, ubA, np.array([NUM_WSR]))
             qp.getPrimalSolution(delta)
             var = var + delta
 
@@ -200,7 +186,8 @@ def main():
         return jnp.dot(M, u) - jnp.dot(D, f) - rhs
 
     def objective_unrolled(x0, xd, var):
-        ''' Unroll the objective. '''
+        ''' Unroll the objective over n timesteps. '''
+        # TODO this could fairly easily be done without autodiff
         obj = 0
         x = x0
 
@@ -212,42 +199,72 @@ def main():
 
         return obj
 
-    def opt_unrolled(x0, xd, var):
-        # TODO need to figure out if it is possible to have a variable n
-        # is it actually needed? what if we optimize by propagating out the
-        # last state over the horizon?
-        # var is nv * n, where nv = 3 + 4
-        obj = 0
-        con = jnp.zeros(n * nc)
-        xi = x0
+    def eq_con_unrolled(x0, xd, var):
+        ''' Unroll the equality (force balance) constraints over n timesteps. '''
+        eq_con = jnp.zeros(n * nc_eq)
+        x = x0
 
         for i in range(n):
             vari = var[i*nv:(i+1)*nv]
-            ui = vari[:ni]
-            fi = vari[ni:]
+            u = vari[:ni]
+            f = vari[ni:]
 
-            # constraints
-            # TODO we could keep all the eq constraints first and add the
-            # (linear) ineq constraints later (w.o the auto-diff fuss)
-            eq_con = force_balance_equations(xi, ui, fi)
-            ineq_con = jnp.dot(E, vari)
-            con = jax.ops.index_update(con, jax.ops.index[i*nc:i*nc+nc_eq], eq_con)
-            con = jax.ops.index_update(con, jax.ops.index[i*nc+nc_eq:(i+1)*nc], ineq_con)
+            eq_coni = force_balance_equations(x, u, f)
+            eq_con = jax.ops.index_update(eq_con, jax.ops.index[i*nc_eq:(i+1)*nc_eq], eq_coni)
 
-            # propagate state and update objective
-            xi = jnp.dot(A, xi) + jnp.dot(B, ui)  # propagate state
-            ei = xd[i*ns:(i+1)*ns] - xi
-            obj = obj + jnp.linalg.multi_dot([ei, Q, ei]) + jnp.linalg.multi_dot([ui, R, ui])
+            x = jnp.dot(A, x) + jnp.dot(B, u)  # propagate state
 
-        return obj, con
+        return eq_con
 
-    x0 = np.zeros(ns)
-    xd = np.ones(n*ns)
-    # u = 0.1*np.ones(3*n)
-    # f = np.ones(4)
-    var = np.ones(n*nv)
+    def ineq_con_unrolled(x0, xd, var):
+        Ebar = np.tile(E, (n, 1))
+        return np.dot(Ebar, var)
 
-    jac = jax.jit(jax.jacfwd(opt_unrolled, argnums=2))
+    def ineq_con_unrolled_jac(x0, xd, var):
+        # trivial Jacobian since ineq constraints are already linear
+        Ebar = np.tile(E, (n, 1))
+        return Ebar
+
+    # def opt_unrolled(x0, xd, var):
+    #     # TODO need to figure out if it is possible to have a variable n
+    #     # is it actually needed? what if we optimize by propagating out the
+    #     # last state over the horizon?
+    #     # var is nv * n, where nv = 3 + 4
+    #     obj = 0
+    #     con = jnp.zeros(n * nc)
+    #     xi = x0
+    #
+    #     for i in range(n):
+    #         vari = var[i*nv:(i+1)*nv]
+    #         ui = vari[:ni]
+    #         fi = vari[ni:]
+    #
+    #         # constraints
+    #         # TODO we could keep all the eq constraints first and add the
+    #         # (linear) ineq constraints later (w.o the auto-diff fuss)
+    #         eq_con = force_balance_equations(xi, ui, fi)
+    #         ineq_con = jnp.dot(E, vari)
+    #         con = jax.ops.index_update(con, jax.ops.index[i*nc:i*nc+nc_eq], eq_con)
+    #         con = jax.ops.index_update(con, jax.ops.index[i*nc+nc_eq:(i+1)*nc], ineq_con)
+    #
+    #         # propagate state and update objective
+    #         xi = jnp.dot(A, xi) + jnp.dot(B, ui)  # propagate state
+    #         ei = xd[i*ns:(i+1)*ns] - xi
+    #         obj = obj + jnp.linalg.multi_dot([ei, Q, ei]) + jnp.linalg.multi_dot([ui, R, ui])
+    #
+    #     return obj, con
+
+    # x0 = np.zeros(ns)
+    # xd = np.ones(n*ns)
+    # var = np.ones(n*nv)
+
+    obj_fun = jax.jit(objective_unrolled)
+    eq_fun = jax.jit(eq_con_unrolled)
+    obj_jac = jax.jit(jax.jacfwd(objective_unrolled, argnums=2))
+    eq_jac = jax.jit(jax.jacfwd(eq_con_unrolled, argnums=2))
+
+    controller = MPC(obj_fun, obj_jac, obj_hess, eq_fun, eq_jac,
+                     ineq_con_unrolled, ineq_con_unrolled_jac)
 
     J_obj, J_con = jac(x0, xd, var)
     IPython.embed()

@@ -58,7 +58,7 @@ def hessian(f, argnums=0):
 
 class MPC(object):
     ''' Model predictive controller. '''
-    def __init__(self, obj_fun, obj_jac, obj_hess, eq_fun, eq_jac, ineq_fun, ineq_jac):
+    def __init__(self, obj_fun, obj_jac, obj_hess, eq_fun, eq_jac, ineq_fun, ineq_jac, verbose=False):
         self.obj_fun = obj_fun
         self.obj_jac = obj_jac
         self.obj_hess = obj_hess
@@ -68,6 +68,14 @@ class MPC(object):
 
         self.ineq_fun = ineq_fun
         self.ineq_jac = ineq_jac
+
+        self.qp = qpoases.PySQProblem(nv*n, nc*n)
+        if not verbose:
+            options = qpoases.PyOptions()
+            options.printLevel = qpoases.PyPrintLevel.NONE
+            self.qp.setOptions(options)
+
+        self.qp_initialized = False
 
     def _lookahead(self, x0, xd, var):
         ''' Generate lifted matrices proprogating the state N timesteps into the
@@ -85,28 +93,28 @@ class MPC(object):
         lbA = np.concatenate((lbA_eq, lbA_ineq))
         ubA = np.concatenate((ubA_eq, ubA_ineq))
 
-        print('lookahead done')
-
-        return np.array(H, dtype=np.float64), np.array(g, dtype=np.float64), np.array(A, dtype=np.float64), np.array(lbA, dtype=np.float64), np.array(ubA, dtype=np.float64)
+        return np.array(H, dtype=np.float64), np.array(g, dtype=np.float64), \
+               np.array(A, dtype=np.float64), np.array(lbA, dtype=np.float64), \
+               np.array(ubA, dtype=np.float64)
 
     def _iterate(self, x0, xd, var):
-        qp = qpoases.PySQProblem(nv*n, nc*n)
-        options = qpoases.PyOptions()
-        options.printLevel = qpoases.PyPrintLevel.NONE
-        qp.setOptions(options)
+        delta = np.zeros(nv * n)
 
         # Initial opt problem.
         H, g, A, lbA, ubA = self._lookahead(x0, xd, var)
-        qp.init(H, g, A, None, None, lbA, ubA, np.array([NUM_WSR]))
-        delta = np.zeros(nv * n)
-        qp.getPrimalSolution(delta)
+        if not self.qp_initialized:
+            self.qp.init(H, g, A, None, None, lbA, ubA, np.array([NUM_WSR]))
+            self.qp_initialized = True
+        else:
+            self.qp.hotstart(H, g, A, None, None, lbA, ubA, np.array([NUM_WSR]))
+        self.qp.getPrimalSolution(delta)
         var = var + delta
 
         # Remaining sequence is hotstarted from the first.
         for i in range(NUM_ITER - 1):
             H, g, A, lbA, ubA = self._lookahead(x0, xd, var)
-            qp.hotstart(H, g, A, None, None, lbA, ubA, np.array([NUM_WSR]))
-            qp.getPrimalSolution(delta)
+            self.qp.hotstart(H, g, A, None, None, lbA, ubA, np.array([NUM_WSR]))
+            self.qp.getPrimalSolution(delta)
             var = var + delta
 
         return var
@@ -258,8 +266,6 @@ def main():
             X_ee_d[j*ns:j*ns+3] = pd[j*3:(j+1)*3]
             X_ee_d[j*ns+3:(j+1)*ns] = vd[j*3:(j+1)*3]
         u = controller.solve(X_q, X_ee_d)
-
-        print(f'u = {u}')
 
         # integrate the system
         X_q = model.step_unconstrained(X_q, u, SIM_DT)

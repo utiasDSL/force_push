@@ -1,6 +1,4 @@
 #!/usr/bin/env python
-import jax.numpy as jnp
-import jax
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -150,76 +148,6 @@ def main():
     plotter = plotting.RealtimePlotter([tray_renderer, trajectory_renderer], video=None)
     plotter.start()
 
-    # linear system
-    Z = jnp.zeros((3, 3))
-    A = jnp.eye(6) + 0.1*jnp.block([[Z, jnp.eye(3)], [Z, Z]])
-    B = jnp.block([[Z], [jnp.eye(3)]])
-
-    # MPC weights
-    Q = jnp.eye(6)
-    R = 0.1*jnp.eye(3)
-
-    def force_balance_equations(x, u, f):
-        θ, dθ = x[2], x[5]
-        w_R_e = jnp.array([[jnp.cos(θ), -jnp.sin(θ)],
-                           [jnp.sin(θ),  jnp.cos(θ)]])
-        D = jnp.block([[w_R_e,       w_R_e],
-                      [perp(t_p_1), perp(t_p_2)]])
-        M = jnp.block([[MASS*jnp.eye(2), jnp.dot(jnp.dot(skew1(1), w_R_e), e_p_t).reshape(2, 1)],
-                      [0, 0,             MOMENT_INERTIA]])
-        rhs = jnp.array([0, -MASS*GRAVITY, 0]) + jnp.append(MASS*dθ**2*jnp.dot(w_R_e, e_p_t), 0)
-        return jnp.dot(M, u) - jnp.dot(D, f) - rhs
-
-    def opt_unrolled(x0, xd, var):
-        # TODO need to figure out if it is possible to have a variable n
-        # is it actually needed? what if we optimize by propagating out the
-        # last state over the horizon?
-        # var is nv * n, where nv = 3 + 4
-        n = 3   # num iterations
-        nv = 7  # num opt vars
-        ns = 6  # num states
-        ni = 3  # num inputs
-        nc_eq = 3
-        nc_ineq = 6
-        nc = nc_eq + nc_ineq  # num constraints
-
-        obj = 0
-        con = jnp.zeros(n * nc)
-        xi = x0
-
-        for i in range(n):
-            vari = var[i*nv:(i+1)*nv]
-            ui = vari[:3]
-            fi = vari[3:]
-
-            # constraints
-            # TODO we could keep all the eq constraints first and add the
-            # (linear) ineq constraints later (w.o the auto-diff fuss)
-            eq_con = force_balance_equations(xi, ui, fi)
-            ineq_con = jnp.dot(E, vari)
-            con = jax.ops.index_update(con, jax.ops.index[i*nc:i*nc+nc_eq], eq_con)
-            con = jax.ops.index_update(con, jax.ops.index[i*nc+nc_eq:(i+1)*nc], ineq_con)
-
-            # propagate state and update objective
-            xi = jnp.dot(A, xi) + jnp.dot(B, ui)  # propagate state
-            ei = xd[i*ns:(i+1)*ns] - xi
-            obj = obj + jnp.linalg.multi_dot([ei, Q, ei]) + jnp.linalg.multi_dot([ui, R, ui])
-
-        return obj, con
-
-    n = 3
-    x0 = np.zeros(6)
-    xd = np.ones(6*n)
-    # u = 0.1*np.ones(3*n)
-    # f = np.ones(4)
-    var = np.ones(7*n)
-
-    jac = jax.jit(jax.jacfwd(opt_unrolled, argnums=2))
-
-    J_obj, J_con = jac(x0, xd, var)
-    IPython.embed()
-    return
-
     for i in range(N - 1):
         t = ts[i]
 
@@ -274,7 +202,7 @@ def main():
         f = X[3:]
         f1 = f[:2]
         f2 = f[2:]
-        print(f'f1 = {f1}; f2 = {f2}')
+        # print(f'f1 = {f1}; f2 = {f2}')
 
         # integrate the system
         u = X[:3]  # EE accel input is first three values

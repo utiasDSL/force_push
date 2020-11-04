@@ -6,8 +6,9 @@ import matplotlib.pyplot as plt
 
 from mm2d import plotter as plotting
 from mm2d import trajectory as trajectories
-from mm2d import util
+from mm2d import util, models
 from tray_balance import TrayRenderer
+from mm_model import ThreeInputModel
 import qpoases
 
 import IPython
@@ -55,19 +56,6 @@ def hessian(f, argnums=0):
     return jax.jacfwd(jax.jacrev(f, argnums=argnums), argnums=argnums)
 
 
-class LinearModel:
-    ''' Generic linear model. '''
-    def __init__(self, A, B):
-        self.A = A
-        self.B = B
-
-    def step(self, x, u, dt):
-        ''' Step forward one timestep. '''
-        dx = jnp.dot(self.A, x) + jnp.dot(self.B, u)
-        x = x + dt * dx
-        return x
-
-
 class MPC(object):
     ''' Model predictive controller. '''
     def __init__(self, obj_fun, obj_jac, obj_hess, eq_fun, eq_jac, ineq_fun, ineq_jac):
@@ -97,6 +85,7 @@ class MPC(object):
         lbA = np.concatenate((lbA_eq, lbA_ineq))
         ubA = np.concatenate((ubA_eq, ubA_ineq))
 
+        print('lookahead done')
 
         return np.array(H, dtype=np.float64), np.array(g, dtype=np.float64), np.array(A, dtype=np.float64), np.array(lbA, dtype=np.float64), np.array(ubA, dtype=np.float64)
 
@@ -148,13 +137,7 @@ def main():
     t_p_1 = e_p_1 - e_p_t
     t_p_2 = e_p_2 - e_p_t
 
-    # linear system
-    Z = np.zeros((3, 3))
-    # A = np.eye(ns) + DT*np.block([[Z, np.eye(3)], [Z, Z]])
-    # B = DT*np.block([[Z], [np.eye(3)]])
-    A = np.block([[Z, np.eye(3)], [Z, Z]])
-    B = np.block([[Z], [np.eye(3)]])
-    model = LinearModel(A, B)
+    model = ThreeInputModel(L1, L2, VEL_LIM, ACC_LIM)
 
     # MPC weights
     Q = np.diag([1, 1, 0, 0, 0, 0])
@@ -177,9 +160,11 @@ def main():
     pts = np.zeros((N, 3))
     fs = np.zeros((N, 4))
 
-    x = np.zeros(ns)
-    pe = x[:3]
-    ve = x[3:]
+    # state of joints
+    X_q = np.array([0, 0, 0, 0, 0, 0], dtype=np.float32)
+
+    pe = model.ee_position(X_q)
+    ve = model.ee_velocity(X_q)
     pes[0, :] = pe
     ves[0, :] = ve
 
@@ -191,17 +176,18 @@ def main():
     # timescaling = trajectories.CubicTimeScaling(DURATION-1)
     # trajectory = trajectories.PointToPoint(pe, pe + [2, 0, 0], timescaling, DURATION-1)
 
-    trajectory = trajectories.Point(pe + [2, 0, 0])
+    trajectory = trajectories.Point(pe + np.array([2, 0, 0]))
 
+    rendering_model = models.ThreeInputModel(L1, L2, VEL_LIM, ACC_LIM)
+    robot_renderer = plotting.ThreeInputRenderer(rendering_model, X_q[:3])
     tray_renderer = TrayRenderer(RADIUS, e_p_t, e_p_1, e_p_2, pe)
     trajectory_renderer = plotting.TrajectoryRenderer(trajectory, ts)
     video = plotting.Video(name='tray_balance_mpc.mp4', fps=1./SIM_DT)
-    plotter = plotting.RealtimePlotter([tray_renderer, trajectory_renderer], video=None)
+    plotter = plotting.RealtimePlotter([robot_renderer, tray_renderer, trajectory_renderer], video=None)
     plotter.start(grid=True)
 
-
-    def force_balance_equations(x, u, f):
-        θ, dθ = x[2], x[5]
+    def force_balance_equations(X_ee, a_ee, f):
+        θ, dθ = X_ee[2], X_ee[5]
         w_R_e = jnp.array([[jnp.cos(θ), -jnp.sin(θ)],
                            [jnp.sin(θ),  jnp.cos(θ)]])
         D = jnp.block([[w_R_e,       w_R_e],
@@ -209,46 +195,46 @@ def main():
         M = jnp.block([[MASS*jnp.eye(2), jnp.dot(jnp.dot(skew1(1), w_R_e), e_p_t).reshape(2, 1)],
                       [0, 0,             MOMENT_INERTIA]])
         rhs = jnp.array([0, -MASS*GRAVITY, 0]) + jnp.append(MASS*dθ**2*jnp.dot(w_R_e, e_p_t), 0)
-        return jnp.dot(M, u) - jnp.dot(D, f) - rhs
+        return jnp.dot(M, a_ee) - jnp.dot(D, f) - rhs
 
-    def objective_unrolled(x0, xd, var):
+    def objective_unrolled(X_q_0, X_ee_d, var):
         ''' Unroll the objective over n timesteps. '''
-        # TODO this could fairly easily be done without autodiff
         obj = 0
-        x = x0
+        X_q = X_q_0
 
         for i in range(n):
             v = var[i*nv:(i+1)*nv]
-            # u = var[i*nv:i*nv+ni]
             u = v[:ni]
-            x = model.step(x, u, MPC_DT)  #jnp.dot(A, x) + jnp.dot(B, u)
-            e = xd[i*ns:(i+1)*ns] - x
-            obj = obj + jnp.linalg.multi_dot([e, Q, e]) + jnp.linalg.multi_dot([v, R, v])
+            X_q = model.step_unconstrained(X_q, u, MPC_DT)  #jnp.dot(A, x) + jnp.dot(B, u)
+            X_ee = model.ee_state(X_q)
+            e = X_ee_d[i*ns:(i+1)*ns] - X_ee
+            obj = obj + e @ Q @ e + v @ R @ v
 
         return obj
 
-    def eq_con_unrolled(x0, xd, var):
+    def eq_con_unrolled(X_q_0, X_ee_d, var):
         ''' Unroll the equality (force balance) constraints over n timesteps. '''
         eq_con = jnp.zeros(n * nc_eq)
-        x = x0
+        X_q = X_q_0
 
         for i in range(n):
             vari = var[i*nv:(i+1)*nv]
             u = vari[:ni]
             f = vari[ni:]
 
-            eq_coni = force_balance_equations(x, u, f)
+            X_ee = model.ee_state(X_q)
+            a_ee = model.ee_acceleration(X_q, u)
+            eq_coni = force_balance_equations(X_ee, a_ee, f)
             eq_con = jax.ops.index_update(eq_con, jax.ops.index[i*nc_eq:(i+1)*nc_eq], eq_coni)
 
-            x = model.step(x, u, MPC_DT)
-            # x = jnp.dot(A, x) + jnp.dot(B, u)  # propagate state
+            X_q = model.step_unconstrained(X_q, u, MPC_DT)
 
         return eq_con
 
-    def ineq_con_unrolled(x0, xd, var):
+    def ineq_con_unrolled(X_q_0, X_ee_d, var):
         return np.dot(Ebar, var)
 
-    def ineq_con_unrolled_jac(x0, xd, var):
+    def ineq_con_unrolled_jac(X_q_0, X_ee_d, var):
         # trivial Jacobian since ineq constraints are already linear
         return Ebar
 
@@ -261,23 +247,24 @@ def main():
     controller = MPC(obj_fun, obj_jac, obj_hess, eq_fun, eq_jac,
                      ineq_con_unrolled, ineq_con_unrolled_jac)
 
+    print('starting sim loop')
+
     for i in range(N - 1):
         t = ts[i+1]
         t_sample = np.minimum(t + MPC_DT*np.arange(n), DURATION)
         pd, vd, _ = trajectory.sample(t_sample, flatten=True)
-        xd = np.zeros(ns*n)
-        try:
-            for j in range(n):
-                xd[j*ns:j*ns+3] = pd[j*3:(j+1)*3]
-                xd[j*ns+3:(j+1)*ns] = vd[j*3:(j+1)*3]
-        except ValueError:
-            IPython.embed()
-        u = controller.solve(x, xd)
+        X_ee_d = np.zeros(ns*n)
+        for j in range(n):
+            X_ee_d[j*ns:j*ns+3] = pd[j*3:(j+1)*3]
+            X_ee_d[j*ns+3:(j+1)*ns] = vd[j*3:(j+1)*3]
+        u = controller.solve(X_q, X_ee_d)
+
+        print(f'u = {u}')
 
         # integrate the system
-        x = model.step(x, u, SIM_DT)  #A.dot(x) + B.dot(u)
-        pe = x[:3]
-        ve = x[3:]
+        X_q = model.step_unconstrained(X_q, u, SIM_DT)
+        pe = model.ee_position(X_q)
+        ve = model.ee_velocity(X_q)
 
         # tray position is a constant offset from EE frame
         θ = pe[2]
@@ -293,6 +280,7 @@ def main():
         # fs[i, :] = f
 
         tray_renderer.set_state(pt)
+        robot_renderer.set_state(X_q[:3])
         plotter.update()
     plotter.done()
 

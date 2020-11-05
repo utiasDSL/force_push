@@ -18,7 +18,7 @@ import IPython
 L1 = 1
 L2 = 1
 VEL_LIM = 1
-ACC_LIM = 1
+ACC_LIM = 2
 
 # tray parameters
 GRAVITY = 9.81
@@ -40,7 +40,7 @@ ns_q = 8   # num joint states
 ni = 4  # num inputs
 nf = 4  # num force variables
 nc_eq = 3
-nc_ineq = 6
+nc_ineq = 4 #6
 nv = ni + nf  # num opt vars
 nc = nc_eq + nc_ineq  # num constraints
 
@@ -59,7 +59,7 @@ def hessian(f, argnums=0):
 
 class MPC(object):
     ''' Model predictive controller. '''
-    def __init__(self, obj_fun, obj_jac, obj_hess, eq_fun, eq_jac, ineq_fun, ineq_jac, verbose=False):
+    def __init__(self, obj_fun, obj_jac, obj_hess, eq_fun, eq_jac, ineq_fun, ineq_jac, lb, ub, verbose=False):
         self.obj_fun = obj_fun
         self.obj_jac = obj_jac
         self.obj_hess = obj_hess
@@ -69,6 +69,9 @@ class MPC(object):
 
         self.ineq_fun = ineq_fun
         self.ineq_jac = ineq_jac
+
+        self.lb = lb
+        self.ub = ub
 
         self.qp = qpoases.PySQProblem(nv*n, nc*n)
         if not verbose:
@@ -94,27 +97,31 @@ class MPC(object):
         lbA = np.concatenate((lbA_eq, lbA_ineq))
         ubA = np.concatenate((ubA_eq, ubA_ineq))
 
+        lb = self.lb - var
+        ub = self.ub - var
+
         return np.array(H, dtype=np.float64), np.array(g, dtype=np.float64), \
                np.array(A, dtype=np.float64), np.array(lbA, dtype=np.float64), \
-               np.array(ubA, dtype=np.float64)
+               np.array(ubA, dtype=np.float64), np.array(lb, dtype=np.float64), \
+               np.array(ub, dtype=np.float64)
 
     def _iterate(self, x0, xd, var):
         delta = np.zeros(nv * n)
 
         # Initial opt problem.
-        H, g, A, lbA, ubA = self._lookahead(x0, xd, var)
+        H, g, A, lbA, ubA, lb, ub = self._lookahead(x0, xd, var)
         if not self.qp_initialized:
-            self.qp.init(H, g, A, None, None, lbA, ubA, np.array([NUM_WSR]))
+            self.qp.init(H, g, A, lb, ub, lbA, ubA, np.array([NUM_WSR]))
             self.qp_initialized = True
         else:
-            self.qp.hotstart(H, g, A, None, None, lbA, ubA, np.array([NUM_WSR]))
+            self.qp.hotstart(H, g, A, lb, ub, lbA, ubA, np.array([NUM_WSR]))
         self.qp.getPrimalSolution(delta)
         var = var + delta
 
         # Remaining sequence is hotstarted from the first.
         for i in range(NUM_ITER - 1):
-            H, g, A, lbA, ubA = self._lookahead(x0, xd, var)
-            self.qp.hotstart(H, g, A, None, None, lbA, ubA, np.array([NUM_WSR]))
+            H, g, A, lbA, ubA, lb, ub = self._lookahead(x0, xd, var)
+            self.qp.hotstart(H, g, A, lb, ub, lbA, ubA, np.array([NUM_WSR]))
             self.qp.getPrimalSolution(delta)
             var = var + delta
 
@@ -130,7 +137,7 @@ class MPC(object):
         var = self._iterate(x0, xd, var)
 
         # return first optimal input
-        return var[:ni]
+        return var[:ni], var
 
 
 def main():
@@ -153,9 +160,13 @@ def main():
     R = np.diag([0.01, 0.01, 0.01, 0.01, 0.0001, 0.0001, 0.0001, 0.0001])
 
     # constant optimization matrices
-    E = np.array([[0, 0, 0, 0, 0, -1, 0, 0],
-                  [0, 0, 0, 0, 0, 0, 0, -1],
-                  [0, 0, 0, 0, 1, -MU, 0, 0],
+    # E = np.array([[0, 0, 0, 0, 0, -1, 0, 0],
+    #               [0, 0, 0, 0, 0, 0, 0, -1],
+    #               [0, 0, 0, 0, 1, -MU, 0, 0],
+    #               [0, 0, 0, 0, -1, -MU, 0, 0],
+    #               [0, 0, 0, 0, 0, 0, 1, -MU],
+    #               [0, 0, 0, 0, 0, 0, -1, -MU]])
+    E = np.array([[0, 0, 0, 0, 1, -MU, 0, 0],
                   [0, 0, 0, 0, -1, -MU, 0, 0],
                   [0, 0, 0, 0, 0, 0, 1, -MU],
                   [0, 0, 0, 0, 0, 0, -1, -MU]])
@@ -167,7 +178,7 @@ def main():
     pds = np.zeros((N, 3))
     ves = np.zeros((N, 3))
     pts = np.zeros((N, 3))
-    fs = np.zeros((N, 4))
+    fs = np.zeros((N, nf))
 
     # state of joints
     X_q = np.array([0, 0, 0.25*np.pi, -0.25*np.pi, 0, 0, 0, 0])
@@ -259,7 +270,7 @@ def main():
     eq_jac = jax.jit(jax.jacfwd(eq_con_unrolled, argnums=2))
 
     controller = MPC(obj_fun, obj_jac, obj_hess, eq_fun, eq_jac,
-                     ineq_con_unrolled, ineq_con_unrolled_jac)
+                     ineq_con_unrolled, ineq_con_unrolled_jac, lb, ub)
 
     print('starting sim loop')
 
@@ -271,7 +282,7 @@ def main():
         for j in range(n):
             X_ee_d[j*ns_ee:j*ns_ee+3] = pd[j*3:(j+1)*3]
             X_ee_d[j*ns_ee+3:(j+1)*ns_ee] = vd[j*3:(j+1)*3]
-        u = controller.solve(X_q, X_ee_d)
+        u, var = controller.solve(X_q, X_ee_d)
 
         # integrate the system
         X_q = model.step_unconstrained(X_q, u, SIM_DT)
@@ -280,9 +291,10 @@ def main():
 
         # tray position is a constant offset from EE frame
         θ = pe[2]
-        print(f'θ = {θ}, q4 = {X_q[3]}')
         w_R_e = util.rotation_matrix(θ)
         pt = pe + np.append(w_R_e.dot(e_p_t), 0)
+
+        f = var[ni:nv]
 
         # record
         us[i, :] = u
@@ -290,7 +302,7 @@ def main():
         ves[i+1, :] = ve
         pts[i+1, :] = pt
         pds[i+1, :] = pd[:3]
-        # fs[i, :] = f
+        fs[i+1, :] = f
 
         tray_renderer.set_state(pt)
         robot_renderer.set_state(X_q[:3])
@@ -312,6 +324,19 @@ def main():
     plt.xlabel('Time (s)')
     plt.ylabel('Position')
     plt.title('End effector position')
+
+    plt.figure()
+    plt.plot(ts, fs[:, 0], label='$f_{t,1}$', color='r', linestyle='--')
+    plt.plot(ts, fs[:, 1], label='$f_{n,1}$', color='r')
+    plt.plot(ts, fs[:, 2], label='$f_{t,2}$', color='b', linestyle='--')
+    plt.plot(ts, fs[:, 3], label='$f_{n,2}$', color='b')
+    plt.grid()
+    plt.legend()
+    plt.xlabel('Time (s)')
+    plt.ylabel('Force (N)')
+    plt.title('Contact forces')
+
+
     #
     # plt.figure()
     # plt.plot(ts, dqs[:, 0], label='$\\dot{q}_x$')

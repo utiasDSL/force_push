@@ -35,8 +35,9 @@ NUM_ITER = 3
 NUM_WSR = 100     # number of working set recalculations
 
 n = 5   # num horizon
-ns = 6  # num states
-ni = 3  # num inputs
+ns_ee = 6  # num EE states
+ns_q = 8   # num joint states
+ni = 4  # num inputs
 nf = 4  # num force variables
 nc_eq = 3
 nc_ineq = 6
@@ -148,20 +149,20 @@ def main():
     model = ThreeInputModel(L1, L2, VEL_LIM, ACC_LIM)
 
     # MPC weights
-    Q = np.diag([1, 1, 0, 0, 0, 0])
-    R = np.diag([0.01, 0.01, 0.01, 0.0001, 0.0001, 0.0001, 0.0001])
+    Q = np.diag([1, 1, 1, 0, 0, 0])
+    R = np.diag([0.01, 0.01, 0.01, 0.01, 0.0001, 0.0001, 0.0001, 0.0001])
 
     # constant optimization matrices
-    E = np.array([[0, 0, 0, 0, -1, 0, 0],
-                  [0, 0, 0, 0, 0, 0, -1],
-                  [0, 0, 0, 1, -MU, 0, 0],
-                  [0, 0, 0, -1, -MU, 0, 0],
-                  [0, 0, 0, 0, 0, 1, -MU],
-                  [0, 0, 0, 0, 0, -1, -MU]])
+    E = np.array([[0, 0, 0, 0, 0, -1, 0, 0],
+                  [0, 0, 0, 0, 0, 0, 0, -1],
+                  [0, 0, 0, 0, 1, -MU, 0, 0],
+                  [0, 0, 0, 0, -1, -MU, 0, 0],
+                  [0, 0, 0, 0, 0, 0, 1, -MU],
+                  [0, 0, 0, 0, 0, 0, -1, -MU]])
     Ebar = np.kron(np.eye(n), E)
 
     ts = SIM_DT * np.arange(N)
-    us = np.zeros((N, 3))
+    us = np.zeros((N, ni))
     pes = np.zeros((N, 3))
     pds = np.zeros((N, 3))
     ves = np.zeros((N, 3))
@@ -169,12 +170,17 @@ def main():
     fs = np.zeros((N, 4))
 
     # state of joints
-    X_q = np.array([0, 0, 0, 0, 0, 0], dtype=np.float32)
+    X_q = np.array([0, 0, 0.25*np.pi, -0.25*np.pi, 0, 0, 0, 0])
 
     pe = model.ee_position(X_q)
     ve = model.ee_velocity(X_q)
     pes[0, :] = pe
     ves[0, :] = ve
+
+    lb0 = np.concatenate((-ACC_LIM*np.ones(ni), np.array([-np.infty, 0, -np.infty, 0])))
+    ub0 = np.concatenate((ACC_LIM*np.ones(ni), np.infty*np.ones(nf)))
+    lb = np.tile(lb0, n)
+    ub = np.tile(ub0, n)
 
     # timescaling = trajectories.CubicTimeScaling(0.5*DURATION)
     # traj1 = trajectories.PointToPoint(pe, pe + [2, 0, 0], timescaling, 0.5*DURATION)
@@ -215,7 +221,7 @@ def main():
             u = v[:ni]
             X_q = model.step_unconstrained(X_q, u, MPC_DT)  #jnp.dot(A, x) + jnp.dot(B, u)
             X_ee = model.ee_state(X_q)
-            e = X_ee_d[i*ns:(i+1)*ns] - X_ee
+            e = X_ee_d[i*ns_ee:(i+1)*ns_ee] - X_ee
             obj = obj + e @ Q @ e + v @ R @ v
 
         return obj
@@ -261,10 +267,10 @@ def main():
         t = ts[i+1]
         t_sample = np.minimum(t + MPC_DT*np.arange(n), DURATION)
         pd, vd, _ = trajectory.sample(t_sample, flatten=True)
-        X_ee_d = np.zeros(ns*n)
+        X_ee_d = np.zeros(ns_ee*n)
         for j in range(n):
-            X_ee_d[j*ns:j*ns+3] = pd[j*3:(j+1)*3]
-            X_ee_d[j*ns+3:(j+1)*ns] = vd[j*3:(j+1)*3]
+            X_ee_d[j*ns_ee:j*ns_ee+3] = pd[j*3:(j+1)*3]
+            X_ee_d[j*ns_ee+3:(j+1)*ns_ee] = vd[j*3:(j+1)*3]
         u = controller.solve(X_q, X_ee_d)
 
         # integrate the system
@@ -274,6 +280,7 @@ def main():
 
         # tray position is a constant offset from EE frame
         θ = pe[2]
+        print(f'θ = {θ}, q4 = {X_q[3]}')
         w_R_e = util.rotation_matrix(θ)
         pt = pe + np.append(w_R_e.dot(e_p_t), 0)
 

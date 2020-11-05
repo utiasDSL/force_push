@@ -10,7 +10,7 @@ class ThreeInputModel:
     ''' Three-input 2D mobile manipulator. Consists of mobile base (1 input)
         and 2-link arm (2 inputs). State is q = [x_b, q_1, q_2]; inputs u = dq. '''
     def __init__(self, l1, l2, vel_lim, acc_lim):
-        self.ni = 3  # number of joints (inputs/DOFs)
+        self.ni = 4  # number of joints (inputs/DOFs)
         self.no = 3  # possible outputs are: x, y, theta
 
         self.l1 = l1
@@ -19,26 +19,26 @@ class ThreeInputModel:
         self.vel_lim = vel_lim
         self.acc_lim = acc_lim
 
-        Z = np.zeros((3, 3))
-        self.A = np.block([[Z, np.eye(3)], [Z, Z]])
-        self.B = np.block([[Z], [np.eye(3)]])
+        Z = np.zeros((self.ni, self.ni))
+        self.A = np.block([[Z, np.eye(self.ni)], [Z, Z]])
+        self.B = np.block([[Z], [np.eye(self.ni)]])
 
         self.jacobian = jax.jit(jax.jacrev(self.ee_position))
         self.dJdq = jax.jit(jax.jacfwd(self.jacobian))
 
     def ee_position(self, X):
-        q = X[:3]
+        q = X[:self.ni]
         p = jnp.array([q[0] + self.l1*jnp.cos(q[1]) + self.l2*jnp.cos(q[1]+q[2]),
                              self.l1*jnp.sin(q[1]) + self.l2*jnp.sin(q[1]+q[2]),
-                      q[1] + q[2]])
+                      q[1] + q[2] + q[3]])
         return p
 
     def ee_velocity(self, X):
-        q, dq = X[:3], X[3:]
+        q, dq = X[:self.ni], X[self.ni:]
         return self.jacobian(q) @ dq
 
     def ee_acceleration(self, X, u):
-        q, dq = X[:3], X[3:]
+        q, dq = X[:self.ni], X[self.ni:]
         return self.jacobian(q) @ u + dq @ self.dJdq(q) @ dq
 
     def ee_state(self, X):

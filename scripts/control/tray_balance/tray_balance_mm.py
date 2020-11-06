@@ -40,7 +40,7 @@ ns_q = 8   # num joint states
 ni = 4  # num inputs
 nf = 4  # num force variables
 nc_eq = 3
-nc_ineq = 4 #6
+nc_ineq = nf + ni + 1  # nf force + ni velocity + 1 constraint on q2
 nv = ni + nf  # num opt vars
 nc = nc_eq + nc_ineq  # num constraints
 
@@ -107,19 +107,6 @@ class MPC(object):
         lb = self.bounds.lb - var
         ub = self.bounds.ub - var
 
-        # A_eq = self.eq_jac(x0, xd, var)
-        # A_ineq = self.ineq_jac(x0, xd, var)
-        # A = np.vstack((A_eq, A_ineq))
-        #
-        # lbA_eq = ubA_eq = -self.eq_fun(x0, xd, var)
-        # ubA_ineq = -self.ineq_fun(x0, xd, var)
-        # lbA_ineq = -np.infty * np.ones(nc_ineq * n)  # no lower bound
-        # lbA = np.concatenate((lbA_eq, lbA_ineq))
-        # ubA = np.concatenate((ubA_eq, ubA_ineq))
-        #
-        # lb = self.lb - var
-        # ub = self.ub - var
-
         return np.array(H, dtype=np.float64), np.array(g, dtype=np.float64), \
                np.array(A, dtype=np.float64), np.array(lbA, dtype=np.float64), \
                np.array(ubA, dtype=np.float64), np.array(lb, dtype=np.float64), \
@@ -179,18 +166,10 @@ def main():
     Q = np.diag([1, 1, 1, 0, 0, 0])
     R = np.diag([0.01, 0.01, 0.01, 0.01, 0.0001, 0.0001, 0.0001, 0.0001])
 
-    # constant optimization matrices
-    # E = np.array([[0, 0, 0, 0, 0, -1, 0, 0],
-    #               [0, 0, 0, 0, 0, 0, 0, -1],
-    #               [0, 0, 0, 0, 1, -MU, 0, 0],
-    #               [0, 0, 0, 0, -1, -MU, 0, 0],
-    #               [0, 0, 0, 0, 0, 0, 1, -MU],
-    #               [0, 0, 0, 0, 0, 0, -1, -MU]])
     E = np.array([[0, 0, 0, 0, 1, -MU, 0, 0],
                   [0, 0, 0, 0, -1, -MU, 0, 0],
                   [0, 0, 0, 0, 0, 0, 1, -MU],
                   [0, 0, 0, 0, 0, 0, -1, -MU]])
-    Ebar = np.kron(np.eye(n), E)
 
     ts = SIM_DT * np.arange(N)
     us = np.zeros((N, ni))
@@ -221,8 +200,8 @@ def main():
     lbA_eq = np.tile(lbA_eq0, n)
     ubA_eq = np.tile(ubA_eq0, n)
 
-    lbA_ineq0 = -np.infty * np.ones(nc_ineq)
-    ubA_ineq0 = np.zeros(nc_ineq)
+    lbA_ineq0 = np.concatenate(([0], -VEL_LIM*np.ones(ni), -np.infty * np.ones(nf)))
+    ubA_ineq0 = np.concatenate(([np.pi], VEL_LIM*np.ones(ni), np.zeros(nf)))
     lbA_ineq = np.tile(lbA_ineq0, n)
     ubA_ineq = np.tile(ubA_ineq0, n)
 
@@ -291,10 +270,12 @@ def main():
             eq_coni = force_balance_equations(X_ee, a_ee, f)
             eq_con = jax.ops.index_update(eq_con, jax.ops.index[i*nc_eq:(i+1)*nc_eq], eq_coni)
 
-            ineq_coni = E @ vari
-            ineq_con = jax.ops.index_update(ineq_con, jax.ops.index[i*nc_ineq:(i+1)*nc_ineq], ineq_coni)
-
+            # step the model before inequality constraints because there are
+            # constraints on the k+1 state
             X_q = model.step_unconstrained(X_q, u, MPC_DT)
+
+            ineq_coni = jnp.concatenate((jnp.array([X_q[2]]), X_q[ni:], E @ vari))
+            ineq_con = jax.ops.index_update(ineq_con, jax.ops.index[i*nc_ineq:(i+1)*nc_ineq], ineq_coni)
 
         return jnp.concatenate((eq_con, ineq_con))
 
@@ -308,9 +289,6 @@ def main():
     constraints = Constraints(con_fun, con_jac, lbA, ubA)
 
     bounds = Bounds(lb, ub)
-
-    # eq_fun = jax.jit(eq_con_unrolled)
-    # eq_jac = jax.jit(jax.jacfwd(eq_con_unrolled, argnums=2))
 
     controller = MPC(objective, constraints, bounds)
 

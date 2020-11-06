@@ -57,21 +57,33 @@ def hessian(f, argnums=0):
     return jax.jacfwd(jax.jacrev(f, argnums=argnums), argnums=argnums)
 
 
-class MPC(object):
-    ''' Model predictive controller. '''
-    def __init__(self, obj_fun, obj_jac, obj_hess, eq_fun, eq_jac, ineq_fun, ineq_jac, lb, ub, verbose=False):
-        self.obj_fun = obj_fun
-        self.obj_jac = obj_jac
-        self.obj_hess = obj_hess
+class Objective:
+    def __init__(self, fun, jac, hess):
+        self.fun = fun
+        self.jac = jac
+        self.hess = hess
 
-        self.eq_fun = eq_fun
-        self.eq_jac = eq_jac
 
-        self.ineq_fun = ineq_fun
-        self.ineq_jac = ineq_jac
-
+class Constraints:
+    def __init__(self, fun, jac, lb, ub):
+        self.fun = fun
+        self.jac = jac
         self.lb = lb
         self.ub = ub
+
+
+class Bounds:
+    def __init__(self, lb, ub):
+        self.lb = lb
+        self.ub = ub
+
+
+class MPC(object):
+    ''' Model predictive controller. '''
+    def __init__(self, objective, constraints, bounds, verbose=False):
+        self.objective = objective
+        self.constraints = constraints
+        self.bounds = bounds
 
         self.qp = qpoases.PySQProblem(nv*n, nc*n)
         if not verbose:
@@ -84,21 +96,29 @@ class MPC(object):
     def _lookahead(self, x0, xd, var):
         ''' Generate lifted matrices proprogating the state N timesteps into the
             future. '''
-        H = self.obj_hess(x0, xd, var)
-        g = self.obj_jac(x0, xd, var)
+        H = self.objective.hess(x0, xd, var)
+        g = self.objective.jac(x0, xd, var)
 
-        A_eq = self.eq_jac(x0, xd, var)
-        A_ineq = self.ineq_jac(x0, xd, var)
-        A = np.vstack((A_eq, A_ineq))
+        A = self.constraints.jac(x0, xd, var)
+        a = self.constraints.fun(x0, xd, var)
+        lbA = self.constraints.lb - a
+        ubA = self.constraints.ub - a
 
-        lbA_eq = ubA_eq = -self.eq_fun(x0, xd, var)
-        ubA_ineq = -self.ineq_fun(x0, xd, var)
-        lbA_ineq = -np.infty * np.ones(nc_ineq * n)  # no lower bound
-        lbA = np.concatenate((lbA_eq, lbA_ineq))
-        ubA = np.concatenate((ubA_eq, ubA_ineq))
+        lb = self.bounds.lb - var
+        ub = self.bounds.ub - var
 
-        lb = self.lb - var
-        ub = self.ub - var
+        # A_eq = self.eq_jac(x0, xd, var)
+        # A_ineq = self.ineq_jac(x0, xd, var)
+        # A = np.vstack((A_eq, A_ineq))
+        #
+        # lbA_eq = ubA_eq = -self.eq_fun(x0, xd, var)
+        # ubA_ineq = -self.ineq_fun(x0, xd, var)
+        # lbA_ineq = -np.infty * np.ones(nc_ineq * n)  # no lower bound
+        # lbA = np.concatenate((lbA_eq, lbA_ineq))
+        # ubA = np.concatenate((ubA_eq, ubA_ineq))
+        #
+        # lb = self.lb - var
+        # ub = self.ub - var
 
         return np.array(H, dtype=np.float64), np.array(g, dtype=np.float64), \
                np.array(A, dtype=np.float64), np.array(lbA, dtype=np.float64), \
@@ -187,28 +207,46 @@ def main():
     ve = model.ee_velocity(X_q)
     pes[0, :] = pe
     ves[0, :] = ve
+    pds[0, :] = pe
 
+    # nominal bounds
     lb0 = np.concatenate((-ACC_LIM*np.ones(ni), np.array([-np.infty, 0, -np.infty, 0])))
     ub0 = np.concatenate((ACC_LIM*np.ones(ni), np.infty*np.ones(nf)))
     lb = np.tile(lb0, n)
     ub = np.tile(ub0, n)
+
+    # nominal constraints
+    lbA_eq0 = np.zeros(nc_eq)
+    ubA_eq0 = np.zeros(nc_eq)
+    lbA_eq = np.tile(lbA_eq0, n)
+    ubA_eq = np.tile(ubA_eq0, n)
+
+    lbA_ineq0 = -np.infty * np.ones(nc_ineq)
+    ubA_ineq0 = np.zeros(nc_ineq)
+    lbA_ineq = np.tile(lbA_ineq0, n)
+    ubA_ineq = np.tile(ubA_ineq0, n)
+
+    lbA = np.concatenate((lbA_eq, lbA_ineq))
+    ubA = np.concatenate((ubA_eq, ubA_ineq))
 
     # timescaling = trajectories.CubicTimeScaling(0.5*DURATION)
     # traj1 = trajectories.PointToPoint(pe, pe + [2, 0, 0], timescaling, 0.5*DURATION)
     # traj2 = trajectories.PointToPoint(pe + [2, 0, 0], pe, timescaling, 0.5*DURATION)
     # trajectory = trajectories.Chain([traj1, traj2])
 
-    # timescaling = trajectories.CubicTimeScaling(DURATION-1)
-    # trajectory = trajectories.PointToPoint(pe, pe + [2, 0, 0], timescaling, DURATION-1)
+    # timescaling = trajectories.QuinticTimeScaling(DURATION)
+    # trajectory = trajectories.PointToPoint(pe, pe + np.array([2, 0, 0]), timescaling, DURATION)
 
     trajectory = trajectories.Point(pe + np.array([2, 0, 0]))
 
+    start_renderer = plotting.PointRenderer(pe[:2], color='k')
+    goal_renderer = plotting.PointRenderer(pe[:2] + np.array([2, 0]), color='b')
     rendering_model = models.ThreeInputModel(L1, L2, VEL_LIM, ACC_LIM)
     robot_renderer = plotting.ThreeInputRenderer(rendering_model, X_q[:3])
     tray_renderer = TrayRenderer(RADIUS, e_p_t, e_p_1, e_p_2, pe)
     trajectory_renderer = plotting.TrajectoryRenderer(trajectory, ts)
-    video = plotting.Video(name='tray_balance_mpc.mp4', fps=1./SIM_DT)
-    plotter = plotting.RealtimePlotter([robot_renderer, tray_renderer, trajectory_renderer], video=None)
+    video = plotting.Video(name='tray_balance_mm.mp4', fps=1./SIM_DT)
+    plotter = plotting.RealtimePlotter([trajectory_renderer, robot_renderer, tray_renderer, start_renderer, goal_renderer], video=None)
     plotter.start(grid=True)
 
     def force_balance_equations(X_ee, a_ee, f):
@@ -237,9 +275,10 @@ def main():
 
         return obj
 
-    def eq_con_unrolled(X_q_0, X_ee_d, var):
+    def constraints_unrolled(X_q_0, X_ee_d, var):
         ''' Unroll the equality (force balance) constraints over n timesteps. '''
         eq_con = jnp.zeros(n * nc_eq)
+        ineq_con = jnp.zeros(n * nc_ineq)
         X_q = X_q_0
 
         for i in range(n):
@@ -252,25 +291,28 @@ def main():
             eq_coni = force_balance_equations(X_ee, a_ee, f)
             eq_con = jax.ops.index_update(eq_con, jax.ops.index[i*nc_eq:(i+1)*nc_eq], eq_coni)
 
+            ineq_coni = E @ vari
+            ineq_con = jax.ops.index_update(ineq_con, jax.ops.index[i*nc_ineq:(i+1)*nc_ineq], ineq_coni)
+
             X_q = model.step_unconstrained(X_q, u, MPC_DT)
 
-        return eq_con
-
-    def ineq_con_unrolled(X_q_0, X_ee_d, var):
-        return np.dot(Ebar, var)
-
-    def ineq_con_unrolled_jac(X_q_0, X_ee_d, var):
-        # trivial Jacobian since ineq constraints are already linear
-        return Ebar
+        return jnp.concatenate((eq_con, ineq_con))
 
     obj_fun = jax.jit(objective_unrolled)
     obj_jac = jax.jit(jax.jacfwd(objective_unrolled, argnums=2))
     obj_hess = jax.jit(hessian(objective_unrolled, argnums=2))
-    eq_fun = jax.jit(eq_con_unrolled)
-    eq_jac = jax.jit(jax.jacfwd(eq_con_unrolled, argnums=2))
+    objective = Objective(obj_fun, obj_jac, obj_hess)
 
-    controller = MPC(obj_fun, obj_jac, obj_hess, eq_fun, eq_jac,
-                     ineq_con_unrolled, ineq_con_unrolled_jac, lb, ub)
+    con_fun = jax.jit(constraints_unrolled)
+    con_jac = jax.jit(jax.jacfwd(constraints_unrolled, argnums=2))
+    constraints = Constraints(con_fun, con_jac, lbA, ubA)
+
+    bounds = Bounds(lb, ub)
+
+    # eq_fun = jax.jit(eq_con_unrolled)
+    # eq_jac = jax.jit(jax.jacfwd(eq_con_unrolled, argnums=2))
+
+    controller = MPC(objective, constraints, bounds)
 
     print('starting sim loop')
 

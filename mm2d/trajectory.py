@@ -214,6 +214,42 @@ class Circle:
         return p, v, a
 
 
+class Sine:
+    def __init__(self, p0, lx, amp, freq, timescaling, duration):
+        self.p0 = p0
+        self.lx = lx
+        self.A = amp
+
+        # multiply by 2*pi so that sin(s) = sin(2*pi) at s = 1
+        self.w = freq * 2 * np.pi
+
+        self.timescaling = timescaling
+        self.duration = duration
+
+    def sample(self, t, flatten=False):
+        s, ds, dds = self.timescaling.eval(t)
+
+        # x is linear in s
+        x = self.p0[0] + self.lx * s
+        dx = self.lx * ds
+        ddx = self.lx * dds
+
+        # y = A*sin(w*s)
+        y = self.p0[1] + self.A*np.sin(self.w*s)
+        dyds = self.A*self.w*np.cos(self.w*s)
+        dyds2 = -self.w**2 * y
+        dy = dyds * ds
+        ddy = dyds * dds + dyds2 * ds**2
+
+        p = np.vstack((x, y)).T
+        v = np.vstack((dx, dy)).T
+        a = np.vstack((ddx, ddy)).T
+
+        if flatten:
+            return p.flatten(), v.flatten(), a.flatten()
+        return p, v, a
+
+
 class Point(object):
     ''' Stationary point trajectory. '''
     def __init__(self, p0):

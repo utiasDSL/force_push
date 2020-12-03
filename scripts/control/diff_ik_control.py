@@ -42,10 +42,11 @@ def main():
     # reference trajectory
     # trajectory = Line(p0, v0=np.zeros(2), a=np.array([0.01, 0]))
     # timescaling = trajectories.QuinticTimeScaling(DURATION)
-    # timescaling = trajectories.TrapezoidalTimeScalingV(0.15, DURATION)
-    timescaling = trajectories.TrapezoidalTimeScalingA(0.1, DURATION)
+    timescaling = trajectories.TrapezoidalTimeScalingV(0.15, DURATION)
+    # timescaling = trajectories.TrapezoidalTimeScalingA(0.1, DURATION)
 
-    trajectory = trajectories.PointToPoint(p0, p0 + [1, 0], timescaling, DURATION)
+    # trajectory = trajectories.PointToPoint(p0, p0 + [1, 0], timescaling, DURATION)
+    trajectory = trajectories.Sine(p0, 2, 0.5, 1, timescaling, DURATION)
     # trajectory2 = PointToPoint(p0 + [1, 0], p0 + [2, 0], timescaling, 0.5*DURATION)
     # trajectory = Chain([trajectory1, trajectory2])
 

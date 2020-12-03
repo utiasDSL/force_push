@@ -24,7 +24,6 @@ class CubicTimeScaling:
         s = self.coeffs.dot([np.ones_like(t), t, t**2, t**3])
         ds = self.coeffs[1:].dot([np.ones_like(t), 2*t, 3*t**2])
         dds = self.coeffs[2:].dot([2*np.ones_like(t), 6*t])
-        # s, ds, dds = np.atleast_1d(s, ds, dds)
         return s, ds, dds
 
 
@@ -47,10 +46,64 @@ class QuinticTimeScaling:
         return s, ds, dds
 
 
-# TODO
-class TrapezoidalTimeScaling:
-    def __init__(self, duration):
-        pass
+def eval_trapezoidal(t, v, a, ta, T):
+    ''' Evaluate trapezoidal time-scaling given:
+        t:  evaluation times
+        v:  cruise velocity
+        a:  acceleration
+        ta: time of acceleration
+        T:  total duration '''
+    t1 = t < ta
+    t2 = (t >= ta) & (t < T - ta)
+    t3 = t >= T - ta
+
+    # stage 1: acceleration
+    s1 = 0.5*a*t**2
+    ds1 = a*t
+    dds1 = a * np.ones_like(t)
+
+    # stage 2: constant velocity
+    s2 = v*t - 0.5*v**2/a
+    ds2 = v * np.ones_like(t)
+    dds2 = np.zeros_like(t)
+
+    # stage 3: deceleration
+    s3 = v*T - v**2/a - 0.5*a*(t - T)**2
+    ds3 = a*(T - t)
+    dds3 = -a * np.ones_like(t)
+
+    s = t1 * s1 + t2 * s2 + t3 * s3
+    ds = t1 * ds1 + t2 * ds2 + t3 * ds3
+    dds = t1 * dds1 + t2 * dds2 + t3 * dds3
+
+    return s, ds, dds
+
+
+class TrapezoidalTimeScalingV:
+    ''' Trapezoidal time scaling specifying cruising velocity and duration.
+        v should be such that 2 >= v*T > 1 for a 3-stage profile. '''
+    def __init__(self, v, duration):
+        self.v = v
+        self.duration = duration
+        self.a = v**2 / (v*duration - 1)
+        self.ta = v / self.a
+
+    def eval(self, t):
+        return eval_trapezoidal(t, self.v, self.a, self.ta, self.duration)
+
+
+class TrapezoidalTimeScalingA:
+    ''' Trapezoidal time scaling specifying acceleration and duration.
+        a should be such that a*T**2 >= 4 to ensure the motion is completed in
+        time. '''
+    def __init__(self, a, duration):
+        self.v = 0.5*(a*duration - np.sqrt(a*(a*duration**2 - 4)))
+        self.duration = duration
+        self.a = a
+        self.ta = self.v / a
+
+    def eval(self, t):
+        return eval_trapezoidal(t, self.v, self.a, self.ta, self.duration)
 
 
 # == Paths == #
@@ -137,8 +190,9 @@ class PointToPoint:
 class Circle:
     ''' Circular trajectory. '''
     def __init__(self, p0, r, timescaling, duration):
+        ''' p0 is the starting point; center is p0 + [r, 0] '''
         self.r = r
-        self.pc = p0 + [r, 0]  # start midway up left side of circle
+        self.pc = p0 + np.array([r, 0])  # start midway up left side of circle
         self.timescaling = timescaling
         self.duration = duration
 

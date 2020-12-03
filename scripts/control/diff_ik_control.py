@@ -41,14 +41,17 @@ def main():
 
     # reference trajectory
     # trajectory = Line(p0, v0=np.zeros(2), a=np.array([0.01, 0]))
-    timescaling = trajectories.QuinticTimeScaling(DURATION)
-    # trajectory = PointToPoint(p0, p0 + [1, 0], timescaling, DURATION)
+    # timescaling = trajectories.QuinticTimeScaling(DURATION)
+    # timescaling = trajectories.TrapezoidalTimeScalingV(0.15, DURATION)
+    timescaling = trajectories.TrapezoidalTimeScalingA(0.1, DURATION)
+
+    trajectory = trajectories.PointToPoint(p0, p0 + [1, 0], timescaling, DURATION)
     # trajectory2 = PointToPoint(p0 + [1, 0], p0 + [2, 0], timescaling, 0.5*DURATION)
     # trajectory = Chain([trajectory1, trajectory2])
 
     # points = np.array([p0, p0 + [1, 1], p0 + [2, -1], p0 + [3, 0]])
     # trajectory = CubicBezier(points, timescaling, DURATION)
-    trajectory = trajectories.Circle(p0, 0.5, timescaling, DURATION)
+    # trajectory = trajectories.Circle(p0, 0.5, timescaling, DURATION)
     # points = np.array([p0, p0 + [1, 0], p0 + [1, -1], p0 + [0, -1], p0])
     # trajectory = Polygon(points, v=0.4)
 
@@ -116,6 +119,15 @@ def main():
     plt.xlabel('Time (s)')
     plt.ylabel('Position')
     plt.title('End effector position')
+
+    plt.figure()
+    plt.plot(ts, vs[:, 0],  label='$v_x$', color='b')
+    plt.plot(ts, vs[:, 1],  label='$v_y$', color='r')
+    plt.grid()
+    plt.legend()
+    plt.xlabel('Time (s)')
+    plt.ylabel('Velocity (m/s)')
+    plt.title('End effector velocity')
 
     plt.figure()
     plt.plot(ts, dqs[:, 0], label='$\\dot{q}_x$')

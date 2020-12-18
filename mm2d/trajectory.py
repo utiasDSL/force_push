@@ -215,6 +215,7 @@ class Circle:
 
 
 class Sine:
+    ''' Sinusoidal trajectory: linear in x, sinusoidal in y. '''
     def __init__(self, p0, lx, amp, freq, timescaling, duration):
         self.p0 = p0
         self.lx = lx

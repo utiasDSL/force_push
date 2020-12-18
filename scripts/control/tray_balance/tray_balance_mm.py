@@ -213,10 +213,11 @@ def main():
     # traj2 = trajectories.PointToPoint(pe + [2, 0, 0], pe, timescaling, 0.5*DURATION)
     # trajectory = trajectories.Chain([traj1, traj2])
 
-    # timescaling = trajectories.QuinticTimeScaling(DURATION)
+    timescaling = trajectories.QuinticTimeScaling(DURATION)
     # trajectory = trajectories.PointToPoint(pe, pe + np.array([2, 0, 0]), timescaling, DURATION)
+    trajectory = trajectories.Circle(np.array(pe)[:2], 0.25, timescaling, DURATION)
 
-    trajectory = trajectories.Point(pe + np.array([2, 0, 0]))
+    # trajectory = trajectories.Point(pe + np.array([2, 0, 0]))
 
     start_renderer = plotting.PointRenderer(pe[:2], color='k')
     goal_renderer = plotting.PointRenderer(pe[:2] + np.array([2, 0]), color='b')
@@ -292,16 +293,16 @@ def main():
 
     controller = MPC(objective, constraints, bounds)
 
-    print('starting sim loop')
-
     for i in range(N - 1):
         t = ts[i+1]
         t_sample = np.minimum(t + MPC_DT*np.arange(n), DURATION)
         pd, vd, _ = trajectory.sample(t_sample, flatten=True)
         X_ee_d = np.zeros(ns_ee*n)
         for j in range(n):
-            X_ee_d[j*ns_ee:j*ns_ee+3] = pd[j*3:(j+1)*3]
-            X_ee_d[j*ns_ee+3:(j+1)*ns_ee] = vd[j*3:(j+1)*3]
+            # X_ee_d[j*ns_ee:j*ns_ee+3] = pd[j*3:(j+1)*3]
+            # X_ee_d[j*ns_ee+3:(j+1)*ns_ee] = vd[j*3:(j+1)*3]
+            X_ee_d[j*ns_ee:j*ns_ee+2] = pd[j*2:(j+1)*2]
+            X_ee_d[j*ns_ee+3:(j+1)*ns_ee-1] = vd[j*2:(j+1)*2]
         u, var = controller.solve(X_q, X_ee_d)
 
         # integrate the system

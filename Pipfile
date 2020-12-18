@@ -17,6 +17,7 @@ control = "*"
 slycot = "*"
 jax = "*"
 jaxlib = "*"
+pymunk = "*"
 
 [requires]
 python_version = "3.7"

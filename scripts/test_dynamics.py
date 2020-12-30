@@ -1,6 +1,7 @@
 import numpy as np
 import jax
 import jax.numpy as jnp
+import sympy as sym
 from functools import partial
 import IPython
 
@@ -17,6 +18,46 @@ I1 = M1 * L1**2 / 12
 I2 = M2 * L2**2 / 12
 
 G = 9.8
+
+
+def symbolic_dynamics(time):
+    t = sym.symbols('t')
+    q = sym.Matrix([sym.Function('q1')(t), sym.Function('q2')(t), sym.Function('q3')(t)])
+    dq = q.diff(t)
+
+    x1 = q[0] + LX + 0.5*L1*sym.cos(q[1])
+    y1 = LY + 0.5*L1*sym.sin(q[1])
+    x2 = q[0] + LX + L1*sym.cos(q[1]) + 0.5*L2*sym.cos(q[1]+q[2])
+    y2 = LY + L1*sym.sin(q[1]) + 0.5*L2*sym.sin(q[1]+q[2])
+
+    dx1 = x1.diff(t)
+    dy1 = y1.diff(t)
+    dx2 = x2.diff(t)
+    dy2 = y2.diff(t)
+
+    # Potential energy
+    Pb = 0
+    P1 = M1*G*y1
+    P2 = M2*G*y2
+    P = Pb + P1 + P2
+
+    # Kinetic energy
+    Kb = 0.5*Mb*dq[0]**2
+    K1 = 0.5*M1*(dx1**2+dy1**2) + 0.5*I1*dq[1]**2
+    K2 = 0.5*M2*(dx2**2+dy2**2) + 0.5*I2*dq[2]**2
+    K = Kb + K1 + K2
+
+    # Lagrangian
+    L = K - P
+
+    # Generalized forces
+    tau = L.diff(dq).diff(t) - L.diff(q)
+
+    return tau.subs({
+        q[0]: sym.sin(t),
+        q[1]: sym.sin(t),
+        q[2]: sym.sin(t),
+        t: time}).doit()
 
 
 def configuration(t, np=np):
@@ -155,13 +196,14 @@ def main():
     dq_func = jax.jit(jax.jacfwd(partial(configuration, np=jnp)))
     ddq_func = jax.jit(jax.jacfwd(dq_func))
 
-    t = 0.0
+    t = 1.0
     q = q_func(t)
     dq = dq_func(t)
     ddq = ddq_func(t)
 
     print(tau_func(t))
     print(manual_dynamics(q, dq, ddq))
+    print(np.array(symbolic_dynamics(t)).astype(np.float64).flatten())
 
 
 if __name__ == '__main__':

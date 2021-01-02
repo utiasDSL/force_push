@@ -5,14 +5,14 @@ import sympy as sym
 from functools import partial
 import IPython
 
-Mb = 1
-M1 = 1
+Mb = 3
+M1 = 2
 M2 = 1
 
 LX = 0
 LY = 0
 L1 = 1
-L2 = 1
+L2 = 0.5
 
 I1 = M1 * L1**2 / 12
 I2 = M2 * L2**2 / 12
@@ -55,14 +55,14 @@ def symbolic_dynamics(time):
 
     return tau.subs({
         q[0]: sym.sin(t),
-        q[1]: sym.sin(t),
-        q[2]: sym.sin(t),
+        q[1]: t,
+        q[2]: t*t,
         t: time}).doit()
 
 
 def configuration(t, np=np):
     ''' Define joint configuration as function of time. '''
-    q = np.array([np.sin(t), np.sin(t), np.sin(t)])
+    q = np.array([np.sin(t), t, t*t])
     return q
 
 
@@ -112,6 +112,64 @@ def manual_dynamics(q, dq, ddq):
     tau = ddt_dKddq - dKdq + dPdq
 
     return tau
+
+
+def calc_mass_matrix(q, np=np):
+    xb, θ1, θ2 = q
+    θ12 = θ1 + θ2
+
+    m11 = Mb + M1 + M2
+    m12 = -(0.5*M1+M2)*L1*np.sin(θ1) - 0.5*M2*L2*np.sin(θ12)
+    m13 = -0.5*M2*L2*np.sin(θ12)
+
+    m22 = (0.25*M1+M2)*L1**2 + 0.25*M2*L2**2 + M2*L1*L2*np.cos(θ2) + I1
+    m23 = 0.5*M2*L2*(0.5*L2+L1*np.cos(θ2))
+
+    m33 = 0.25*M2*L2**2 + I2
+
+    M = np.array([
+        [m11, m12, m13],
+        [m12, m22, m23],
+        [m13, m23, m33]])
+    return M
+
+
+def calc_gravity_vector(q):
+    xb, θ1, θ2 = q
+    θ12 = θ1 + θ2
+    return np.array([0,
+                     (0.5*M1+M2)*G*L1*np.cos(θ1) + 0.5*M2*L2*G*np.cos(θ12),
+                     0.5*M2*L2*G*np.cos(θ12)])
+
+
+def manual_dynamics_mat(q, dq, ddq):
+    xb, θ1, θ2 = q
+    dxb, dθ1, dθ2 = dq
+
+    θ12 = θ1 + θ2
+    dθ12 = dθ1 + dθ2
+
+    M = calc_mass_matrix(q)
+    g = calc_gravity_vector(q)
+
+    c11 = 0
+    c12 = -(0.5*M1+M2)*L1*dθ1*np.cos(θ1) - 0.5*M2*L2*(dθ1+2*dθ2)*np.cos(θ12)
+    c13 = -0.5*M2*L2*(dθ2+2*dθ1)*np.cos(θ12)
+
+    c21 = -(M1+2*M2)*L1*dθ1*np.cos(θ1) - M2*L2*dθ12*np.cos(θ12)
+    c22 = -(M1+2*M2)*L1*dxb*np.cos(θ1) - M2*L2*dxb*np.cos(θ12) - M2*L1*L2*dθ2*np.sin(θ2)
+    c23 = -M2*L2*dxb*np.cos(θ12) - 0.5*M2*L1*L2*dθ2*np.sin(θ2)
+
+    c31 = -M2*L2*dθ12*np.cos(θ12)
+    c32 = -M2*L1*L2*np.sin(θ2)*(0.5*dθ1+dθ2) - M2*L2*dxb*np.cos(θ12)
+    c33 = -M2*L2*(L1*dθ1*np.sin(θ2) + dxb*np.cos(θ12))
+
+    C = np.array([
+        [c11, c12, c13],
+        [c21, c22, c23],
+        [c31, c32, c33]])
+
+    return M.dot(ddq) + C.dot(dq) + g
 
 
 def potential_energy(q, np=np):
@@ -201,9 +259,18 @@ def main():
     dq = dq_func(t)
     ddq = ddq_func(t)
 
+    dMdq_func = jax.jacfwd(partial(calc_mass_matrix, np=jnp))
+    M = calc_mass_matrix(q)
+    g = calc_gravity_vector(q)
+    dMdq = dMdq_func(q)
+
+
     print(tau_func(t))
-    print(manual_dynamics(q, dq, ddq))
     print(np.array(symbolic_dynamics(t)).astype(np.float64).flatten())
+    print(manual_dynamics(q, dq, ddq))
+    # print(manual_dynamics_mat(q, dq, ddq))
+
+    IPython.embed()
 
 
 if __name__ == '__main__':

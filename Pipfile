@@ -18,6 +18,7 @@ slycot = "*"
 jax = "*"
 jaxlib = "*"
 pymunk = "*"
+pygame = "*"
 
 [requires]
 python_version = "3.7"

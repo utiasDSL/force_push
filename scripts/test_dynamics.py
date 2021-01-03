@@ -158,23 +158,21 @@ def calc_christoffel(q, np=np):
         [dMdθ2_13, dMdθ2_23, 0]])
 
     dMdq = np.zeros((3, 3, 3))
-    dMdq[0, :, :] = dMdxb
-    dMdq[1, :, :] = dMdθ1
-    dMdq[2, :, :] = dMdθ2
+    dMdq[:, :, 0] = dMdxb
+    dMdq[:, :, 1] = dMdθ1
+    dMdq[:, :, 2] = dMdθ2
+
+    Γ = dMdq - 0.5*dMdq.T
 
     # Construct matrix of Christoffel symbols
-    Γ = np.zeros((3, 3, 3))
-    Γ[:, :, 0] += 0.5*dMdq[0, :, :]
-    Γ[:, :, 1] += 0.5*dMdq[1, :, :]
-    Γ[:, :, 2] += 0.5*dMdq[2, :, :]
+    # Γ = np.zeros((3, 3, 3))
+    # Γ[:, :, 0] += dMdq[0, :, :]
+    # Γ[:, :, 1] += dMdq[1, :, :]
+    # Γ[:, :, 2] += dMdq[2, :, :]
 
-    Γ[:, 0, :] += 0.5*dMdq[0, :, :]
-    Γ[:, 1, :] += 0.5*dMdq[1, :, :]
-    Γ[:, 2, :] += 0.5*dMdq[2, :, :]
-
-    Γ[0, :, :] -= 0.5*dMdq[0, :, :]
-    Γ[1, :, :] -= 0.5*dMdq[1, :, :]
-    Γ[2, :, :] -= 0.5*dMdq[2, :, :]
+    # Γ[0, :, :] -= 0.5*dMdq[0, :, :]
+    # Γ[1, :, :] -= 0.5*dMdq[1, :, :]
+    # Γ[2, :, :] -= 0.5*dMdq[2, :, :]
 
     # for i in range(3):
     #     for j in range(3):
@@ -298,20 +296,8 @@ def calc_mass_matrix_ad(q, np=np):
 def dynamics_ad(q, dq, ddq, np=np):
     dMdq = jax.jacfwd(partial(calc_mass_matrix_ad, np=jnp))(q)
 
-    Γ = np.zeros((3, 3, 3))
-    Γ[:, :, 0] += 0.5*dMdq[:, :, 0]
-    Γ[:, :, 1] += 0.5*dMdq[:, :, 1]
-    Γ[:, :, 2] += 0.5*dMdq[:, :, 2]
-
-    Γ[:, 0, :] += 0.5*dMdq[:, :, 0]
-    Γ[:, 1, :] += 0.5*dMdq[:, :, 1]
-    Γ[:, 2, :] += 0.5*dMdq[:, :, 2]
-
-    Γ[0, :, :] -= 0.5*dMdq[:, :, 0]
-    Γ[1, :, :] -= 0.5*dMdq[:, :, 1]
-    Γ[2, :, :] -= 0.5*dMdq[:, :, 2]
-
     M = calc_mass_matrix_ad(q)
+    Γ = dMdq - 0.5*dMdq.T
     g = calc_gravity_vector(q)
 
     return M.dot(ddq) + dq.dot(Γ).dot(dq) + g

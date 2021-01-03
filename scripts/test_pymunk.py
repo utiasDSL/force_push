@@ -1,6 +1,6 @@
-#!/usr/bin/env python
 import numpy as np
 import matplotlib.pyplot as plt
+import pymunk
 
 from mm2d import models, control, plotter
 from mm2d import trajectory as trajectories
@@ -22,8 +22,19 @@ DURATION = 10.0  # duration of trajectory (s)
 def main():
     N = int(DURATION / DT) + 1
 
-    model = models.ThreeInputKinematicModel(VEL_LIM, ACC_LIM, l1=L1, l2=L2,
-                                            output_idx=[0, 1])
+    model = models.ThreeInputModel(L1, L2, VEL_LIM, acc_lim=ACC_LIM, output_idx=[0, 1])
+
+    space = pymunk.Space()
+    space.gravity = (0, 9.81)
+
+    # robot body
+    body = pymunk.Body(0, 0, body_type=pymunk.Body.KINEMATIC)
+    base_w = 1.0
+    base_h = 0.25
+    base_trans = pymunk.Transform(tx=0, ty=-base_h/2.0)
+    base_shape = pymunk.Poly(body, [(base_w/2.0, base_h/2.0), (-base_w/2.0, base_h/2.0), (-base_w/2.0, -base_h/2.0), (base_w/2.0, -base_h/2.0)], base_trans)
+
+    IPython.embed()
 
     W = 0.1 * np.eye(model.ni)
     K = np.eye(model.no)
@@ -41,33 +52,8 @@ def main():
     p0 = model.forward(q0)
 
     # reference trajectory
-    # trajectory = Line(p0, v0=np.zeros(2), a=np.array([0.01, 0]))
-    # timescaling = trajectories.QuinticTimeScaling(DURATION)
-    timescaling = trajectories.TrapezoidalTimeScalingV(0.15, DURATION)
-    # timescaling = trajectories.TrapezoidalTimeScalingA(0.1, DURATION)
-
-    # trajectory = trajectories.PointToPoint(p0, p0 + [1, 0], timescaling, DURATION)
-    trajectory = trajectories.Sine(p0, 2, 0.5, 1, timescaling, DURATION)
-    # trajectory2 = PointToPoint(p0 + [1, 0], p0 + [2, 0], timescaling, 0.5*DURATION)
-    # trajectory = Chain([trajectory1, trajectory2])
-
-    # points = np.array([p0, p0 + [1, 1], p0 + [2, -1], p0 + [3, 0]])
-    # trajectory = CubicBezier(points, timescaling, DURATION)
-    # trajectory = trajectories.Circle(p0, 0.5, timescaling, DURATION)
-    # points = np.array([p0, p0 + [1, 0], p0 + [1, -1], p0 + [0, -1], p0])
-    # trajectory = Polygon(points, v=0.4)
-
-    # pref, vref, aref = trajectory.sample(ts)
-    # plt.figure()
-    # plt.plot(ts, pref[:, 0], label='$p$')
-    # plt.plot(ts, vref[:, 0], label='$v$')
-    # plt.plot(ts, aref[:, 0], label='$a$')
-    # plt.grid()
-    # plt.legend()
-    # plt.title('EE reference trajectory')
-    # plt.xlabel('Time (s)')
-    # plt.ylabel('Reference signal')
-    # plt.show()
+    timescaling = trajectories.QuinticTimeScaling(DURATION)
+    trajectory = trajectories.PointToPoint(p0, p0 + [1, 0], timescaling, DURATION)
 
     q = q0
     p = p0

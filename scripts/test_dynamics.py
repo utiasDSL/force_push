@@ -44,7 +44,7 @@ def symbolic_dynamics(time):
     # Kinetic energy
     Kb = 0.5*Mb*dq[0]**2
     K1 = 0.5*M1*(dx1**2+dy1**2) + 0.5*I1*dq[1]**2
-    K2 = 0.5*M2*(dx2**2+dy2**2) + 0.5*I2*dq[2]**2
+    K2 = 0.5*M2*(dx2**2+dy2**2) + 0.5*I2*(dq[1]+dq[2])**2
     K = Kb + K1 + K2
 
     # Lagrangian
@@ -122,8 +122,8 @@ def calc_mass_matrix(q, np=np):
     m12 = -(0.5*M1+M2)*L1*np.sin(θ1) - 0.5*M2*L2*np.sin(θ12)
     m13 = -0.5*M2*L2*np.sin(θ12)
 
-    m22 = (0.25*M1+M2)*L1**2 + 0.25*M2*L2**2 + M2*L1*L2*np.cos(θ2) + I1
-    m23 = 0.5*M2*L2*(0.5*L2+L1*np.cos(θ2))
+    m22 = (0.25*M1+M2)*L1**2 + 0.25*M2*L2**2 + M2*L1*L2*np.cos(θ2) + I1 + I2
+    m23 = 0.5*M2*L2*(0.5*L2+L1*np.cos(θ2)) + I2
 
     m33 = 0.25*M2*L2**2 + I2
 
@@ -132,6 +132,57 @@ def calc_mass_matrix(q, np=np):
         [m12, m22, m23],
         [m13, m23, m33]])
     return M
+
+
+def calc_christoffel(q, np=np):
+    xb, θ1, θ2 = q
+    θ12 = θ1 + θ2
+
+    # Partial derivations of mass matrix
+    dMdxb = np.zeros((3, 3))
+
+    dMdθ1_12 = -0.5*M1*L1*np.cos(θ1) - M2*L1*np.cos(θ1) - 0.5*M2*L2*np.cos(θ12)
+    dMdθ1_13 = -0.5*M2*L2*np.cos(θ12)
+    dMdθ1 = np.array([
+        [0, dMdθ1_12, dMdθ1_13],
+        [dMdθ1_12, 0, 0],
+        [dMdθ1_13, 0, 0]])
+
+    dMdθ2_12 = -0.5*M2*L2*np.cos(θ12)
+    dMdθ2_13 = -0.5*M2*L2*np.cos(θ12)
+    dMdθ2_22 = -M2*L1*L2*np.sin(θ2)
+    dMdθ2_23 = -0.5*M2*L1*L2*np.sin(θ2)
+    dMdθ2 = np.array([
+        [0,        dMdθ2_12, dMdθ2_13],
+        [dMdθ2_12, dMdθ2_22, dMdθ2_23],
+        [dMdθ2_13, dMdθ2_23, 0]])
+
+    dMdq = np.zeros((3, 3, 3))
+    dMdq[0, :, :] = dMdxb
+    dMdq[1, :, :] = dMdθ1
+    dMdq[2, :, :] = dMdθ2
+
+    # Construct matrix of Christoffel symbols
+    Γ = np.zeros((3, 3, 3))
+    Γ[:, :, 0] += 0.5*dMdq[0, :, :]
+    Γ[:, :, 1] += 0.5*dMdq[1, :, :]
+    Γ[:, :, 2] += 0.5*dMdq[2, :, :]
+
+    Γ[:, 0, :] += 0.5*dMdq[0, :, :]
+    Γ[:, 1, :] += 0.5*dMdq[1, :, :]
+    Γ[:, 2, :] += 0.5*dMdq[2, :, :]
+
+    Γ[0, :, :] -= 0.5*dMdq[0, :, :]
+    Γ[1, :, :] -= 0.5*dMdq[1, :, :]
+    Γ[2, :, :] -= 0.5*dMdq[2, :, :]
+
+    # for i in range(3):
+    #     for j in range(3):
+    #         for k in range(3):
+    #             Γ[i, j, k] = 0.5*(dMdq[k, j, i] + dMdq[i, k, j] - dMdq[i, j, k])  # mine
+    #             # Γ[i, j, k] = dMdq[k, j, i] - 0.5*dMdq[i, j, k]  # mine
+    #             # Γ[i, j, k] = 0.5*(dMdq[k, j, i] + dMdq[k, i, j] - dMdq[i, j, k])  # Spong
+    return Γ
 
 
 def calc_gravity_vector(q):
@@ -143,33 +194,11 @@ def calc_gravity_vector(q):
 
 
 def manual_dynamics_mat(q, dq, ddq):
-    xb, θ1, θ2 = q
-    dxb, dθ1, dθ2 = dq
-
-    θ12 = θ1 + θ2
-    dθ12 = dθ1 + dθ2
-
     M = calc_mass_matrix(q)
+    Γ = calc_christoffel(q)
     g = calc_gravity_vector(q)
 
-    c11 = 0
-    c12 = -(0.5*M1+M2)*L1*dθ1*np.cos(θ1) - 0.5*M2*L2*(dθ1+2*dθ2)*np.cos(θ12)
-    c13 = -0.5*M2*L2*(dθ2+2*dθ1)*np.cos(θ12)
-
-    c21 = -(M1+2*M2)*L1*dθ1*np.cos(θ1) - M2*L2*dθ12*np.cos(θ12)
-    c22 = -(M1+2*M2)*L1*dxb*np.cos(θ1) - M2*L2*dxb*np.cos(θ12) - M2*L1*L2*dθ2*np.sin(θ2)
-    c23 = -M2*L2*dxb*np.cos(θ12) - 0.5*M2*L1*L2*dθ2*np.sin(θ2)
-
-    c31 = -M2*L2*dθ12*np.cos(θ12)
-    c32 = -M2*L1*L2*np.sin(θ2)*(0.5*dθ1+dθ2) - M2*L2*dxb*np.cos(θ12)
-    c33 = -M2*L2*(L1*dθ1*np.sin(θ2) + dxb*np.cos(θ12))
-
-    C = np.array([
-        [c11, c12, c13],
-        [c21, c22, c23],
-        [c31, c32, c33]])
-
-    return M.dot(ddq) + C.dot(dq) + g
+    return M @ ddq + dq @ Γ @ dq + g
 
 
 def potential_energy(q, np=np):
@@ -182,17 +211,6 @@ def potential_energy(q, np=np):
     P = Pb + P1 + P2
 
     return P
-
-
-# def body_points(t, np=np):
-#     q = configuration(t)
-#
-#     x1 = q[0] + LX + 0.5*L1*np.cos(q[1])
-#     y1 = LY + 0.5*L1*np.sin(q[1])
-#     x2 = q[0] + LX + L1*np.cos(q[1]) + 0.5*L2*np.cos(q[1]+q[2])
-#     y2 = LY + L1*np.sin(q[1]) + 0.5*L2*np.sin(q[1]+q[2])
-#
-#     return np.array([x1, y1, x2, y2])
 
 
 def kinetic_energy(q, dq, np=np):
@@ -210,7 +228,7 @@ def kinetic_energy(q, dq, np=np):
 
     Kb = 0.5*Mb*dq[0]**2
     K1 = 0.5*M1*(dx1**2+dy1**2) + 0.5*I1*dq[1]**2
-    K2 = 0.5*M2*(dx2**2+dy2**2) + 0.5*I2*dq[2]**2
+    K2 = 0.5*M2*(dx2**2+dy2**2) + 0.5*I2*(dq[1]+dq[2])**2
 
     return Kb + K1 + K2
 
@@ -247,6 +265,58 @@ def auto_diff_dynamics():
     return jax.jit(tau_func)
 
 
+def fkb_ad(q, np=np):
+    return np.array([q[0], 0, 0])
+
+def fk1_ad(q, np=np):
+    return np.array([
+        q[0] + LX + 0.5*L1*np.cos(q[1]),
+        LY + 0.5*L1*np.sin(q[1]),
+        q[1]])
+
+def fk2_ad(q, np=np):
+    return np.array([
+        q[0] + LX + L1*np.cos(q[1]) + 0.5*L2*np.cos(q[1]+q[2]),
+        LY + L1*np.sin(q[1]) + 0.5*L2*np.sin(q[1]+q[2]),
+        q[1] + q[2]
+    ])
+
+
+def calc_mass_matrix_ad(q, np=np):
+    # Jacobians
+    Jb = jax.jacfwd(partial(fkb_ad, np=jnp))(q)
+    J1 = jax.jacfwd(partial(fk1_ad, np=jnp))(q)
+    J2 = jax.jacfwd(partial(fk2_ad, np=jnp))(q)
+
+    Gb = np.diag(np.array([Mb, Mb, 0]))
+    G1 = np.diag(np.array([M1, M1, I1]))
+    G2 = np.diag(np.array([M2, M2, I2]))
+
+    return np.dot(np.dot(Jb.T, Gb), Jb) + np.dot(np.dot(J1.T, G1), J1) + np.dot(np.dot(J2.T, G2), J2)
+
+
+def dynamics_ad(q, dq, ddq, np=np):
+    dMdq = jax.jacfwd(partial(calc_mass_matrix_ad, np=jnp))(q)
+
+    Γ = np.zeros((3, 3, 3))
+    Γ[:, :, 0] += 0.5*dMdq[:, :, 0]
+    Γ[:, :, 1] += 0.5*dMdq[:, :, 1]
+    Γ[:, :, 2] += 0.5*dMdq[:, :, 2]
+
+    Γ[:, 0, :] += 0.5*dMdq[:, :, 0]
+    Γ[:, 1, :] += 0.5*dMdq[:, :, 1]
+    Γ[:, 2, :] += 0.5*dMdq[:, :, 2]
+
+    Γ[0, :, :] -= 0.5*dMdq[:, :, 0]
+    Γ[1, :, :] -= 0.5*dMdq[:, :, 1]
+    Γ[2, :, :] -= 0.5*dMdq[:, :, 2]
+
+    M = calc_mass_matrix_ad(q)
+    g = calc_gravity_vector(q)
+
+    return M.dot(ddq) + dq.dot(Γ).dot(dq) + g
+
+
 def main():
     tau_func = auto_diff_dynamics()
 
@@ -264,13 +334,14 @@ def main():
     g = calc_gravity_vector(q)
     dMdq = dMdq_func(q)
 
+    print(dynamics_ad(q, dq, ddq))
+    print(manual_dynamics_mat(q, dq, ddq))
 
     print(tau_func(t))
-    print(np.array(symbolic_dynamics(t)).astype(np.float64).flatten())
-    print(manual_dynamics(q, dq, ddq))
+    # print(np.array(symbolic_dynamics(t)).astype(np.float64).flatten())
     # print(manual_dynamics_mat(q, dq, ddq))
 
-    IPython.embed()
+    # IPython.embed()
 
 
 if __name__ == '__main__':

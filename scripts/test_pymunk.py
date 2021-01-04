@@ -10,144 +10,108 @@ import IPython
 
 
 # robot parameters
+Lx = 0
+Ly = 0
 L1 = 1
 L2 = 1
 VEL_LIM = 1
 ACC_LIM = 1
 
-DT = 0.1        # timestep (s)
+DT = 0.005         # simulation timestep (s)
+PLOT_PERIOD = 20  # update plot every PLOT_PERIOD timesteps
+CTRL_PERIOD = 20  # generate new control signal every CTRL_PERIOD timesteps
+
 DURATION = 10.0  # duration of trajectory (s)
 
 
 def main():
     N = int(DURATION / DT) + 1
 
-    model = models.ThreeInputModel(L1, L2, VEL_LIM, acc_lim=ACC_LIM, output_idx=[0, 1])
+    # TODO eventually pymunk acts as the sim, which is slightly different that
+    # the model
+    model = models.ThreeInputKinematicModel(VEL_LIM, ACC_LIM, l1=L1, l2=L2,
+                                            output_idx=[0, 1])
+
+    ts = DT * np.arange(N)
+    q0 = np.array([0, np.pi/4.0, -np.pi/4.0])
 
     space = pymunk.Space()
-    space.gravity = (0, 9.81)
+    space.gravity = (0, -9.8)
 
-    # robot body
-    body = pymunk.Body(0, 0, body_type=pymunk.Body.KINEMATIC)
+    # base
+    base_body = pymunk.Body(body_type=pymunk.Body.KINEMATIC)
     base_w = 1.0
     base_h = 0.25
     base_trans = pymunk.Transform(tx=0, ty=-base_h/2.0)
-    base_shape = pymunk.Poly(body, [(base_w/2.0, base_h/2.0), (-base_w/2.0, base_h/2.0), (-base_w/2.0, -base_h/2.0), (base_w/2.0, -base_h/2.0)], base_trans)
+    base = pymunk.Poly(base_body, [(base_w/2.0, base_h/2.0), (-base_w/2.0, base_h/2.0), (-base_w/2.0, -base_h/2.0), (base_w/2.0, -base_h/2.0)], base_trans)
+    space.add(base.body, base)
 
-    IPython.embed()
+    # arm link 1
+    x1_mid = q0[0] + Lx + 0.5*L1
+    y1_mid = Ly
+    l1_body = pymunk.Body()  # TODO add mass and inertia directly for full control
+    l1_body.position = (x1_mid, y1_mid)
+    l1 = pymunk.Segment(l1_body, (-0.5*L1, 0), (0.5*L1, 0), radius=0.1)
+    l1.mass = 1
+    space.add(l1.body, l1)
 
-    W = 0.1 * np.eye(model.ni)
-    K = np.eye(model.no)
-    controller = control.DiffIKController(model, W, K, DT, VEL_LIM, ACC_LIM)
+    # arm joint 1
+    j1 = pymunk.PinJoint(base.body, l1.body, (0, 0), (-0.5*L1, 0))
+    j1.collide_bodies = False
+    space.add(j1)
 
-    ts = DT * np.arange(N)
-    qs = np.zeros((N, model.ni))
-    dqs = np.zeros((N, model.ni))
-    us = np.zeros((N, model.ni))
-    ps = np.zeros((N, model.no))
-    vs = np.zeros((N, model.no))
-    pds = np.zeros((N, model.no))
+    # arm link 2
+    x2_mid = q0[0] + Lx + L1 + 0.5*L2
+    y2_mid = Ly
+    l2_body = pymunk.Body()  # TODO add mass and inertia directly for full control
+    l2_body.position = (x2_mid, y2_mid)
+    l2 = pymunk.Segment(l2_body, (-0.5*L2, 0), (0.5*L2, 0), radius=0.1)
+    l2.mass = 1
+    space.add(l2.body, l2)
 
-    q0 = np.array([0, np.pi/4.0, -np.pi/4.0])
-    p0 = model.forward(q0)
+    # arm joint 2
+    j2 = pymunk.PinJoint(l1.body, l2.body, (0.5*L1, 0), (-0.5*L2, 0))
+    j2.collide_bodies = False
+    space.add(j2)
 
-    # reference trajectory
-    timescaling = trajectories.QuinticTimeScaling(DURATION)
-    trajectory = trajectories.PointToPoint(p0, p0 + [1, 0], timescaling, DURATION)
+    # set initial joint positions
+    base.body.position = (q0[0], 0)
+    l1.body.angle = q0[1]
+    l2.body.angle = q0[2]
 
-    q = q0
-    p = p0
-    dq = np.zeros(model.ni)
-    qs[0, :] = q0
-    ps[0, :] = p0
-    pds[0, :] = p0
+    plt.ion()
+    fig = plt.figure()
+    ax = plt.gca()
+    plt.grid()
+
+    ax.set_xlabel('x (m)')
+    ax.set_ylabel('y (m)')
+    ax.set_xlim([-1, 6])
+    ax.set_ylim([-1, 2])
+    ax.set_aspect('equal')
 
     robot_renderer = plotter.ThreeInputRenderer(model, q0)
-    trajectory_renderer = plotter.TrajectoryRenderer(trajectory, ts)
-    plot = plotter.RealtimePlotter([robot_renderer, trajectory_renderer])
-    plot.start()
+    robot_renderer.render(ax)
+
+    q = q0
 
     for i in range(N - 1):
         t = ts[i]
 
-        # controller
-        pd, vd, ad = trajectory.sample(t, flatten=True)
-        u = controller.solve(q, dq, pd, vd)
+        l1.body.angular_velocity = 0.4
+        l2.body.angular_velocity = 0.4
 
-        # step the model
-        q, dq = model.step(q, u, DT, dq_last=dq)
-        p = model.forward(q)
-        v = model.jacobian(q).dot(dq)
+        if i % PLOT_PERIOD == 0:
+            q = np.array([base.body.position[0], l1.body.angle, l2.body.angle])
+            print(q)
 
-        # record
-        us[i, :] = u
-        dqs[i+1, :] = dq
-        qs[i+1, :] = q
-        ps[i+1, :] = p
-        pds[i+1, :] = pd[:model.no]
-        vs[i+1, :] = v
+            robot_renderer.set_state(q)
+            robot_renderer.update_render()
 
-        # render
-        robot_renderer.set_state(q)
-        plot.update()
-    plot.done()
+            fig.canvas.draw()
+            fig.canvas.flush_events()
 
-    xe = pds[1:, 0] - ps[1:, 0]
-    ye = pds[1:, 1] - ps[1:, 1]
-    print('RMSE(x) = {}'.format(rms(xe)))
-    print('RMSE(y) = {}'.format(rms(ye)))
-
-    plt.figure()
-    plt.plot(ts, pds[:, 0], label='$x_d$', color='b', linestyle='--')
-    plt.plot(ts, pds[:, 1], label='$y_d$', color='r', linestyle='--')
-    plt.plot(ts, ps[:, 0],  label='$x$', color='b')
-    plt.plot(ts, ps[:, 1],  label='$y$', color='r')
-    plt.grid()
-    plt.legend()
-    plt.xlabel('Time (s)')
-    plt.ylabel('Position')
-    plt.title('End effector position')
-
-    plt.figure()
-    plt.plot(ts, vs[:, 0],  label='$v_x$', color='b')
-    plt.plot(ts, vs[:, 1],  label='$v_y$', color='r')
-    plt.grid()
-    plt.legend()
-    plt.xlabel('Time (s)')
-    plt.ylabel('Velocity (m/s)')
-    plt.title('End effector velocity')
-
-    plt.figure()
-    plt.plot(ts, dqs[:, 0], label='$\\dot{q}_x$')
-    plt.plot(ts, dqs[:, 1], label='$\\dot{q}_1$')
-    plt.plot(ts, dqs[:, 2], label='$\\dot{q}_2$')
-    plt.grid()
-    plt.legend()
-    plt.title('Actual joint velocity')
-    plt.xlabel('Time (s)')
-    plt.ylabel('Velocity')
-
-    plt.figure()
-    plt.plot(ts, us[:, 0], label='$u_x$')
-    plt.plot(ts, us[:, 1], label='$u_1$')
-    plt.plot(ts, us[:, 2], label='$u_2$')
-    plt.grid()
-    plt.legend()
-    plt.title('Commanded joint velocity')
-    plt.xlabel('Time (s)')
-    plt.ylabel('Velocity')
-
-    plt.figure()
-    plt.plot(ts, qs[:, 0], label='$q_x$')
-    plt.plot(ts, qs[:, 1], label='$q_1$')
-    plt.plot(ts, qs[:, 2], label='$q_2$')
-    plt.grid()
-    plt.legend()
-    plt.title('Joint positions')
-    plt.xlabel('Time (s)')
-    plt.ylabel('Joint positions')
-
-    plt.show()
+        space.step(DT)
 
 
 if __name__ == '__main__':

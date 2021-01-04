@@ -66,54 +66,6 @@ def configuration(t, np=np):
     return q
 
 
-def manual_dynamics(q, dq, ddq):
-    xb, θ1, θ2 = q
-    dxb, dθ1, dθ2 = dq
-    ddxb, ddθ1, ddθ2 = ddq
-
-    θ12 = θ1 + θ2
-    dθ12 = dθ1 + dθ2
-    ddθ12 = ddθ1 + ddθ2
-
-    dPbdq = np.zeros(3)
-    dP1dq = np.array([0, 0.5*M1*G*L1*np.cos(θ1), 0])
-    dP2dq = np.array([0, M2*G*(L1*np.cos(θ1)+0.5*L2*np.cos(θ12)),
-                      0.5*M2*G*L2*np.cos(θ12)])
-
-    dKbdq = np.zeros(3)
-    dK1dq = np.array([0, -0.5*M1*L1*dθ1*dxb*np.cos(θ1), 0])
-    dK2dq = np.array([
-        0,
-        -M2*(L1*dxb*dθ1*np.cos(θ1) + 0.5*L2*dxb*dθ12*np.cos(θ12)),
-        -0.5*M2*L2*dθ12*(L1*dθ1*np.sin(θ2) + dxb*np.cos(θ12))])
-
-    ddt_dKbddq = np.array([Mb*ddxb, 0, 0])
-    ddt_dK1ddq = np.array([
-        M1*ddxb - 0.5*M1*L1*(ddθ1*np.sin(θ1)+dθ1**2*np.cos(θ1)),
-        -0.5*M1*L1*(ddxb*np.sin(θ1)+dxb*dθ1*np.cos(θ1)) + (0.25*M1*L1**2*ddθ1
-                                                           + I1*ddθ1),
-        0])
-    ddt_dK2ddq = np.array([
-        0.5*M2*(2*ddxb - 2*L1*(ddθ1*np.sin(θ1)+dθ1**2*np.cos(θ1))
-                - L2*(ddθ12*np.sin(θ12)+dθ12**2*np.cos(θ12))),
-        0.5*M2*((2*L1**2+0.5*L2**2+2*L1*L2*np.cos(θ2))*ddθ1
-                - 2*L1*L2*dθ1*dθ2*np.sin(θ2)
-                + (0.5*L2**2+L1*L2*np.cos(θ2))*ddθ2
-                - L1*L2*dθ2**2*np.sin(θ2)
-                - (2*L1*np.sin(θ1)+L2*np.sin(θ12))*ddxb
-                - 2*L1*dxb*dθ1*np.cos(θ1)
-                - L2*dxb*dθ12*np.cos(θ12)),
-        0.5*M2*((0.5*L2**2+L1*L2*np.cos(θ2))*ddθ1 - L1*L2*dθ1*dθ2*np.sin(θ2)
-                - L2*(ddxb*np.sin(θ12)+dxb*dθ12*np.cos(θ12)) + 0.5*L2**2*ddθ2) + I2*ddθ2])
-
-    dPdq = dPbdq + dP1dq + dP2dq
-    dKdq = dKbdq + dK1dq + dK2dq
-    ddt_dKddq = ddt_dKbddq + ddt_dK1ddq + ddt_dK2ddq
-    tau = ddt_dKddq - dKdq + dPdq
-
-    return tau
-
-
 def calc_mass_matrix(q, np=np):
     xb, θ1, θ2 = q
     θ12 = θ1 + θ2

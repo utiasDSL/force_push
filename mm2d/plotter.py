@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from mm2d.util import rotation_matrix
 from matplotlib.animation import FFMpegWriter
 
 
@@ -33,6 +34,27 @@ class CircleRenderer:
 
     def update_render(self):
         self.patch.center = self.pc
+
+
+class PolygonRenderer:
+    def __init__(self, p, angle, vertices):
+        self.p = p  # origin
+        self.angle = angle
+        self.vertices = vertices  # vertices, relative to the origin
+
+    def render(self, ax):
+        v = self.vertices @ rotation_matrix(self.angle).T
+        self.patch = plt.Polygon(self.p + v, color='k', closed=True)
+        ax.add_patch(self.patch)
+
+    def set_state(self, p, angle):
+        self.p = p
+        self.angle = angle
+
+    def update_render(self):
+        v = self.vertices @ rotation_matrix(self.angle).T
+        self.patch.set_xy(self.p + v)
+
 
 
 class TrajectoryRenderer(object):
@@ -142,33 +164,6 @@ class ThreeInputRenderer(object):
         self.ys = []
         self.width = width
         self.height = height
-
-    # def calc_base_points(self, q):
-    #     ''' Generate an array of points representing the base of the robot. '''
-    #     x0 = q[0]
-    #     y0 = 0
-    #     r = self.width * 0.5
-    #     h = self.height
-    #
-    #     x = np.array([x0, x0 - r, x0 - r, x0 + r, x0 + r, x0])
-    #     y = np.array([y0, y0, y0 - h, y0 - h, y0, y0])
-    #
-    #     return x, y
-    #
-    # def calc_arm_points(self, q):
-    #     ''' Generate an array of points representing the arm of the robot. '''
-    #     x0 = q[0]
-    #     x1 = x0 + self.model.l1*np.cos(q[1])
-    #     x2 = x1 + self.model.l2*np.cos(q[1]+q[2])
-    #
-    #     y0 = 0
-    #     y1 = y0 + self.model.l1*np.sin(q[1])
-    #     y2 = y1 + self.model.l2*np.sin(q[1]+q[2])
-    #
-    #     x = np.array([x0, x1, x2])
-    #     y = np.array([y0, y1, y2])
-    #
-    #     return x, y
 
     def set_state(self, q):
         self.q = q

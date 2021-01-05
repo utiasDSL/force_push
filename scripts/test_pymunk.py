@@ -40,9 +40,11 @@ def main():
     sim.add_robot(model, q0)
 
     box_body = pymunk.Body()
-    box_body.position = (p0[0], p0[1] + 1)
-    box = pymunk.Circle(box_body, 0.5)
-    box.mass = 1
+    box_body.position = (p0[0], p0[1] + 0.1)
+    box_corners = [(-0.2, 0.05), (-0.2, -0.05), (0.2, -0.05), (0.2, 0.05)]
+    box = pymunk.Poly(box_body, box_corners, radius=0.01)
+    box.mass = 0.5
+    box.friction = 0.75
     sim.space.add(box.body, box)
 
     W = 0.01 * np.eye(model.ni)
@@ -56,7 +58,9 @@ def main():
     pds = np.zeros((N, model.no))
 
     robot_renderer = plotter.ThreeInputRenderer(model, q0)
-    box_renderer = plotter.CircleRenderer(0.5, box.body.position)
+    box_renderer = plotter.PolygonRenderer(np.array(box.body.position),
+                                           box.body.angle,
+                                           np.array(box_corners))
     trajectory_renderer = plotter.TrajectoryRenderer(trajectory, ts)
     plot = plotter.RealtimePlotter([robot_renderer, trajectory_renderer, box_renderer])
     plot.start(grid=True)
@@ -100,11 +104,8 @@ def main():
         ps[i+1, :] = p
         pds[i+1, :] = pd[:model.no]
 
-        # if t > 8.0:
-        #     IPython.embed()
-
         if i % PLOT_PERIOD == 0:
-            box_renderer.set_state(box.body.position)
+            box_renderer.set_state(np.array(box.body.position), box.body.angle)
             robot_renderer.set_state(q)
 
             ax.cla()

@@ -1,4 +1,7 @@
 import numpy as np
+import pymunk
+import pymunk.matplotlib_util
+import matplotlib.pyplot as plt
 
 from mm2d.simulations import PymunkSimulation
 from mm2d import models, control, plotter
@@ -36,6 +39,12 @@ def main():
     sim = PymunkSimulation(DT)
     sim.add_robot(model, q0)
 
+    box_body = pymunk.Body()
+    box_body.position = (p0[0], p0[1] + 1)
+    box = pymunk.Circle(box_body, 0.5)
+    box.mass = 1
+    sim.space.add(box.body, box)
+
     W = 0.01 * np.eye(model.ni)
     K = np.eye(model.no)
     controller = control.DiffIKController(model, W, K, DT, VEL_LIM, ACC_LIM)
@@ -47,9 +56,25 @@ def main():
     pds = np.zeros((N, model.no))
 
     robot_renderer = plotter.ThreeInputRenderer(model, q0)
+    box_renderer = plotter.CircleRenderer(0.5, box.body.position)
     trajectory_renderer = plotter.TrajectoryRenderer(trajectory, ts)
-    plot = plotter.RealtimePlotter([robot_renderer, trajectory_renderer])
+    plot = plotter.RealtimePlotter([robot_renderer, trajectory_renderer, box_renderer])
     plot.start(grid=True)
+
+    plt.ion()
+    fig = plt.figure()
+    ax = plt.gca()
+    plt.grid()
+
+    ax.set_xlabel('x (m)')
+    ax.set_ylabel('y (m)')
+    ax.set_xlim([-1, 6])
+    ax.set_ylim([-1, 2])
+
+    ax.set_aspect('equal')
+
+    options = pymunk.matplotlib_util.DrawOptions(ax)
+    options.flags = pymunk.SpaceDebugDrawOptions.DRAW_SHAPES
 
     q = q0
     dq = np.zeros(3)
@@ -75,8 +100,21 @@ def main():
         ps[i+1, :] = p
         pds[i+1, :] = pd[:model.no]
 
+        # if t > 8.0:
+        #     IPython.embed()
+
         if i % PLOT_PERIOD == 0:
+            box_renderer.set_state(box.body.position)
             robot_renderer.set_state(q)
+
+            ax.cla()
+            ax.set_xlim([-1, 6])
+            ax.set_ylim([-1, 2])
+
+            sim.space.debug_draw(options)
+            fig.canvas.draw()
+            fig.canvas.flush_events()
+
             plot.update()
     plot.done()
 

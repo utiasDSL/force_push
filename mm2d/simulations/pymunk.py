@@ -1,14 +1,16 @@
 import numpy as np
 import pymunk
+import IPython
 
 
 class PymunkSimulation:
-    def __init__(self, dt, gravity=9.8):
+    def __init__(self, dt, gravity=-9.8):
         self.dt = dt
         self.space = pymunk.Space()
-        self.space.gravity = (0, 9.8)
+        self.space.gravity = (0, gravity)
 
     def add_robot(self, model, q0):
+        self.q0 = q0
         self.dq_des = np.zeros(model.ni)
         self.q_des = np.copy(q0)
         self.q = np.copy(q0)
@@ -28,46 +30,41 @@ class PymunkSimulation:
 
         # arm link 1
         # TODO add mass and inertia directly for full control
-        ax, ay = model.arm_points(qz)
+        ax, ay = model.arm_points(q0)
+        dx1 = 0.5*model.l1*np.cos(q0[1])
+        dy1 = 0.5*model.l1*np.sin(q0[1])
         link1_body = pymunk.Body()
-        link1_body.position = (ax[1], ay[1])
-        link1 = pymunk.Segment(link1_body, (-0.5*model.l1, 0),
-                               (0.5*model.l1, 0), radius=0.1)
+        link1_body.position = (ax[0] + dx1, ay[0] + dy1)
+        link1 = pymunk.Segment(link1_body, (-dx1, -dy1), (dx1, dy1), radius=0.05)
         link1.mass = 1
         self.space.add(link1.body, link1)
 
         # arm joint 1
-        joint1 = pymunk.PinJoint(base.body, link1.body, (0, 0),
-                                 (-0.5*model.l1, 0))
+        joint1 = pymunk.PinJoint(base.body, link1.body, (0, 0), (-dx1, -dy1))
         joint1.collide_bodies = False
         motor1 = pymunk.constraints.SimpleMotor(base.body, link1.body, 0)
-        # joint1.error_bias = 0
-        # motor1.error_bias = 0
         self.space.add(joint1, motor1)
 
         # arm link 2
+        dx2 = 0.5*model.l2*np.cos(q0[1]+q0[2])
+        dy2 = 0.5*model.l2*np.sin(q0[1]+q0[2])
         link2_body = pymunk.Body()
-        link2_body.position = (ax[2], ay[2])
-        link2 = pymunk.Segment(link2_body, (-0.5*model.l2, 0),
-                               (0.5*model.l2, 0), radius=0.1)
+        link2_body.position = (ax[1] + dx2, ay[1] + dy2)
+        link2 = pymunk.Segment(
+                link2_body,
+                (-dx2, -dy2),
+                (dx2, dy2),
+                radius=0.05)
         link2.mass = 1
         self.space.add(link2.body, link2)
 
         # arm joint 2
-        joint2 = pymunk.PinJoint(link1.body, link2.body, (0.5*model.l1, 0),
-                                 (-0.5*model.l2, 0))
+        joint2 = pymunk.PinJoint(link1.body, link2.body, (dx1, dy1),
+                                 (-dx2, -dy2))
         joint2.collide_bodies = False
         motor2 = pymunk.constraints.SimpleMotor(link1.body, link2.body, 0)
-        # joint2.error_bias = 0
-        # motor2.error_bias = 0
         self.space.add(joint2, motor2)
 
-        # set initial joint positions
-        base.body.position = (q0[0], 0)
-        link1.body.angle = q0[1]
-        link2.body.angle = q0[2]
-
-        # TODO add gear + motor for the base
         self.model = model
         self.links = [base.body, link1.body, link2.body]
         self.motors = [motor1, motor2]
@@ -88,8 +85,14 @@ class PymunkSimulation:
         self.motors[1].rate = -rate[2]
 
     def _read_state(self):
+        # we have to do some translation from the angle representation of
+        # pymunk:
+        # * subtract q1 from q2, since the angle of link2 is relative to the
+        #   world in pymunk, but we want it relative to the angle of link1
+        # * add q0, since whatever state we setup the sim with is set as 0
         q = np.array([self.links[0].position[0], self.links[1].angle,
-                      self.links[2].angle])
+                      self.links[2].angle - self.links[1].angle]) + self.q0
+
         dq = np.array([self.links[0].velocity[0],
                        self.links[1].angular_velocity,
                        self.links[2].angular_velocity])

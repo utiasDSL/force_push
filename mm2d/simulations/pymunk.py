@@ -3,15 +3,18 @@ import pymunk
 
 
 class PymunkSimulation:
-    def __init__(self, gravity=9.8):
+    def __init__(self, dt, gravity=9.8):
+        self.dt = dt
         self.space = pymunk.Space()
         self.space.gravity = (0, 9.8)
 
     def add_robot(self, model, q0):
-        # self.model = model
+        self.dq_des = np.zeros(model.ni)
+        self.q_des = np.copy(q0)
+        self.q = np.copy(q0)
+        self.dq = np.zeros(3)
 
         qz = np.zeros(model.ni)
-        self.dq = np.zeros(model.ni)
 
         # base
         base_body = pymunk.Body(body_type=pymunk.Body.KINEMATIC)
@@ -28,7 +31,6 @@ class PymunkSimulation:
         ax, ay = model.arm_points(qz)
         link1_body = pymunk.Body()
         link1_body.position = (ax[1], ay[1])
-        # TODO can simplify below I think
         link1 = pymunk.Segment(link1_body, (-0.5*model.l1, 0),
                                (0.5*model.l1, 0), radius=0.1)
         link1.mass = 1
@@ -38,7 +40,10 @@ class PymunkSimulation:
         joint1 = pymunk.PinJoint(base.body, link1.body, (0, 0),
                                  (-0.5*model.l1, 0))
         joint1.collide_bodies = False
-        self.space.add(joint1)
+        motor1 = pymunk.constraints.SimpleMotor(base.body, link1.body, 0)
+        # joint1.error_bias = 0
+        # motor1.error_bias = 0
+        self.space.add(joint1, motor1)
 
         # arm link 2
         link2_body = pymunk.Body()
@@ -52,31 +57,56 @@ class PymunkSimulation:
         joint2 = pymunk.PinJoint(link1.body, link2.body, (0.5*model.l1, 0),
                                  (-0.5*model.l2, 0))
         joint2.collide_bodies = False
-        self.space.add(joint2)
+        motor2 = pymunk.constraints.SimpleMotor(link1.body, link2.body, 0)
+        # joint2.error_bias = 0
+        # motor2.error_bias = 0
+        self.space.add(joint2, motor2)
 
         # set initial joint positions
         base.body.position = (q0[0], 0)
         link1.body.angle = q0[1]
         link2.body.angle = q0[2]
 
+        # TODO add gear + motor for the base
+        self.model = model
         self.links = [base.body, link1.body, link2.body]
+        self.motors = [motor1, motor2]
 
-    def command_velocity(self, dq):
-        self.dq = dq
+    def command_velocity(self, dq_des):
+        self.dq_des = dq_des
 
     def command_torque(self, tau):
-        # TODO need to get motors working for this to be possible
+        # TODO calculate x = (q, dq) with u = tau, then limit motors to tau
+        # force
         pass
 
-    def step(self, dt):
-        self.links[0].velocity = (self.dq[0], 0)
-        self.links[1].angular_velocity = self.dq[1]
-        self.links[2].angular_velocity = self.dq[2]
+    def _set_motor_rates(self, rate):
+        self.links[0].velocity = (rate[0], 0)
 
-        self.space.step(dt)
+        # Pymunk convention for motors is positive rate = clockwise rotation
+        self.motors[0].rate = -rate[1]
+        self.motors[1].rate = -rate[2]
+
+    def _read_state(self):
         q = np.array([self.links[0].position[0], self.links[1].angle,
                       self.links[2].angle])
         dq = np.array([self.links[0].velocity[0],
                        self.links[1].angular_velocity,
                        self.links[2].angular_velocity])
         return q, dq
+
+    def step(self):
+        ''' Step the simulation forward in time. '''
+        # internal control: we use a integral controller on the motor velocity
+        # to reduce tracking error
+        rate = 100 * (self.q_des - self.q) + self.dq_des
+        self._set_motor_rates(rate)
+
+        self.space.step(self.dt)
+
+        # integrator for desired joint positions
+        self.q_des += self.dt * self.dq_des
+
+        self.q, self.dq = self._read_state()
+
+        return self.q, self.dq

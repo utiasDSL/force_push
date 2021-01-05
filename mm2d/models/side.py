@@ -13,14 +13,18 @@ Ly = 0
 L1 = 1
 L2 = 0.5
 
+# base width and height
+Bw = 1.0
+Bh = 0.25
+
 G = 9.8
 
 
 class ThreeInputKinematicModel:
     ''' Three-input 2D mobile manipulator. Consists of mobile base (1 input)
         and 2-link arm (2 inputs). State is q = [x_b, q_1, q_2]; inputs u = dq. '''
-    def __init__(self, vel_lim, acc_lim, lx=Lx, ly=Ly, l1=L1, l2=L2,
-                 output_idx=[0, 1, 2]):
+    def __init__(self, vel_lim, acc_lim, lx=Lx, ly=Ly, l1=L1, l2=L2, bw=Bw,
+                 bh=Bh, output_idx=[0, 1, 2]):
         self.ni = 3  # number of joints (inputs/DOFs)
 
         # control which outputs are used
@@ -35,14 +39,18 @@ class ThreeInputKinematicModel:
         self.l1 = l1
         self.l2 = l2
 
+        self.bh = bh
+        self.bw = bw
+
         self.vel_lim = vel_lim
         self.acc_lim = acc_lim
 
     def forward(self, q):
         ''' Forward kinematic transform for the end effector. '''
-        p = np.array([q[0] + self.l1*np.cos(q[1]) + self.l2*np.cos(q[1]+q[2]),
-                      self.l1*np.sin(q[1]) + self.l2*np.sin(q[1]+q[2]),
-                      q[1] + q[2]])
+        p = np.array([
+            self.lx + q[0] + self.l1*np.cos(q[1]) + self.l2*np.cos(q[1]+q[2]),
+            self.ly + self.l1*np.sin(q[1]) + self.l2*np.sin(q[1]+q[2]),
+            q[1] + q[2]])
         return p[self.output_idx]
 
     def jacobian(self, q):
@@ -62,6 +70,33 @@ class ThreeInputKinematicModel:
             [0, -self.l1*np.sin(q[1])*dq[1]-self.l2*np.sin(q12)*dq12, -self.l2*np.sin(q12)*dq12],
             [0, 0, 0]])
         return J[self.output_idx, :]
+
+    def base_corners(self, q):
+        ''' Calculate the corners of the base of the robot. '''
+        x0 = q[0]
+        y0 = 0
+        r = self.bw * 0.5
+        h = self.bh
+
+        x = np.array([x0 - r, x0 - r, x0 + r, x0 + r])
+        y = np.array([y0, y0 - h, y0 - h, y0])
+
+        return x, y
+
+    def arm_points(self, q):
+        ''' Calculate points on the arm. '''
+        x0 = q[0] + self.lx
+        x1 = x0 + self.l1*np.cos(q[1])
+        x2 = x1 + self.l2*np.cos(q[1]+q[2])
+
+        y0 = self.ly
+        y1 = y0 + self.l1*np.sin(q[1])
+        y2 = y1 + self.l2*np.sin(q[1]+q[2])
+
+        x = np.array([x0, x1, x2])
+        y = np.array([y0, y1, y2])
+
+        return x, y
 
     def pos_all(self, q):
         # elementary points

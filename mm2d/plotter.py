@@ -143,39 +143,43 @@ class ThreeInputRenderer(object):
         self.width = width
         self.height = height
 
-    def calc_base_points(self, q):
-        ''' Generate an array of points representing the base of the robot. '''
-        x0 = q[0]
-        y0 = 0
-        r = self.width * 0.5
-        h = self.height
-
-        x = np.array([x0, x0 - r, x0 - r, x0 + r, x0 + r, x0])
-        y = np.array([y0, y0, y0 - h, y0 - h, y0, y0])
-
-        return x, y
-
-    def calc_arm_points(self, q):
-        ''' Generate an array of points representing the arm of the robot. '''
-        x0 = q[0]
-        x1 = x0 + self.model.l1*np.cos(q[1])
-        x2 = x1 + self.model.l2*np.cos(q[1]+q[2])
-
-        y0 = 0
-        y1 = y0 + self.model.l1*np.sin(q[1])
-        y2 = y1 + self.model.l2*np.sin(q[1]+q[2])
-
-        x = np.array([x0, x1, x2])
-        y = np.array([y0, y1, y2])
-
-        return x, y
+    # def calc_base_points(self, q):
+    #     ''' Generate an array of points representing the base of the robot. '''
+    #     x0 = q[0]
+    #     y0 = 0
+    #     r = self.width * 0.5
+    #     h = self.height
+    #
+    #     x = np.array([x0, x0 - r, x0 - r, x0 + r, x0 + r, x0])
+    #     y = np.array([y0, y0, y0 - h, y0 - h, y0, y0])
+    #
+    #     return x, y
+    #
+    # def calc_arm_points(self, q):
+    #     ''' Generate an array of points representing the arm of the robot. '''
+    #     x0 = q[0]
+    #     x1 = x0 + self.model.l1*np.cos(q[1])
+    #     x2 = x1 + self.model.l2*np.cos(q[1]+q[2])
+    #
+    #     y0 = 0
+    #     y1 = y0 + self.model.l1*np.sin(q[1])
+    #     y2 = y1 + self.model.l2*np.sin(q[1]+q[2])
+    #
+    #     x = np.array([x0, x1, x2])
+    #     y = np.array([y0, y1, y2])
+    #
+    #     return x, y
 
     def set_state(self, q):
         self.q = q
 
     def render(self, ax):
-        xa, ya = self.calc_arm_points(self.q)
-        xb, yb = self.calc_base_points(self.q)
+        xa, ya = self.model.arm_points(self.q)
+        xb, yb = self.model.base_corners(self.q)
+
+        # add first point at the end to draw the whole shape
+        xb = np.append(xb, xb[0])
+        yb = np.append(yb, yb[0])
 
         self.xs.append(xa[-1])
         self.ys.append(ya[-1])
@@ -187,8 +191,11 @@ class ThreeInputRenderer(object):
             self.path_plot, = ax.plot(self.xs, self.ys, color='r')
 
     def update_render(self):
-        xa, ya = self.calc_arm_points(self.q)
-        xb, yb = self.calc_base_points(self.q)
+        xa, ya = self.model.arm_points(self.q)
+        xb, yb = self.model.base_corners(self.q)
+
+        xb = np.append(xb, xb[0])
+        yb = np.append(yb, yb[0])
 
         self.xs.append(xa[-1])
         self.ys.append(ya[-1])
@@ -268,6 +275,8 @@ class RealtimePlotter(object):
         self.ax.set_ylabel('y (m)')
         self.ax.set_xlim(limits[:2])
         self.ax.set_ylim(limits[2:])
+
+        self.ax.set_aspect('equal')
 
         for renderer in self.renderers:
             renderer.render(self.ax)

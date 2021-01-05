@@ -79,7 +79,7 @@ def main():
     robot_renderer = plotter.ThreeInputRenderer(model, q0)
     trajectory_renderer = plotter.TrajectoryRenderer(trajectory, ts)
     plot = plotter.RealtimePlotter([robot_renderer, trajectory_renderer])
-    plot.start()
+    plot.start(grid=True)
 
     for i in range(N - 1):
         t = ts[i]

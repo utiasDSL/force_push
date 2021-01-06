@@ -11,14 +11,7 @@ from mm2d.util import rms
 import IPython
 
 
-# robot parameters
-Lx = 0
-Ly = 0
-L1 = 1
-L2 = 1
-VEL_LIM = 1
-ACC_LIM = 1
-
+# sim parameters
 DT = 0.001         # simulation timestep (s)
 PLOT_PERIOD = 100  # update plot every PLOT_PERIOD timesteps
 CTRL_PERIOD = 100  # generate new control signal every CTRL_PERIOD timesteps
@@ -29,8 +22,7 @@ DURATION = 10.0  # duration of trajectory (s)
 def main():
     N = int(DURATION / DT) + 1
 
-    model = models.ThreeInputKinematicModel(VEL_LIM, ACC_LIM, l1=L1, l2=L2,
-                                            output_idx=[0, 1])
+    model = models.ThreeInputModel(output_idx=[0, 1])
 
     ts = DT * np.arange(N)
     q0 = np.array([0, np.pi/4.0, -np.pi/4.0])
@@ -49,7 +41,8 @@ def main():
 
     W = 0.01 * np.eye(model.ni)
     K = np.eye(model.no)
-    controller = control.DiffIKController(model, W, K, DT, VEL_LIM, ACC_LIM)
+    controller = control.DiffIKController(model, W, K, DT, model.vel_lim,
+                                          model.acc_lim)
 
     timescaling = trajectories.QuinticTimeScaling(DURATION)
     trajectory = trajectories.Sine(p0, 2, 0.5, 1, timescaling, DURATION)

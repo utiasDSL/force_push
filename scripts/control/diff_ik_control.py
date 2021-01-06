@@ -22,8 +22,8 @@ DURATION = 10.0  # duration of trajectory (s)
 def main():
     N = int(DURATION / DT) + 1
 
-    model = models.ThreeInputKinematicModel(VEL_LIM, ACC_LIM, l1=L1, l2=L2,
-                                            output_idx=[0, 1])
+    model = models.ThreeInputModel(l1=L1, l2=L2, vel_lim=VEL_LIM,
+                                   acc_lim=ACC_LIM, output_idx=[0, 1])
 
     W = 0.1 * np.eye(model.ni)
     K = np.eye(model.no)

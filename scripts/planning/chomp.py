@@ -5,17 +5,8 @@ import matplotlib.pyplot as plt
 from scipy import sparse
 import IPython
 
-from mm2d.model import ThreeInputModel
+from mm2d import models
 
-
-# model parameters
-# link lengths
-L1 = 1
-L2 = 1
-
-# input bounds
-LB = -1
-UB = 1
 
 # optimize over q1...qn, with q0 and qn+1 the fixed end points
 
@@ -145,11 +136,11 @@ def motion_grad(model, traj, q0, qf, N):
 def obs_grad_one_step(model, q, dq, ddq, field):
     ''' Compute the obstacle gradient for a single waypoint. '''
     n = q.shape[0]
-    Js = model.jac_all(q)
-    dJs = model.dJdt_all(q, dq)
+    Js = model.sample_jacobians(q)
+    dJs = model.sample_dJdt(q, dq)
 
     # Cartesian position, velocity, acceleration
-    xs = model.pos_all(q)
+    xs = model.sample_points(q)
     dxs = Js @ dq
     ddxs = Js @ ddq + dJs @ dq
 
@@ -168,9 +159,6 @@ def obs_grad_one_step(model, q, dq, ddq, field):
         obs_eps = 0.1
         c = field.cost(x, obs_eps)
         dc = field.cost_grad(x, obs_eps)
-
-        if i == 0:
-            print(c)
 
         dx_norm = np.linalg.norm(dx)
         if dx_norm < eps:
@@ -215,7 +203,7 @@ def obs_grad(model, traj, q0, qf, field, N):
 def main():
     np.set_printoptions(precision=3, suppress=True)
 
-    model = ThreeInputModel(L1, L2, LB, UB, output_idx=[0, 1])
+    model = models.ThreeInputModel(output_idx=[0, 1])
 
     circle = CircleField([3, 1], 0.5)
     floor = FloorField(0)
@@ -244,8 +232,10 @@ def main():
 
     traj = np.concatenate((q0, traj, qf)).reshape((N + 2, n))
 
-    points = np.array([model.pos_all(traj[i, :])[2:, :] for i in range(N + 1)])
+    points = np.array([model.sample_points(traj[i, :])[2:, :] for i in range(N + 1)])
 
+    ax = plt.gca()
+    ax.set_aspect('equal')
     plt.plot(points[:, 0, 0], points[:, 0, 1], 'o-', label='p0')
     plt.plot(points[:, 1, 0], points[:, 1, 1], 'o-', label='p1')
     plt.plot(points[:, 2, 0], points[:, 2, 1], 'o-', label='p2')

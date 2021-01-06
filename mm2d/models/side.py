@@ -11,7 +11,7 @@ M2 = 1
 Lx = 0
 Ly = 0
 L1 = 1
-L2 = 0.5
+L2 = 1
 
 # base width and height
 Bw = 1.0
@@ -19,12 +19,22 @@ Bh = 0.25
 
 G = 9.8
 
+# limits
+VEL_LIM = 1
+ACC_LIM = 1
+TAU_LIM = 100
 
-class ThreeInputKinematicModel:
-    ''' Three-input 2D mobile manipulator. Consists of mobile base (1 input)
-        and 2-link arm (2 inputs). State is q = [x_b, q_1, q_2]; inputs u = dq. '''
-    def __init__(self, vel_lim, acc_lim, lx=Lx, ly=Ly, l1=L1, l2=L2, bw=Bw,
-                 bh=Bh, output_idx=[0, 1, 2]):
+
+class ThreeInputModel:
+    """Three-input 2D mobile manipulator kinematic and dynamic model.
+
+    The robot consists of mobile base (1 DOF: base x-position xb) and a 2-link
+    arm (2 DOF: joint angles θ1 and θ2).
+    The configuration vector is thus q = [xb, θ1, θ2].
+    """
+    def __init__(self, bh=Bh, bw=Bw, lx=Lx, ly=Ly, l1=L1, l2=L2, mb=Mb, m1=M1,
+                 m2=M2, gravity=G, vel_lim=VEL_LIM, acc_lim=ACC_LIM,
+                 tau_lim=TAU_LIM, output_idx=[0, 1, 2]):
         self.ni = 3  # number of joints (inputs/DOFs)
 
         # control which outputs are used
@@ -32,16 +42,28 @@ class ThreeInputKinematicModel:
         self.no = len(output_idx)
         self.output_idx = output_idx
 
-        # TODO need to account for LX and LY in the forward and differential
-        # kinematics
+        # lengths
         self.lx = lx
         self.ly = ly
         self.l1 = l1
         self.l2 = l2
 
+        # base size
         self.bh = bh
         self.bw = bw
 
+        # link masses
+        self.mb = mb
+        self.m1 = m1
+        self.m2 = m2
+
+        # link inertias
+        self.I1 = m1 * l1**2 / 12
+        self.I2 = m2 * l2**2 / 12
+
+        self.gravity = gravity
+
+        self.tau_lim = tau_lim
         self.vel_lim = vel_lim
         self.acc_lim = acc_lim
 
@@ -98,48 +120,19 @@ class ThreeInputKinematicModel:
 
         return x, y
 
-    def pos_all(self, q):
-        # elementary points
-        p0 = np.array([q[0], 0])
-        p1 = p0 + self.l1 * np.array([np.cos(q[1]), np.sin(q[1])])
-        p2 = p1 + self.l2 * np.array([np.cos(q[1]+q[2]), np.sin(q[1]+q[2])])
-
-        # evenly divide the links
-        l1s = np.linspace(0, self.l1, 10)
-        l2s = np.linspace(0, self.l2, 10)
-
-        p0s = p0 + np.array([[-0.5, 0], [0.5, 0], [0, 0]])
-        p1s = p0 + np.outer(l1s, np.array([np.cos(q[1]), np.sin(q[1])]))
-        p2s = p1 + np.outer(l2s, np.array([np.cos(q[1]+q[2]), np.sin(q[1]+q[2])]))
-
-        ps = np.concatenate((p0s, p1s, p2s))
-
+    def sample_points(self, q):
+        ''' Sample points across the robot body. '''
+        ax, ay = self.arm_points(q)
         ps = np.array([
             [q[0] - 0.5, 0],
             [q[0] + 0.5, 0],
             [q[0], 0],
-            [q[0] + self.l1*np.cos(q[1]), self.l1*np.sin(q[1])],
-            [q[0] + self.l1*np.cos(q[1]) + self.l2*np.cos(q[1]+q[2]), self.l1*np.sin(q[1]) + self.l2*np.sin(q[1]+q[2])]])
+            [ax[1], ay[1]],
+            [ax[2], ay[2]]])
         return ps
 
-    def jac_all(self, q):
-        # elementary Jacobians
-        J0 = np.array([[1, 0, 0],
-                       [0, 0, 0]])
-        J1 = np.array([[0, -np.sin(q[1]), 0],
-                       [0,  np.cos(q[1]), 0]])
-        J2 = np.array([[0, -np.sin(q[1]+q[2]), -np.sin(q[1]+q[2])],
-                       [0,  np.cos(q[1]+q[2]),  np.cos(q[1]+q[2])]])
-
-        l1s = np.linspace(0, self.l1, 10)
-        l2s = np.linspace(0, self.l2, 10)
-
-        J0s = np.kron(np.ones((3, 1)), J0)
-        J1s = J0s[-1, :, :] + np.kron(l1s[:, None], J1)
-        J2s = J1s[-1, :, :] + np.kron(l2s[:, None], J2)
-
-        Js = np.concatenate((J0s, J1s, J2s))
-
+    def sample_jacobians(self, q):
+        ''' Jacobians of points sampled across the robot body. '''
         Js = np.zeros((5, 2, 3))
         Js[0, :, :] = Js[1, :, :] = Js[2, :, :] = np.array([[1, 0, 0], [0, 0, 0]])
         Js[3, :, :] = np.array([
@@ -150,7 +143,9 @@ class ThreeInputKinematicModel:
             [0,  self.l1*np.cos(q[1])+self.l2*np.cos(q[1]+q[2]),  self.l2*np.cos(q[1]+q[2])]])
         return Js
 
-    def dJdt_all(self, q, dq):
+    def sample_dJdt(self, q, dq):
+        ''' Time-derivative of Jacobians of points sampled across the robot
+            body. '''
         dJs = np.zeros((5, 2, 3))
         dJs[3, :, :] = np.array([
             [0, -self.l1*np.cos(q[1])*dq[1], 0],
@@ -161,53 +156,6 @@ class ThreeInputKinematicModel:
             [0, -self.l1*np.cos(q[1])*dq[1]-self.l2*np.cos(q12)*dq12, -self.l2*np.cos(q12)*dq12],
             [0, -self.l1*np.sin(q[1])*dq[1]-self.l2*np.sin(q12)*dq12, -self.l2*np.sin(q12)*dq12]])
         return dJs
-
-    def step(self, q, u, dt, dq_last=None):
-        ''' Step forward one timestep. '''
-        # velocity limits
-        dq = bound_array(u, -self.vel_lim, self.vel_lim)
-
-        # acceleration limits
-        if dq_last is not None:
-            dq = bound_array(dq, -self.acc_lim * dt + dq_last, self.acc_lim * dt + dq_last)
-
-        # if not (u == dq).all():
-        #     print('limits hit')
-
-        q = q + dt * dq
-        return q, dq
-
-
-class ThreeInputDynamicModel:
-    ''' Three-input 2D mobile manipulator. Consists of mobile base (1 input)
-        and 2-link arm (2 inputs). State is q = [x_b, q_1, q_2]; inputs u = dq. '''
-    def __init__(self, tau_lim, lx=Lx, ly=Ly, l1=L1, l2=L2, mb=Mb, m1=M1,
-                 m2=M2, gravity=G, output_idx=[0, 1, 2]):
-        self.ni = 3  # number of joints (inputs/DOFs)
-
-        # control which outputs are used
-        # possible outputs are: x, y, theta
-        self.no = len(output_idx)
-        self.output_idx = output_idx
-
-        # lengths
-        self.lx = lx
-        self.ly = ly
-        self.l1 = l1
-        self.l2 = l2
-
-        # link masses
-        self.mb = mb
-        self.m1 = m1
-        self.m2 = m2
-
-        # link inertias
-        self.I1 = m1 * l1**2 / 12
-        self.I2 = m2 * l2**2 / 12
-
-        self.gravity = gravity
-
-        self.tau_lim = tau_lim
 
     def mass_matrix(self, q):
         ''' Compute dynamic mass matrix. '''
@@ -290,4 +238,16 @@ class ThreeInputDynamicModel:
         q = q + dt * dq
         dq = dq + dt * ddq
 
+        return q, dq
+
+    def step(self, q, u, dt, dq_last=None):
+        ''' Step forward one timestep. '''
+        # velocity limits
+        dq = bound_array(u, -self.vel_lim, self.vel_lim)
+
+        # acceleration limits
+        if dq_last is not None:
+            dq = bound_array(dq, -self.acc_lim * dt + dq_last, self.acc_lim * dt + dq_last)
+
+        q = q + dt * dq
         return q, dq

@@ -3,7 +3,7 @@ import pymunk
 import pymunk.matplotlib_util
 import matplotlib.pyplot as plt
 
-from mm2d.simulations import PymunkSimulation
+from mm2d.simulations import PymunkSimulationVelocity, PymunkSimulationTorque
 from mm2d import models, control, plotter
 from mm2d import trajectory as trajectories
 from mm2d.util import rms
@@ -28,7 +28,7 @@ def main():
     q0 = np.array([0, np.pi/4.0, -np.pi/4.0])
     p0 = model.forward(q0)
 
-    sim = PymunkSimulation(DT)
+    sim = PymunkSimulationTorque(DT, iterations=10)
     sim.add_robot(model, q0)
 
     box_body = pymunk.Body()
@@ -37,7 +37,7 @@ def main():
     box = pymunk.Poly(box_body, box_corners, radius=0.01)
     box.mass = 0.5
     box.friction = 0.75
-    sim.space.add(box.body, box)
+    # sim.space.add(box.body, box)
 
     W = 0.01 * np.eye(model.ni)
     K = np.eye(model.no)
@@ -81,6 +81,12 @@ def main():
     ps[0, :] = p0
     pds[0, :] = pd[:model.no]
 
+    kp = 0
+    kd = 10
+    ddqd = np.zeros(3)
+    dqd = np.zeros(3)
+    qd = q0
+
     for i in range(N - 1):
         t = ts[i]
 
@@ -88,7 +94,12 @@ def main():
         if i % CTRL_PERIOD == 0:
             pd, vd, ad = trajectory.sample(t, flatten=True)
             u = controller.solve(q, dq, pd, vd)
-            sim.command_velocity(u)
+            # sim.command_velocity(u)
+
+            # torque control law
+            α = ddqd + kp * (qd - q) + kd * (u - dq)
+            tau = model.calc_torque(q, dq, α)
+            sim.command_torque(tau)
 
         # step the sim
         q, dq = sim.step()

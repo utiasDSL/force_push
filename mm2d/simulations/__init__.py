@@ -1,1 +1,1 @@
-from .pymunk import PymunkSimulation
+from .pymunk import PymunkSimulationVelocity, PymunkSimulationTorque

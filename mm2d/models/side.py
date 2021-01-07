@@ -4,7 +4,7 @@ import numpy as np
 from mm2d.util import bound_array
 
 # default parameters
-Mb = 1
+Mb = 10
 M1 = 1
 M2 = 1
 
@@ -223,6 +223,15 @@ class ThreeInputModel:
             (0.5*self.m1+self.m2)*self.gravity*self.l1*np.cos(θ1) \
                     + 0.5*self.m2*self.l2*self.gravity*np.cos(θ12),
             0.5*self.m2*self.l2*self.gravity*np.cos(θ12)])
+
+    def calc_torque(self, q, dq, ddq):
+        ''' Calculate the required torque for the given joint positions,
+            velocity, and accelerations. '''
+        M = self.mass_matrix(q)
+        Γ = self.christoffel_matrix(q)
+        g = self.gravity_vector(q)
+
+        return M @ ddq + dq @ Γ @ dq + g
 
     def command_torque(self, q, dq, tau, dt):
         ''' Calculate the new state [q, dq] from current state [q, dq] and

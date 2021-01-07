@@ -1,10 +1,11 @@
 import numpy as np
 import pymunk
 from mm2d.util import bound_array
-import IPython
 
 
-class PymunkSimulation:
+class PymunkSimulationBase:
+    """Base class for pymunk-based physics simulation."""
+
     def __init__(self, dt, gravity=-9.8, iterations=10):
         """Initialize the pymunk simulation.
 
@@ -19,30 +20,32 @@ class PymunkSimulation:
         self.space.gravity = (0, gravity)
         self.space.iterations = iterations
 
-    def add_robot(self, model, q0):
-        self.dq_des = np.zeros(model.ni)
-        self.q_des = np.copy(q0)
-        self.q = np.copy(q0)
-        self.dq = np.zeros(3)
-
-        qz = np.zeros(model.ni)
-
-        # ground
-        ground = pymunk.Segment(self.space.static_body, (-10, -model.bh),
-                                (10, -model.bh), 0.01)
+    def add_ground(self, y):
+        ground = pymunk.Segment(self.space.static_body, (-10, y), (10, y),
+                                0.01)
         self.space.add(ground)
         ground.elasticity = 0
         ground.friction = 0.5
 
+    def add_robot(self, model, q0, dynamic=False):
+        self.q = np.copy(q0)
+        self.dq = np.zeros(3)
+
+        # ground
+        self.add_ground(-model.bh)
+
         # base
-        base_body = pymunk.Body(mass=model.mb, body_type=pymunk.Body.KINEMATIC)
-        bx, by = model.base_corners(qz)
+        base_type = pymunk.Body.DYNAMIC if dynamic else pymunk.Body.KINEMATIC
+        base_body = pymunk.Body(body_type=base_type)
+        bx, by = model.base_corners(q0)
         by += 0.5*model.bh
         base = pymunk.Poly(
                 base_body,
                 [(x, y) for x, y in zip(bx, by)],
                 pymunk.Transform(tx=0, ty=-0.5*model.bh))
-        base.friction = 0.25
+        base.friction = 0
+        # add the mass manually but let pymunk figure out the moment
+        base.mass = model.mb
         self.space.add(base.body, base)
 
         # arm link 1
@@ -61,8 +64,7 @@ class PymunkSimulation:
         joint1 = pymunk.PinJoint(base.body, link1.body, (0, 0),
                                  (-0.5*model.l1, 0))
         joint1.collide_bodies = False
-        motor1 = pymunk.constraints.SimpleMotor(base.body, link1.body, 0)
-        self.space.add(joint1, motor1)
+        self.space.add(joint1)
 
         # arm link 2
         dx2 = 0.5*model.l2*np.cos(q0[1]+q0[2])
@@ -87,16 +89,73 @@ class PymunkSimulation:
         joint2 = pymunk.PinJoint(link1.body, link2.body, (0.5*model.l1, 0),
                                  (-0.5*model.l2, 0))
         joint2.collide_bodies = False
-        motor2 = pymunk.constraints.SimpleMotor(link1.body, link2.body, 0)
-        self.space.add(joint2, motor2)
+        self.space.add(joint2)
 
         self.model = model
         self.links = [base.body, link1.body, link2.body]
+
+    def _read_state(self):
+        # subtract q1 from q2, since the angle of link 2 is relative to the
+        # angle of link 1
+        q = np.array([self.links[0].position[0], self.links[1].angle,
+                      self.links[2].angle - self.links[1].angle])
+        dq = np.array([self.links[0].velocity[0],
+                       self.links[1].angular_velocity,
+                       self.links[2].angular_velocity - self.links[1].angular_velocity])
+        return q, dq
+
+    def step(self):
+        """Step the simulation forward in time."""
+        self.space.step(self.dt)
+        self.q, self.dq = self._read_state()
+        return self.q, self.dq
+
+
+class PymunkSimulationTorque(PymunkSimulationBase):
+    """Pymunk simulation with torque-controlled robot."""
+    def add_robot(self, model, q0):
+        super().add_robot(model, q0, dynamic=True)
+        self.tau = np.zeros(3)
+
+    def command_torque(self, tau):
+        self.tau = tau
+
+    def _set_torques(self):
+        # Instead of motors, we directly set the desired torques on the body.
+        # Note that each motor adds a torque to both links to which it is
+        # connected.
+        self.links[0].force = (self.tau[0], 0)
+        self.links[0].torque = -self.tau[1]
+        self.links[1].torque = self.tau[1] - self.tau[2]
+        self.links[2].torque = self.tau[2]
+
+    def step(self):
+        self._set_torques()
+        return super().step()
+
+
+class PymunkSimulationVelocity(PymunkSimulationBase):
+    """Pymunk simulation with velocity-controlled robot."""
+    def add_robot(self, model, q0):
+        super().add_robot(model, q0, dynamic=False)
+
+        # Add motors to maintain desired angular velocities
+        motor1 = pymunk.constraints.SimpleMotor(self.links[0], self.links[1], 0)
+        motor2 = pymunk.constraints.SimpleMotor(self.links[1], self.links[2], 0)
+        self.space.add(motor1, motor2)
+
         self.motors = [motor1, motor2]
 
-    def command_velocity(self, dq_des):
+    def _set_motor_rates(self, rate):
+        self.links[0].velocity = (rate[0], 0)
+
+        # Pymunk convention for motors is positive rate = clockwise rotation
+        self.motors[0].rate = -rate[1]
+        self.motors[1].rate = -rate[2]
+
+    def command_velocity(self, rate):
         # velocity limits
-        dq_des = bound_array(dq_des, -self.model.vel_lim, self.model.vel_lim)
+        rate = bound_array(rate, -self.model.vel_lim, self.model.vel_lim)
 
         # TODO: acceleration limits
         # To do this properly, we'd need to store the original dq_des and
@@ -107,46 +166,4 @@ class PymunkSimulation:
         # dq_des = bound_array(dq_des, -self.model.acc_lim * self.dt + self.dq,
         #                      self.model.acc_lim * self.dt + self.dq)
 
-        self.dq_des = dq_des
-        self._set_motor_rates(dq_des)
-
-    def command_torque(self, tau):
-        # TODO calculate x = (q, dq) with u = tau, then limit motors to tau
-        # force
-        pass
-
-    def _set_motor_rates(self, rate):
-        self.links[0].velocity = (rate[0], 0)
-
-        # Pymunk convention for motors is positive rate = clockwise rotation
-        self.motors[0].rate = -rate[1]
-        self.motors[1].rate = -rate[2]
-
-    def _read_state(self):
-        # subtract q1 from q2, since the angle of link2 is relative to the
-        q = np.array([self.links[0].position[0], self.links[1].angle,
-                      self.links[2].angle - self.links[1].angle])
-        dq = np.array([self.links[0].velocity[0],
-                       self.links[1].angular_velocity,
-                       self.links[2].angular_velocity])
-        return q, dq
-
-    def step(self):
-        ''' Step the simulation forward in time. '''
-        # internal control: we use a integral controller on the motor velocity
-        # to reduce tracking error
-        # NOTE: no longer seems needed after I fixed the geometry
-        # rate = 100 * (self.q_des - self.q) + self.dq_des
-        # self._set_motor_rates(rate)
-
-        self.space.step(self.dt)
-
-        # force from motors
-        # f1 = self.motors[0].impulse / self.dt
-
-        # integrator for desired joint positions
-        # self.q_des += self.dt * self.dq_des
-
-        self.q, self.dq = self._read_state()
-
-        return self.q, self.dq
+        self._set_motor_rates(rate)

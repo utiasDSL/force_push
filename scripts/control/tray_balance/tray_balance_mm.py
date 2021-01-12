@@ -216,7 +216,7 @@ def main():
 
             start = time.time()
             var = controller.solve(X_q, X_ee_d)
-            print(time.time() - start)
+            # print(time.time() - start)
             u = var[:ni]  # joint acceleration input
             sim.command_acceleration(u)
 
@@ -226,10 +226,9 @@ def main():
         pe = model.ee_position(X_q)
         ve = model.ee_velocity(X_q)
 
-        # tray position is a constant offset from EE frame
-        # TODO not sure if this is correct
+        # tray position is (ideally) a constant offset from EE frame
         θ_ew = pe[2]
-        R_we = util.rotation_matrix(-θ_ew)
+        R_we = util.rotation_matrix(θ_ew)
         pt = pe + np.append(R_we @ p_te_e, 0)
 
         # record

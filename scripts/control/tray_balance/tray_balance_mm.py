@@ -171,7 +171,7 @@ def main():
         R_ew = jnp.array([[ jnp.cos(θ_ew),  jnp.sin(θ_ew)],
                           [-jnp.sin(θ_ew), jnp.cos(θ_ew)]])
         S1 = skew1(1)
-        g = jnp.array([0, -GRAVITY])
+        g = jnp.array([0, GRAVITY])
 
         α1, α2 = MASS * R_ew @ (a_ew_w+g) + (ddθ_ew*S1-dθ_ew**2) @ p_te_e
         α3 = INERTIA * ddθ_ew
@@ -214,7 +214,7 @@ def main():
     ub =  ACC_LIM * np.ones(n * nv)
     bounds = sqp.Bounds(lb, ub)
 
-    controller = sqp.SQP(nv*n, nc*n, objective, constraints, bounds, verbose=True)
+    controller = sqp.SQP(nv*n, nc*n, objective, constraints, bounds)
 
     for i in range(N - 1):
         t = ts[i+1]

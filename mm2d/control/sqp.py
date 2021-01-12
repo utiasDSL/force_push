@@ -3,6 +3,7 @@ import qpoases
 
 
 class Objective:
+    """Objective function fun(x) with Jacobian jac(x) and Hessian hess(x)."""
     def __init__(self, fun, jac, hess):
         self.fun = fun
         self.jac = jac
@@ -10,6 +11,10 @@ class Objective:
 
 
 class Constraints:
+    """Constraints of the form lb <= fun(x) <= ub.
+
+    where jac is the Jacobian of fun w.r.t. x.
+    """
     def __init__(self, fun, jac, lb, ub):
         self.fun = fun
         self.jac = jac
@@ -18,6 +23,7 @@ class Constraints:
 
 
 class Bounds:
+    """Simple bounds of the form lb <= x <= ub."""
     def __init__(self, lb, ub):
         self.lb = lb
         self.ub = ub

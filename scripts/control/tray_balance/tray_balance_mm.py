@@ -4,7 +4,6 @@ import jax.numpy as jnp
 import jax
 import numpy as np
 import matplotlib.pyplot as plt
-import qpoases
 
 from mm2d import plotter as plotting
 from mm2d import trajectory as trajectories
@@ -115,17 +114,6 @@ def main():
     plotter = plotting.RealtimePlotter([trajectory_renderer, robot_renderer, tray_renderer, start_renderer, goal_renderer], video=None)
     plotter.start(grid=True)
 
-    # def force_balance_equations(X_ee, a_ee, f):
-    #     θ, dθ = X_ee[2], X_ee[5]
-    #     w_R_e = jnp.array([[jnp.cos(θ), -jnp.sin(θ)],
-    #                        [jnp.sin(θ),  jnp.cos(θ)]])
-    #     D = jnp.block([[w_R_e,       w_R_e],
-    #                   [perp(t_p_1), perp(t_p_2)]])
-    #     M = jnp.block([[MASS*jnp.eye(2), jnp.dot(jnp.dot(skew1(1), w_R_e), e_p_t).reshape(2, 1)],
-    #                   [0, 0,             MOMENT_INERTIA]])
-    #     rhs = jnp.array([0, -MASS*GRAVITY, 0]) + jnp.append(MASS*dθ**2*jnp.dot(w_R_e, e_p_t), 0)
-    #     return jnp.dot(M, a_ee) - jnp.dot(D, f) - rhs
-
     def objective_unrolled(X_q_0, X_ee_d, var):
         ''' Unroll the objective over n timesteps. '''
         obj = 0
@@ -139,31 +127,6 @@ def main():
             obj = obj + e @ Q @ e + u @ R @ u
 
         return obj
-
-    # def constraints_unrolled(X_q_0, X_ee_d, var):
-    #     ''' Unroll the equality (force balance) constraints over n timesteps. '''
-    #     eq_con = jnp.zeros(n * nc_eq)
-    #     ineq_con = jnp.zeros(n * nc_ineq)
-    #     X_q = X_q_0
-    #
-    #     for i in range(n):
-    #         vari = var[i*nv:(i+1)*nv]
-    #         u = vari[:ni]
-    #         f = vari[ni:]
-    #
-    #         X_ee = model.ee_state(X_q)
-    #         a_ee = model.ee_acceleration(X_q, u)
-    #         eq_coni = force_balance_equations(X_ee, a_ee, f)
-    #         eq_con = jax.ops.index_update(eq_con, jax.ops.index[i*nc_eq:(i+1)*nc_eq], eq_coni)
-    #
-    #         # step the model before inequality constraints because there are
-    #         # constraints on the k+1 state
-    #         X_q = model.step_unconstrained(X_q, u, MPC_DT)
-    #
-    #         ineq_coni = jnp.concatenate((jnp.array([X_q[2]]), X_q[ni:], E @ vari))
-    #         ineq_con = jax.ops.index_update(ineq_con, jax.ops.index[i*nc_ineq:(i+1)*nc_ineq], ineq_coni)
-    #
-    #     return jnp.concatenate((eq_con, ineq_con))
 
     def ineq_constraints(X_ee, a_ee):
         θ_ew, dθ_ew = X_ee[2], X_ee[5]

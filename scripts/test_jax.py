@@ -30,7 +30,7 @@ def unroll_forward(q0, dt, u):
     return p
 
 def unroll_forward_lax(q0, dt, u):
-    # TODO actually above twice as slow as above on GPU
+    # TODO actually about twice as slow as above on GPU
     def scan_func(qi, ui):
         pi = forward(qi)
         qi = qi + dt * ui

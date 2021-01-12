@@ -6,15 +6,44 @@ from mm2d.util import bound_array
 import IPython
 
 
+# geometry
+L1 = 1
+L2 = 1
+Bw = 1.0
+Bh = 0.25
+
+# mass
+Mb = 10
+M1 = 1
+M2 = 1
+
+# limits
+VEL_LIM = 1
+ACC_LIM = 1
+TAU_LIM = 100
+
+
 class FourInputModel:
-    ''' Three-input 2D mobile manipulator. Consists of mobile base (1 input)
-        and 2-link arm (2 inputs). State is q = [x_b, q_1, q_2]; inputs u = dq. '''
-    def __init__(self, l1, l2, vel_lim, acc_lim):
+    """Four-input 2D velocity-controlled mobile manipulator."""
+    def __init__(self, l1=L1, l2=L2, vel_lim=VEL_LIM, acc_lim=ACC_LIM):
         self.ni = 4  # number of joints (inputs/DOFs)
         self.no = 3  # possible outputs are: x, y, theta
 
+        self.lx = 0
+        self.ly = 0
         self.l1 = l1
         self.l2 = l2
+        self.bw = Bw
+        self.bh = Bh
+
+        # link masses
+        self.mb = Mb
+        self.m1 = M1
+        self.m2 = M2
+
+        # link inertias
+        self.I1 = self.m1 * l1**2 / 12
+        self.I2 = self.m2 * l2**2 / 12
 
         self.vel_lim = vel_lim
         self.acc_lim = acc_lim
@@ -25,6 +54,33 @@ class FourInputModel:
 
         self.jacobian = jax.jit(jax.jacrev(self.ee_position))
         self.dJdq = jax.jit(jax.jacfwd(self.jacobian))
+
+    def base_corners(self, q):
+        """Calculate the corners of the base of the robot."""
+        x0 = q[0]
+        y0 = 0
+        r = self.bw * 0.5
+        h = self.bh
+
+        x = np.array([x0 - r, x0 - r, x0 + r, x0 + r])
+        y = np.array([y0, y0 - h, y0 - h, y0])
+
+        return x, y
+
+    def arm_points(self, q):
+        """Calculate points on the arm."""
+        x0 = q[0] + self.lx
+        x1 = x0 + self.l1*np.cos(q[1])
+        x2 = x1 + self.l2*np.cos(q[1]+q[2])
+
+        y0 = self.ly
+        y1 = y0 + self.l1*np.sin(q[1])
+        y2 = y1 + self.l2*np.sin(q[1]+q[2])
+
+        x = np.array([x0, x1, x2])
+        y = np.array([y0, y1, y2])
+
+        return x, y
 
     def ee_position(self, X):
         q = X[:self.ni]
@@ -45,8 +101,9 @@ class FourInputModel:
         return jnp.concatenate((self.ee_position(X), self.ee_velocity(X)))
 
     def step_unconstrained(self, Q, u, dt):
-        ''' Step forward one timestep without applying state or input
-            constraints. '''
+        """Step forward one timestep without applying state or input
+        constraints.
+        """
         dQ = self.A @ Q + self.B @ u
         Q = Q + dt * dQ
         return Q

@@ -1,5 +1,9 @@
 import numpy as np
 
+# TODO verify that dimensions are correct for trajectories
+# TODO Trajectory should be composed of time-scaling and path: this would
+# abstract away the ugly array shape logic
+
 
 # == Time-scalings == #
 
@@ -203,11 +207,11 @@ class Circle:
         ss = np.sin(2*np.pi*s - np.pi)
         p = self.pc + self.r * np.array([cs, ss]).T
 
-        dpds = 2*np.pi*self.r * np.array([-ss, cs])
-        v = dpds * ds
+        dpds = 2*np.pi*self.r * np.array([-ss, cs]).T
+        v = dpds * ds[:, None]
 
-        dpds2 = 4*np.pi**2*self.r * np.array([-cs, -ss])
-        a = dpds * dds + dpds2 * ds**2
+        dpds2 = 4*np.pi**2*self.r * np.array([-cs, -ss]).T
+        a = dpds * dds[:, None] + dpds2 * ds[:, None]**2
 
         if flatten:
             return p.flatten(), v.flatten(), a.flatten()

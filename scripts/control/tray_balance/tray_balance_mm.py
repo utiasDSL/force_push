@@ -4,14 +4,17 @@ import jax.numpy as jnp
 import jax
 import numpy as np
 import matplotlib.pyplot as plt
+import pymunk
+import pymunk.matplotlib_util
 
 from mm2d import plotter as plotting
 from mm2d import trajectory as trajectories
-from mm2d import util, models
+from mm2d import util
 from mm2d.control import sqp
 
-from tray_balance import TrayRenderer
+from tray_renderer import TrayRenderer
 from mm_model import FourInputModel
+from pymunk_sim import PymunkSimulationTrayBalance
 
 import IPython
 
@@ -49,10 +52,6 @@ def skew1(x):
     return np.array([[0, -x], [x, 0]])
 
 
-def perp(v):
-    return skew1(1).dot(v)
-
-
 def hessian(f, argnums=0):
     return jax.jacfwd(jax.jacrev(f, argnums=argnums), argnums=argnums)
 
@@ -71,7 +70,7 @@ def main():
     p_c1t_e = p_c1e_e - p_te_e
     p_c2t_e = p_c2e_e - p_te_e
 
-    model = FourInputModel(L1, L2, VEL_LIM, ACC_LIM)
+    model = FourInputModel(l1=L1, l2=L2, vel_lim=VEL_LIM, acc_lim=ACC_LIM)
 
     # MPC weights
     Q = np.diag([1, 1, 1, 0, 0, 0])
@@ -85,34 +84,61 @@ def main():
     pts = np.zeros((N, 3))
 
     # state of joints
-    X_q = np.array([0, 0, 0.25*np.pi, -0.25*np.pi, 0, 0, 0, 0])
+    q0 = np.array([0, 0, 0.25*np.pi, -0.25*np.pi])
+    dq0 = np.zeros(ni)
+    X_q = np.concatenate((q0, dq0))
 
     pe = model.ee_position(X_q)
     ve = model.ee_velocity(X_q)
     pes[0, :] = pe
     ves[0, :] = ve
-    pds[0, :] = pe
 
-    # timescaling = trajectories.CubicTimeScaling(0.5*DURATION)
-    # traj1 = trajectories.PointToPoint(pe, pe + [2, 0, 0], timescaling, 0.5*DURATION)
-    # traj2 = trajectories.PointToPoint(pe + [2, 0, 0], pe, timescaling, 0.5*DURATION)
-    # trajectory = trajectories.Chain([traj1, traj2])
+    # physics simulation
+    sim = PymunkSimulationTrayBalance(DT, iterations=10)
+    sim.add_robot(model, q0, w)
 
+    # tray
+    tray_body = pymunk.Body()
+    tray_body.position = (pe[0], pe[1] + 0.1)
+    tray_corners = [(-RADIUS, 0.05), (-RADIUS, -0.05), (RADIUS, -0.05), (RADIUS, 0.05)]
+    tray = pymunk.Poly(tray_body, tray_corners, radius=0.01)
+    tray.mass = MASS
+    tray.friction = MU
+    sim.space.add(tray.body, tray)
+
+    # reference trajectory
     timescaling = trajectories.QuinticTimeScaling(DURATION)
-    # trajectory = trajectories.PointToPoint(pe, pe + np.array([2, 0, 0]), timescaling, DURATION)
     trajectory = trajectories.Circle(np.array(pe)[:2], 0.25, timescaling, DURATION)
+    pds[:, :2], _, _ = trajectory.sample(ts)
 
-    # trajectory = trajectories.Point(pe + np.array([2, 0, 0]))
-
+    # rendering
     start_renderer = plotting.PointRenderer(pe[:2], color='k')
     goal_renderer = plotting.PointRenderer(pe[:2] + np.array([2, 0]), color='b')
-    rendering_model = models.ThreeInputModel(l1=L1, l2=L2)
-    robot_renderer = plotting.ThreeInputRenderer(rendering_model, X_q[:3])
+    robot_renderer = plotting.ThreeInputRenderer(model, q0)
     tray_renderer = TrayRenderer(RADIUS, p_te_e, p_c1e_e, p_c2e_e, pe)
     trajectory_renderer = plotting.TrajectoryRenderer(trajectory, ts)
+    renderers = [trajectory_renderer, robot_renderer, tray_renderer,
+                 start_renderer, goal_renderer]
+
     video = plotting.Video(name='tray_balance_mm.mp4', fps=1./(DT*PLOT_PERIOD))
-    plotter = plotting.RealtimePlotter([trajectory_renderer, robot_renderer, tray_renderer, start_renderer, goal_renderer], video=None)
+    plotter = plotting.RealtimePlotter(renderers, video=None)
     plotter.start(grid=True)
+
+    # pymunk rendering
+    plt.ion()
+    fig = plt.figure()
+    ax = plt.gca()
+    plt.grid()
+
+    ax.set_xlabel('x (m)')
+    ax.set_ylabel('y (m)')
+    ax.set_xlim([-1, 6])
+    ax.set_ylim([-1, 2])
+
+    ax.set_aspect('equal')
+
+    options = pymunk.matplotlib_util.DrawOptions(ax)
+    options.flags = pymunk.SpaceDebugDrawOptions.DRAW_SHAPES
 
     def objective_unrolled(X_q_0, X_ee_d, var):
         ''' Unroll the objective over n timesteps. '''
@@ -184,19 +210,19 @@ def main():
 
         if i % CTRL_PERIOD == 0:
             t_sample = np.minimum(t + MPC_DT*np.arange(n), DURATION)
-            pd, vd, _ = trajectory.sample(t_sample, flatten=True)
-            X_ee_d = np.zeros(ns_ee*n)
-            for j in range(n):
-                X_ee_d[j*ns_ee:j*ns_ee+2] = pd[j*2:(j+1)*2]
-                X_ee_d[j*ns_ee+3:(j+1)*ns_ee-1] = vd[j*2:(j+1)*2]
+            pd, vd, _ = trajectory.sample(t_sample, flatten=False)
+            z = np.zeros((n, 1))
+            X_ee_d = np.hstack((pd, z, vd, z)).flatten()
 
             start = time.time()
             var = controller.solve(X_q, X_ee_d)
             print(time.time() - start)
-            u = var[:ni]
+            u = var[:ni]  # joint acceleration input
+            sim.command_acceleration(u)
 
         # integrate the system
-        X_q = model.step_unconstrained(X_q, u, DT)
+        # X_q = model.step_unconstrained(X_q, u, DT)
+        X_q = np.concatenate(sim.step())
         pe = model.ee_position(X_q)
         ve = model.ee_velocity(X_q)
 
@@ -211,11 +237,19 @@ def main():
         pes[i+1, :] = pe
         ves[i+1, :] = ve
         pts[i+1, :] = pt
-        pds[i+1, :] = pd[:3]
 
         if i % PLOT_PERIOD == 0:
             tray_renderer.set_state(pt)
             robot_renderer.set_state(X_q[:3])
+
+            ax.cla()
+            ax.set_xlim([-1, 6])
+            ax.set_ylim([-1, 2])
+
+            sim.space.debug_draw(options)
+            fig.canvas.draw()
+            fig.canvas.flush_events()
+
             plotter.update()
     plotter.done()
 

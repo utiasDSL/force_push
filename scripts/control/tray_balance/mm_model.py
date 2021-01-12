@@ -6,7 +6,7 @@ from mm2d.util import bound_array
 import IPython
 
 
-class ThreeInputModel:
+class FourInputModel:
     ''' Three-input 2D mobile manipulator. Consists of mobile base (1 input)
         and 2-link arm (2 inputs). State is q = [x_b, q_1, q_2]; inputs u = dq. '''
     def __init__(self, l1, l2, vel_lim, acc_lim):
@@ -53,7 +53,7 @@ class ThreeInputModel:
 
 
 def main():
-    model = ThreeInputModel(1, 1, 1, 1)
+    model = FourInputModel(1, 1, 1, 1)
     q1 = np.array([0., 0., 0.])
     q2 = np.array([1., 0.25*np.pi, -0.5*np.pi])
     IPython.embed()

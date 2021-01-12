@@ -51,19 +51,6 @@ class ThreeInputModel:
         Q = Q + dt * dQ
         return Q
 
-    # def step(self, X, u, dt):
-    #     ''' Step forward one timestep. State constraints are applied to the
-    #         output state but not the supplied input state. '''
-    #     # velocity limits
-    #     dq = bound_array(u, -self.vel_lim, self.vel_lim)
-    #
-    #     # acceleration limits
-    #     if dq_last is not None:
-    #         dq = bound_array(dq, -self.acc_lim * dt + dq_last, self.acc_lim * dt + dq_last)
-    #
-    #     q = q + dt * dq
-    #     return q, dq
-
 
 def main():
     model = ThreeInputModel(1, 1, 1, 1)

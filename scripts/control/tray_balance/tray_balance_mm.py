@@ -1,15 +1,18 @@
 #!/usr/bin/env python
+import time
 import jax.numpy as jnp
 import jax
 import numpy as np
 import matplotlib.pyplot as plt
+import qpoases
 
 from mm2d import plotter as plotting
 from mm2d import trajectory as trajectories
 from mm2d import util, models
+from mm2d.control import sqp
+
 from tray_balance import TrayRenderer
 from mm_model import ThreeInputModel
-import qpoases
 
 import IPython
 
@@ -30,9 +33,6 @@ MU = 1.0
 SIM_DT = 0.05        # timestep (s)
 MPC_DT = 0.1
 DURATION = 5.0  # duration of trajectory (s)
-
-NUM_ITER = 3
-NUM_WSR = 100     # number of working set recalculations
 
 n = 5   # num horizon
 ns_ee = 6  # num EE states
@@ -55,96 +55,6 @@ def perp(v):
 
 def hessian(f, argnums=0):
     return jax.jacfwd(jax.jacrev(f, argnums=argnums), argnums=argnums)
-
-
-class Objective:
-    def __init__(self, fun, jac, hess):
-        self.fun = fun
-        self.jac = jac
-        self.hess = hess
-
-
-class Constraints:
-    def __init__(self, fun, jac, lb, ub):
-        self.fun = fun
-        self.jac = jac
-        self.lb = lb
-        self.ub = ub
-
-
-class Bounds:
-    def __init__(self, lb, ub):
-        self.lb = lb
-        self.ub = ub
-
-
-class MPC(object):
-    ''' Model predictive controller. '''
-    def __init__(self, objective, constraints, bounds, verbose=False):
-        self.objective = objective
-        self.constraints = constraints
-        self.bounds = bounds
-
-        self.qp = qpoases.PySQProblem(nv*n, nc*n)
-        if not verbose:
-            options = qpoases.PyOptions()
-            options.printLevel = qpoases.PyPrintLevel.NONE
-            self.qp.setOptions(options)
-
-        self.qp_initialized = False
-
-    def _lookahead(self, x0, xd, var):
-        ''' Generate lifted matrices proprogating the state N timesteps into the
-            future. '''
-        H = self.objective.hess(x0, xd, var)
-        g = self.objective.jac(x0, xd, var)
-
-        A = self.constraints.jac(x0, xd, var)
-        a = self.constraints.fun(x0, xd, var)
-        lbA = self.constraints.lb - a
-        ubA = self.constraints.ub - a
-
-        lb = self.bounds.lb - var
-        ub = self.bounds.ub - var
-
-        return np.array(H, dtype=np.float64), np.array(g, dtype=np.float64), \
-               np.array(A, dtype=np.float64), np.array(lbA, dtype=np.float64), \
-               np.array(ubA, dtype=np.float64), np.array(lb, dtype=np.float64), \
-               np.array(ub, dtype=np.float64)
-
-    def _iterate(self, x0, xd, var):
-        delta = np.zeros(nv * n)
-
-        # Initial opt problem.
-        H, g, A, lbA, ubA, lb, ub = self._lookahead(x0, xd, var)
-        if not self.qp_initialized:
-            self.qp.init(H, g, A, lb, ub, lbA, ubA, np.array([NUM_WSR]))
-            self.qp_initialized = True
-        else:
-            self.qp.hotstart(H, g, A, lb, ub, lbA, ubA, np.array([NUM_WSR]))
-        self.qp.getPrimalSolution(delta)
-        var = var + delta
-
-        # Remaining sequence is hotstarted from the first.
-        for i in range(NUM_ITER - 1):
-            H, g, A, lbA, ubA, lb, ub = self._lookahead(x0, xd, var)
-            self.qp.hotstart(H, g, A, lb, ub, lbA, ubA, np.array([NUM_WSR]))
-            self.qp.getPrimalSolution(delta)
-            var = var + delta
-
-        return var
-
-    def solve(self, x0, xd):
-        ''' Solve the MPC problem at current state x0 given desired trajectory
-            xd. '''
-        # initialize decision variables
-        var = np.zeros(nv * n)
-
-        # iterate to final solution
-        var = self._iterate(x0, xd, var)
-
-        # return first optimal input
-        return var[:ni], var
 
 
 def main():
@@ -221,7 +131,7 @@ def main():
 
     start_renderer = plotting.PointRenderer(pe[:2], color='k')
     goal_renderer = plotting.PointRenderer(pe[:2] + np.array([2, 0]), color='b')
-    rendering_model = models.ThreeInputModel(L1, L2, VEL_LIM, ACC_LIM)
+    rendering_model = models.ThreeInputModel(l1=L1, l2=L2)
     robot_renderer = plotting.ThreeInputRenderer(rendering_model, X_q[:3])
     tray_renderer = TrayRenderer(RADIUS, e_p_t, e_p_1, e_p_2, pe)
     trajectory_renderer = plotting.TrajectoryRenderer(trajectory, ts)
@@ -280,18 +190,19 @@ def main():
 
         return jnp.concatenate((eq_con, ineq_con))
 
+    # Construct the SQP controller
     obj_fun = jax.jit(objective_unrolled)
     obj_jac = jax.jit(jax.jacfwd(objective_unrolled, argnums=2))
     obj_hess = jax.jit(hessian(objective_unrolled, argnums=2))
-    objective = Objective(obj_fun, obj_jac, obj_hess)
+    objective = sqp.Objective(obj_fun, obj_jac, obj_hess)
 
     con_fun = jax.jit(constraints_unrolled)
     con_jac = jax.jit(jax.jacfwd(constraints_unrolled, argnums=2))
-    constraints = Constraints(con_fun, con_jac, lbA, ubA)
+    constraints = sqp.Constraints(con_fun, con_jac, lbA, ubA)
 
-    bounds = Bounds(lb, ub)
+    bounds = sqp.Bounds(lb, ub)
 
-    controller = MPC(objective, constraints, bounds)
+    controller = sqp.SQP(nv*n, nc*n, objective, constraints, bounds)
 
     for i in range(N - 1):
         t = ts[i+1]
@@ -303,7 +214,10 @@ def main():
             # X_ee_d[j*ns_ee+3:(j+1)*ns_ee] = vd[j*3:(j+1)*3]
             X_ee_d[j*ns_ee:j*ns_ee+2] = pd[j*2:(j+1)*2]
             X_ee_d[j*ns_ee+3:(j+1)*ns_ee-1] = vd[j*2:(j+1)*2]
-        u, var = controller.solve(X_q, X_ee_d)
+
+        var = controller.solve(X_q, X_ee_d)
+        u = var[:ni]
+        f = var[ni:nv]
 
         # integrate the system
         X_q = model.step_unconstrained(X_q, u, SIM_DT)
@@ -314,8 +228,6 @@ def main():
         θ = pe[2]
         w_R_e = util.rotation_matrix(θ)
         pt = pe + np.append(w_R_e.dot(e_p_t), 0)
-
-        f = var[ni:nv]
 
         # record
         us[i, :] = u

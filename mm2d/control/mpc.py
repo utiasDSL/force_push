@@ -10,6 +10,37 @@ NUM_WSR = 100    # number of working set recalculations
 NUM_ITER = 3     # number of linearizations/iterations
 
 
+# TODO experimental MPC controller that uses the SQP controller under the hood
+# - is there is a significant penalty or wrapping things up as Python functions
+#   rather than directly as arrays?
+# - ideally, we'd make a library of objectives, bounds, and constraints that
+#   could be put together for different behaviours
+class TrackingMPC:
+    def __init__(self, model, dt, Q, R, num_horizon):
+        self.model = model
+        self.dt = dt
+        self.Q = Q
+        self.R = R
+        self.num_horizon = num_horizon
+
+        ni = self.model.ni
+        nv = num_horizon * ni
+
+        # setup SQP values
+        bounds = sqp.Bounds(-model.vel_lim*np.ones(nv), model.vel_lim*np.ones(nv))
+
+        def obj_val(x0, xd, var):
+            q = x0
+            J = 0
+            for k in range(num_horizon):
+                u = var[k*ni:(k+1)*ni] # TODO would be nicer if var was 2D
+                q = q + dt * u
+                p = model.forward(q)
+                J += 0.5 * (p @ Q @ p + u @ R @ u)
+            return J
+
+
+
 class MPC(object):
     ''' Model predictive controller. '''
     def __init__(self, model, dt, Q, R, vel_lim, acc_lim):

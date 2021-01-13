@@ -255,7 +255,7 @@ class Sine:
         return p, v, a
 
 
-class Point(object):
+class Point:
     ''' Stationary point trajectory. '''
     def __init__(self, p0):
         self.p0 = p0

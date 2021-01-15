@@ -261,7 +261,10 @@ class Point:
         self.p0 = p0
 
     def sample(self, t, flatten=False):
-        p = np.tile(self.p0, (t.shape[0], 1))
+        if np.isscalar(t):
+            p = self.p0
+        else:
+            p = np.tile(self.p0, (t.shape[0], 1))
         v = np.zeros_like(p)
         a = np.zeros_like(p)
         if flatten:

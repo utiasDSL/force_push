@@ -78,12 +78,12 @@ class PymunkSimulationBase:
         self.space.add(link2.body, link2)
 
         # end effector "fingers"
-        fr = 0.05
-        finger1 = pymunk.Circle(link2_body, fr, (0.5*model.l2 - 2*fr, 0))
-        finger2 = pymunk.Circle(link2_body, fr, (0.5*model.l2 + 2*fr, 0))
-        self.space.add(finger1, finger2)
-        finger1.friction = 0.75
-        finger2.friction = 0.75
+        # fr = 0.05
+        # finger1 = pymunk.Circle(link2_body, fr, (0.5*model.l2 - 2*fr, 0))
+        # finger2 = pymunk.Circle(link2_body, fr, (0.5*model.l2 + 2*fr, 0))
+        # self.space.add(finger1, finger2)
+        # finger1.friction = 0.75
+        # finger2.friction = 0.75
 
         # arm joint 2
         joint2 = pymunk.PinJoint(link1.body, link2.body, (0.5*model.l1, 0),

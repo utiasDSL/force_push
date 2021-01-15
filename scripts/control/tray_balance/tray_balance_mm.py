@@ -22,7 +22,7 @@ import IPython
 L1 = 1
 L2 = 1
 VEL_LIM = 1
-ACC_LIM = 2
+ACC_LIM = 10
 
 # tray parameters
 GRAVITY = 9.81
@@ -30,11 +30,14 @@ RADIUS = 0.5
 MASS = 0.5
 # INERTIA = 0.25*MASS*RADIUS**2
 INERTIA = MASS*(3*RADIUS**2 + 0.1**2) / 12.0
-MU = 2.0
+TRAY_MU = 0.75
+TRAY_W = 0.2
+TRAY_H = 0.05
 
-DT = 0.001         # simulation timestep (s)
+# simulation parameters
+SIM_DT = 0.001         # simulation timestep (s)
 MPC_DT = 0.1      # lookahead timestep of the controller
-MPC_STEPS = 5
+MPC_STEPS = 8
 PLOT_PERIOD = 100  # update plot every PLOT_PERIOD timesteps
 CTRL_PERIOD = 100  # generate new control signal every CTRL_PERIOD timesteps
 DURATION = 5.0     # duration of trajectory (s)
@@ -47,6 +50,11 @@ nc_ineq = 3  # nf force + ni velocity + 1 constraint on q2
 nv = ni      # num opt vars
 nc = nc_eq + nc_ineq  # num constraints
 
+# MPC weights
+Q = np.diag([0, 0, 0, 0, 0.01, 0.01, 0.01, 0.01])
+W = np.diag([1, 1, 0.1, 0, 0, 0])
+R = 0.01 * np.eye(ni)
+
 
 def skew1(x):
     return np.array([[0, -x], [x, 0]])
@@ -57,27 +65,25 @@ def hessian(f, argnums=0):
 
 
 def main():
-    N = int(DURATION / DT) + 1
+    if TRAY_W < TRAY_MU * TRAY_H:
+        print('must have w >= μh')
+        return
 
-    # tray params
-    w = 0.2
-    h = 0.05  # NOTE: must have w >= MU*h
+    N = int(DURATION / SIM_DT) + 1
 
-    p_te_e = np.array([0, 0.05+h])
+    p_te_e = np.array([0, 0.05 + TRAY_H])
 
     model = FourInputModel(l1=L1, l2=L2, vel_lim=VEL_LIM, acc_lim=ACC_LIM)
 
-    # MPC weights
-    Q = np.diag([1, 1, 1, 0, 0, 0])
-    R = 0.01 * np.eye(ni)
-
-    ts = DT * np.arange(N)
+    ts = SIM_DT * np.arange(N)
     us = np.zeros((N, ni))
     P_ew_ws = np.zeros((N, 3))
     P_ew_wds = np.zeros((N, 3))
     V_ew_ws = np.zeros((N, 3))
     P_tw_ws = np.zeros((N, 3))
     p_te_es = np.zeros((N, 2))
+
+    ineq_cons = np.zeros((N, 3))
 
     p_te_es[0, :] = p_te_e
 
@@ -92,17 +98,25 @@ def main():
     V_ew_ws[0, :] = V_ew_w
 
     # physics simulation
-    sim = PymunkSimulationTrayBalance(DT, iterations=30)
-    sim.add_robot(model, q0, w, MU)
+    sim = PymunkSimulationTrayBalance(SIM_DT, iterations=30)
+    sim.add_robot(model, q0, TRAY_W, TRAY_MU)
+
+    def tray_cb(arbiter, space, data):
+        IPython.embed()
 
     # tray
     tray_body = pymunk.Body(mass=MASS, moment=INERTIA)
-    tray_body.position = (P_ew_w[0], P_ew_w[1] + 0.05 + h)
-    tray_corners = [(-RADIUS, h), (-RADIUS, -h), (RADIUS, -h), (RADIUS, h)]
-    tray = pymunk.Poly(tray_body, tray_corners, radius=0.01)
+    tray_body.position = (P_ew_w[0], P_ew_w[1] + 0.05 + TRAY_H)
+    # tray_body.each_arbiter(tray_cb)
+    tray_corners = [(-RADIUS, TRAY_H), (-RADIUS, -TRAY_H), (RADIUS, -TRAY_H),
+                    (RADIUS, TRAY_H)]
+    tray = pymunk.Poly(tray_body, tray_corners, radius=0)
     tray.facecolor = (0.25, 0.5, 1, 1)
-    tray.friction = MU
+    tray.friction = TRAY_MU
+    tray.collision_type = 1
     sim.space.add(tray.body, tray)
+
+    # sim.space.add_collision_handler(1, 1).post_solve = tray_cb
 
     # reference trajectory
     # timescaling = trajectories.QuinticTimeScaling(DURATION)
@@ -115,25 +129,25 @@ def main():
     sim_renderer = PymunkRenderer(sim.space, sim.markers)
     # trajectory_renderer = plotting.TrajectoryRenderer(trajectory, ts)
     renderers = [goal_renderer, sim_renderer]
-    video = plotting.Video(name='tray_balance.mp4', fps=1./(DT*PLOT_PERIOD))
-    plotter = plotting.RealtimePlotter(renderers, video=video)
+    video = plotting.Video(name='tray_balance.mp4', fps=1./(SIM_DT*PLOT_PERIOD))
+    plotter = plotting.RealtimePlotter(renderers, video=None)
     plotter.start()  # TODO for some reason setting grid=True messes up the base rendering
 
     # pymunk rendering
-    plt.ion()
-    fig = plt.figure()
-    ax = plt.gca()
-    plt.grid()
-
-    ax.set_xlabel('x (m)')
-    ax.set_ylabel('y (m)')
-    ax.set_xlim([-1, 6])
-    ax.set_ylim([-1, 2])
-
-    ax.set_aspect('equal')
-
-    options = pymunk.matplotlib_util.DrawOptions(ax)
-    options.flags = pymunk.SpaceDebugDrawOptions.DRAW_SHAPES
+    # plt.ion()
+    # fig = plt.figure()
+    # ax = plt.gca()
+    # plt.grid()
+    #
+    # ax.set_xlabel('x (m)')
+    # ax.set_ylabel('y (m)')
+    # ax.set_xlim([-1, 6])
+    # ax.set_ylim([-1, 2])
+    #
+    # ax.set_aspect('equal')
+    #
+    # options = pymunk.matplotlib_util.DrawOptions(ax)
+    # options.flags = pymunk.SpaceDebugDrawOptions.DRAW_SHAPES
 
     def objective_unrolled(X_q_0, X_ee_d, var):
         ''' Unroll the objective over n timesteps. '''
@@ -145,25 +159,27 @@ def main():
             X_q = model.step_unconstrained(X_q, u, MPC_DT)
             X_ee = model.ee_state(X_q)
             e = X_ee_d[i*ns_ee:(i+1)*ns_ee] - X_ee
-            obj = obj + e @ Q @ e + u @ R @ u
+            obj = obj + 0.5 * (e @ W @ e + X_q @ Q @ X_q + u @ R @ u)
 
         return obj
 
-    def ineq_constraints(X_ee, a_ee):
+    def ineq_constraints(X_ee, a_ee, jnp=jnp, embed=False):
         θ_ew, dθ_ew = X_ee[2], X_ee[5]
         a_ew_w, ddθ_ew = a_ee[:2], a_ee[2]
-        R_ew = jnp.array([[ jnp.cos(θ_ew),  jnp.sin(θ_ew)],
+        R_ew = jnp.array([[ jnp.cos(θ_ew), jnp.sin(θ_ew)],
                           [-jnp.sin(θ_ew), jnp.cos(θ_ew)]])
         S1 = skew1(1)
         g = jnp.array([0, GRAVITY])
 
-        α1, α2 = MASS * R_ew @ (a_ew_w+g) + (ddθ_ew*S1-dθ_ew**2) @ p_te_e
+        α1, α2 = MASS * R_ew @ (a_ew_w+g) + MASS * (ddθ_ew*S1 - dθ_ew**2*jnp.eye(2)) @ p_te_e
         α3 = INERTIA * ddθ_ew
 
         ineq_con = jnp.array([
-            MU*jnp.abs(α2) - jnp.abs(α1),  # TODO first abs may be unneeded
+            (0.9*TRAY_MU)*α2 - jnp.abs(α1),
             α2,
-            h**2*α1**2 + w*(w-2*MU*h)*α2**2 - α3**2])
+            TRAY_H**2*α1**2 + TRAY_W*(TRAY_W-2*TRAY_MU*TRAY_H)*α2**2 - α3**2])
+        # if embed:
+        #     IPython.embed()
         return ineq_con
 
     def ineq_constraints_unrolled(X_q_0, X_ee_d, var):
@@ -171,16 +187,22 @@ def main():
         X_q = X_q_0
         ineq_con = jnp.zeros(MPC_STEPS * nc_ineq)
 
+        # TODO I think this should actually be MPC_STEPS + 1
         for i in range(MPC_STEPS):
             u = var[i*nv:(i+1)*nv]
-            X_q = model.step_unconstrained(X_q, u, MPC_DT)
 
             X_ee = model.ee_state(X_q)
             a_ee = model.ee_acceleration(X_q, u)
 
             ineq_coni = ineq_constraints(X_ee, a_ee)
             ineq_con = jax.ops.index_update(ineq_con, jax.ops.index[i*nc_ineq:(i+1)*nc_ineq], ineq_coni)
+            X_q = model.step_unconstrained(X_q, u, MPC_DT)
         return ineq_con
+
+    # X_ee = model.ee_state(X_q)
+    # a_ee = model.ee_acceleration(X_q, np.zeros(4))
+    # ineq_constraints(X_ee, a_ee)
+    # return
 
     # Construct the SQP controller
     obj_fun = jax.jit(objective_unrolled)
@@ -220,6 +242,12 @@ def main():
         P_ew_w = model.ee_position(X_q)
         V_ew_w = model.ee_velocity(X_q)
 
+        X_ee = model.ee_state(X_q)
+        a_ee = model.ee_acceleration(X_q, u)
+        ineq_cons[i+1, :] = ineq_constraints(X_ee, a_ee, jnp=np, embed=True)
+        # if (ineq_con < 0).any():
+        #     IPython.embed()
+
         # tray position is (ideally) a constant offset from EE frame
         θ_ew = P_ew_w[2]
         R_we = util.rotation_matrix(θ_ew)
@@ -233,25 +261,29 @@ def main():
         p_te_es[i+1, :] = R_we.T @ (P_tw_w[:2] - P_ew_w[:2])
 
         if i % PLOT_PERIOD == 0:
-            # tray_renderer.set_state(pt)
-            # robot_renderer.set_state(X_q[:3])
-
-            ax.cla()
-            ax.set_xlim([-1, 6])
-            ax.set_ylim([-1, 2])
-
-            sim.space.debug_draw(options)
-            fig.canvas.draw()
-            fig.canvas.flush_events()
+            # ax.cla()
+            # ax.set_xlim([-1, 6])
+            # ax.set_ylim([-1, 2])
+            #
+            # sim.space.debug_draw(options)
+            # fig.canvas.draw()
+            # fig.canvas.flush_events()
 
             plotter.update()
     plotter.done()
+
+    v_te_es = (p_te_es[1:] - p_te_es[:-1]) / SIM_DT
+    v_te_es_smooth = np.zeros_like(v_te_es)
+    v_te_es_smooth[:, 0] = np.convolve(v_te_es[:, 0], np.ones(100) / 100, 'same')
+    v_te_es_smooth[:, 1] = np.convolve(v_te_es[:, 1], np.ones(100) / 100, 'same')
 
     plt.figure()
     plt.plot(ts[:N], P_ew_wds[:, 0], label='$x_d$', color='b', linestyle='--')
     plt.plot(ts[:N], P_ew_wds[:, 1], label='$y_d$', color='r', linestyle='--')
     plt.plot(ts[:N], P_ew_ws[:, 0],  label='$x$', color='b')
     plt.plot(ts[:N], P_ew_ws[:, 1],  label='$y$', color='r')
+    plt.plot(ts[:N], P_tw_ws[:, 0],  label='$t_x$')
+    plt.plot(ts[:N], P_tw_ws[:, 1],  label='$t_y$')
     plt.grid()
     plt.legend()
     plt.xlabel('Time (s)')
@@ -266,6 +298,37 @@ def main():
     plt.xlabel('Time (s)')
     plt.ylabel('$p^{te}_e$')
     plt.title('$p^{te}_e$')
+
+    plt.figure()
+    plt.plot(ts[:N], p_te_e[0] - p_te_es[:, 0], label='$x$', color='b')
+    plt.plot(ts[:N], p_te_e[1] - p_te_es[:, 1], label='$y$', color='r')
+    plt.grid()
+    plt.legend()
+    plt.xlabel('Time (s)')
+    plt.ylabel('$p^{te}_e$ error')
+    plt.title('$p^{te}_e$ error')
+
+    # plt.figure()
+    # plt.plot(ts[:N-1], v_te_es[:, 0], label='$v_x$', color='b')
+    # plt.plot(ts[:N-1], v_te_es[:, 1], label='$v_y$', color='r')
+    # plt.plot(ts[:N-1], v_te_es_smooth[:, 0], label='$v_x$ (smooth)')
+    # plt.plot(ts[:N-1], v_te_es_smooth[:, 1], label='$v_y$ (smooth)')
+    # plt.grid()
+    # plt.legend()
+    # plt.xlabel('Time (s)')
+    # plt.ylabel('$v^{te}_e$')
+    # plt.title('$v^{te}_e$')
+
+    plt.figure()
+    plt.plot(ts[:N], ineq_cons[:, 0], label='$h_1$')
+    plt.plot(ts[:N], ineq_cons[:, 1], label='$h_2$')
+    plt.plot(ts[:N], ineq_cons[:, 2], label='$h_3$')
+    plt.plot([0, ts[-1]], [0, 0], color='k')
+    plt.grid()
+    plt.legend()
+    plt.xlabel('Time (s)')
+    plt.ylabel('Value')
+    plt.title('Inequality constraints')
 
     plt.show()
 

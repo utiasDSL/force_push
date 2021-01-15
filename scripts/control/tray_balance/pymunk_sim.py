@@ -212,14 +212,20 @@ class PymunkSimulationTrayBalance:
         ee_body.angle = np.sum(q0[1:4])
         ee_palm = pymunk.Segment(ee_body, (-w, 0), (w, 0), radius=0)
         ee_palm.mass = 0.1
-        ee_palm.friction = mu
         ee_palm.filter = pymunk.ShapeFilter(categories=0)
         ee_finger1 = pymunk.Circle(ee_body, fr, (-w, 0))
         ee_finger2 = pymunk.Circle(ee_body, fr, (w, 0))
-        ee_finger1.friction = mu
-        ee_finger2.friction = mu
+
+        # Set the finger friction to 1.0 regardless of the tray's friction,
+        # because pymunk calculates the friction coefficient between two shapes
+        # by multiplying each of their friction values together. We want the
+        # friction to always be the tray's friction.
+        ee_finger1.friction = 1.0
+        ee_finger2.friction = 1.0
         ee_finger1.mass = 0.1
         ee_finger2.mass = 0.1
+        ee_finger1.collision_type = 1
+        ee_finger2.collision_type = 1
         self.space.add(ee_body, ee_palm, ee_finger1, ee_finger2)
 
         ee_marker = Marker(ee_body)

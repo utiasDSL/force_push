@@ -33,6 +33,7 @@ INERTIA = MASS * (3*RADIUS**2 + 0.1**2) / 12.0
 TRAY_MU = 0.75
 TRAY_W = 0.2
 TRAY_H = 0.05
+TRAY_G_MAT = np.diag([MASS, MASS, INERTIA])
 
 OBJ_W = 0.1
 OBJ_H = 0.1
@@ -80,8 +81,12 @@ def main():
     p_te_e = np.array([0, 0.05 + TRAY_H])
     p_oe_e = p_te_e + np.array([0, TRAY_H + OBJ_H])
 
-    p_c1e_e = np.array([-TRAY_W, 0.05])
-    p_c2e_e = np.array([TRAY_W, 0.05])
+    r_c1e_e = np.array([-TRAY_W, 0.05])
+    r_c2e_e = np.array([TRAY_W, 0.05])
+
+    r_tc1_t = np.array([TRAY_W, TRAY_H])
+    r_tc2_t = np.array([-TRAY_W, TRAY_H])
+    r_t2t1_t = -r_tc2_t + r_tc1_t
 
     model = FourInputModel(l1=L1, l2=L2, vel_lim=VEL_LIM, acc_lim=ACC_LIM)
 
@@ -166,8 +171,77 @@ def main():
     # options = pymunk.matplotlib_util.DrawOptions(ax)
     # options.flags = pymunk.SpaceDebugDrawOptions.DRAW_SHAPES
 
+    def jax_rotation_matrix(θ):
+        return jnp.array([[jnp.cos(θ), -jnp.sin(θ)],
+                          [jnp.sin(θ),  jnp.cos(θ)]])
+
+    def calc_tray_pose(q):
+        """Calculate tray pose in terms of x1, y1, y2."""
+        x1, y1, y2 = q
+        Δy = y2 - y1
+        Δx = jnp.sqrt((2*TRAY_W)**2 - Δy**2)
+        θ_tw = jnp.arctan2(Δy, Δx)
+        R_wt = jax_rotation_matrix(θ_tw)
+        r_c1w_w = jnp.array([x1, y1])
+        r_tw_w = r_c1w_w + R_wt @ r_tc1_t
+        return jnp.array([r_tw_w[0], r_tw_w[1], θ_tw])
+
+    # def calc_tray_state(P_tw_w, V_tw_w):
+    #     """Calculate tray parameters q given the pose."""
+    #     # TODO ideally we'd just keep everything in terms of q, but the old
+    #     # approach parameterizes the tray by its pose.
+    #     # TODO inconsistent notation
+    #     r_tw_w, θ_tw = P_tw_w[:2], P_tw_w[2]
+    #     R_wt = jnp.array([[jnp.cos(θ_tw), -jnp.sin(θ_tw)],
+    #                       [jnp.sin(θ_tw),  jnp.cos(θ_tw)]])
+    #     r_t1w_w = r_tw_w - R_wt @ r_tc1_t
+    #     r_t2w_w = r_tw_w - R_wt @ r_tc2_t
+    #     q = jnp.array([r_t1w_w[0], r_t1w_w[1], r_t2w_w[1]])
+    #
+    #     return q, dq
+
+    calc_tray_jacobian = jax.jit(jax.jacfwd(calc_tray_pose))
+
+    def calc_tray_potential(q):
+        """Calculate tray potential energy."""
+        x, y, θ = calc_tray_pose(q)
+        return MASS*GRAVITY*y
+
+    calc_g = jax.jit(jax.jacfwd(calc_tray_potential))
+
+    def calc_tray_mass_matrix(q):
+        """Calculate tray mass matrix."""
+        J = calc_tray_jacobian(q)
+        M = J.T @ TRAY_G_MAT @ J
+        return M
+
+    def calc_ddR_wt(q, dq, ddq):
+        """Calculate the second time derivative of tray's rotation matrix."""
+        Δy = q[2] - q[1]
+        dΔy = dq[2] - dq[1]
+        ddΔy = ddq[2] - ddq[1]
+        Δx = jnp.sqrt((2*TRAY_W)**2 - Δy**2)
+
+        θ_tw = jnp.arctan2(Δy, Δx)
+        dθ_tw = dΔy / Δx  # TODO possible division by zero
+        ddθ_tw = (ddΔy * Δx**2 + dΔy**2 * Δy) / Δx**3
+
+        S1 = skew1(1)
+        ddR_wt = (ddθ_tw * S1 - dθ_tw**2) @ jax_rotation_matrix(θ_tw)
+        return ddR_wt
+
+    calc_dMdq = jax.jit(jax.jacfwd(calc_tray_mass_matrix))
+
+    def calc_tray_h(q, dq):
+        """Calculate h term in dynamics of the form M(q)*ddq + h(q,dq) = f."""
+        dMdq = calc_dMdq(q)
+        Γ = dMdq - 0.5*dMdq.T
+        g = calc_g(q)
+        h = dq.dot(Γ).dot(dq) + g
+        return h
+
     def objective_unrolled(X_q_0, X_ee_d, var):
-        ''' Unroll the objective over n timesteps. '''
+        """Unroll the objective over n timesteps."""
         obj = 0
         X_q = X_q_0
 
@@ -181,6 +255,8 @@ def main():
         return obj
 
     def ineq_constraints(X_ee, a_ee, jnp=jnp):
+        r_ew_w = X_ee[:2]
+        v_ew_w = X_ee[3:5]
         θ_ew, dθ_ew = X_ee[2], X_ee[5]
         a_ew_w, ddθ_ew = a_ee[:2], a_ee[2]
         R_ew = jnp.array([[ jnp.cos(θ_ew), jnp.sin(θ_ew)],
@@ -188,27 +264,40 @@ def main():
         S1 = skew1(1)
         g = jnp.array([0, GRAVITY])
 
+        # calculate tray state from EE state
+        r_c1w_w = r_ew_w + R_ew.T @ r_c1e_e
+        r_c2w_w = r_ew_w + R_ew.T @ r_c2e_e
+        v_c1w_w = v_ew_w + dθ_ew * S1 @ R_ew.T @ r_c1e_e
+        v_c2w_w = v_ew_w + dθ_ew * S1 @ R_ew.T @ r_c2e_e
+        qt = jnp.array([r_c1w_w[0], r_c1w_w[1], r_c2w_w[1]])
+        dqt = jnp.array([v_c1w_w[0], v_c1w_w[1], v_c2w_w[1]])
+
+        # calculate tray dynamics
+        Mt = calc_tray_mass_matrix(qt)
+        ht = calc_tray_h(qt, dqt)
+        Qt = jnp.linalg.solve(Mt, ht)  # TODO bad name: this isn't the generalized forces
+
         ddR_we = (ddθ_ew*S1 - dθ_ew**2*jnp.eye(2)) @ R_ew.T
+        ddR_wt = calc_ddR_wt(qt, dqt, Qt)
 
-        α1, α2 = MASS * R_ew @ (a_ew_w+g) + MASS * (ddθ_ew*S1 - dθ_ew**2*jnp.eye(2)) @ p_te_e
-        # α1, α2 = OBJ_MASS * R_ew @ (a_ew_w + g) + OBJ_MASS * (ddθ_ew*S1 - dθ_ew**2*jnp.eye(2)) @ p_oe_e
-        α3 = INERTIA * ddθ_ew
+        a_t1w_w = Qt[:2]
+        a_t2w_w = a_t1w_w + ddR_wt @ r_t2t1_t
 
-        # constraints considering y acceleration at each contact point
-        # β1 = jnp.array([0, 1]) @ R_ew @ (a_ew_w + ddR_we @ p_c1e_e + g)
-        # β2 = jnp.array([0, 1]) @ R_ew @ (a_ew_w + ddR_we @ p_c2e_e + g)
+        ddy1 = np.array([0, 1]) @ R_ew @ (a_ew_w + ddR_we @ r_c1e_e)
+        ddy2 = np.array([0, 1]) @ R_ew @ (a_ew_w + ddR_we @ r_c2e_e)
 
-        # ineq_con = jnp.array([
-        #     TRAY_MU*jnp.abs(α2) - jnp.abs(α1),
-        #     β1,
-        #     β2])
+        # TODO: how to deal with friction under this formulation?
+        h1 = 1
+        h2 = ddy1 + a_t1w_w[1]
+        h3 = ddy2 + a_t2w_w[1]
 
-        h1 = TRAY_MU*jnp.abs(α2) - jnp.abs(α1)
-        # h1 = OBJ_MU*jnp.abs(α2) - jnp.abs(α1)
-        h2 = α2
-        # h3 = TRAY_H**2*α1**2 + TRAY_W*(TRAY_W-2*TRAY_MU*TRAY_H)*α2**2 - α3**2
-        # h3 = OBJ_H**2 * α1**2 + OBJ_W * (OBJ_W - 2*OBJ_MU*OBJ_H)*α2**2 - α3**2
-        h3 = 1
+        # α1, α2 = MASS * R_ew @ (a_ew_w+g) + MASS * (ddθ_ew*S1 - dθ_ew**2*jnp.eye(2)) @ p_te_e
+
+        # α3 = INERTIA * ddθ_ew
+        #
+        # h1 = TRAY_MU*jnp.abs(α2) - jnp.abs(α1)
+        # h2 = α2
+        # h3 = 1
 
         return jnp.array([h1, h2, h3])
 
@@ -228,11 +317,6 @@ def main():
             X_q = model.step_unconstrained(X_q, u, MPC_DT)
         return ineq_con
 
-    # X_ee = model.ee_state(X_q)
-    # a_ee = model.ee_acceleration(X_q, np.zeros(4))
-    # ineq_constraints(X_ee, a_ee)
-    # return
-
     # Construct the SQP controller
     obj_fun = jax.jit(objective_unrolled)
     obj_jac = jax.jit(jax.jacfwd(objective_unrolled, argnums=2))
@@ -249,7 +333,7 @@ def main():
     ub =  ACC_LIM * np.ones(MPC_STEPS * nv)
     bounds = sqp.Bounds(lb, ub)
 
-    controller = sqp.SQP(nv*MPC_STEPS, nc*MPC_STEPS, objective, constraints, bounds, num_iter=3, verbose=True)
+    controller = sqp.SQP(nv*MPC_STEPS, nc*MPC_STEPS, objective, constraints, bounds, num_iter=3, verbose=False)
 
     for i in range(N - 1):
         t = ts[i+1]

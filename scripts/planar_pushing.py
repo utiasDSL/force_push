@@ -7,7 +7,7 @@ import IPython
 
 DT = 0.01
 PLOT_PERIOD = 10
-DURATION = 20.0  # duration of trajectory (s)
+DURATION = 60.0  # duration of trajectory (s)
 
 M = 1
 G = 10
@@ -31,6 +31,11 @@ class CollisionWatcher:
             self.nf = unit(self.f)
 
 
+def plot_line(ax, a, b, color='k'):
+    patch = plt.Line2D([a[0], b[0]], [a[1], b[1]], color=color, linewidth=1)
+    ax.add_line(patch)
+
+
 def unit(x):
     norm = np.linalg.norm(x)
     if norm > 0:
@@ -50,6 +55,7 @@ def main():
     box_corners = [(-box_r, box_r), (-box_r, -box_r), (box_r, -box_r), (box_r, box_r)]
     box = pymunk.Poly(box_body, box_corners, radius=0.01)
     # box = pymunk.Circle(box_body, 0.5)
+
     box.mass = M
     box.friction = 0.5
     box.collision_type = 1
@@ -96,7 +102,14 @@ def main():
     fig.canvas.draw()
     fig.canvas.flush_events()
 
-    control_body.velocity = (0.25, 0)
+    pd = np.array([3, 0])
+    # pd = np.array([-3, 0])
+    # pd = np.array([2, -2])
+
+    ax.plot(pd[0], pd[1], 'o', color='r')
+
+    v_max = 0.2
+    kp = 0.5
 
     for i in range(N - 1):
         t = i * DT
@@ -104,11 +117,59 @@ def main():
         # step the sim
         space.step(DT)
 
+        p = np.array(control_body.position)
+        Δp = pd - p
+        # Δp_unit = unit(Δp)
+
+        c = np.array(box.body.position)
+        # Δp = pd - c
+
+        # if watcher.first_contact:
+        #     # φ = np.arccos(watcher.nf @ Δp_unit)
+        #     φ = 1 - watcher.nf @ Δp_unit
+        #
+        #     # k is still a tuning parameter -- depends to some extent on object
+        #     # curvature and friction
+        #     # k = 1 / (1 + φ**2)
+        #     k = 1
+        #     kφ = k * φ  # / np.linalg.norm(Δp)
+        #     print(φ)
+        #     R = np.array([[np.cos(kφ), -np.sin(kφ)],
+        #                   [np.sin(kφ), np.cos(kφ)]])
+        #     v_unit = R @ watcher.nf
+        #     v = min(v_max, np.linalg.norm(Δp)) * v_unit
+        # else:
+        #     v = v_max * np.array([1, 0])
+
+        if watcher.first_contact:
+            v_traj = kp * Δp
+            v_mag = max(min(watcher.nf @ v_traj, v_max), 0)
+
+            # reflect over nf
+            α = 0.5
+            d = (1+α) * watcher.nf * (watcher.nf @ Δp) - α*Δp
+
+            # project onto d
+            v = (v_traj @ unit(d)) * unit(d)
+
+            # v_unit = unit(d)
+
+            # v = v_mag * v_unit
+        else:
+            v = v_max * np.array([1, 0])
+
+        control_body.velocity = (v[0], v[1])
+
         if i % PLOT_PERIOD == 0:
             ax.cla()
             ax.set_xlim([-5, 5])
             ax.set_ylim([-3, 3])
             ax.grid()
+
+            ax.plot(pd[0], pd[1], 'o', color='r')
+
+            plot_line(ax, p, p + unit(v), color='r')
+            plot_line(ax, p, p + watcher.nf, color='b')
 
             space.debug_draw(options)
             fig.canvas.draw()

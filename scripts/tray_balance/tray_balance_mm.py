@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import time
+"""Baseline tray balancing formulation."""
 import jax.numpy as jnp
 import jax
 import numpy as np
@@ -80,9 +80,6 @@ def main():
     p_te_e = np.array([0, 0.05 + TRAY_H])
     p_oe_e = p_te_e + np.array([0, TRAY_H + OBJ_H])
 
-    p_c1e_e = np.array([-TRAY_W, 0.05])
-    p_c2e_e = np.array([TRAY_W, 0.05])
-
     model = FourInputModel(l1=L1, l2=L2, vel_lim=VEL_LIM, acc_lim=ACC_LIM)
 
     ts = SIM_DT * np.arange(N)
@@ -122,6 +119,7 @@ def main():
     tray.collision_type = 1
     sim.space.add(tray.body, tray)
 
+    # object on top of the tray
     obj_body = pymunk.Body(mass=OBJ_MASS, moment=OBJ_INERTIA)
     obj_body.position = tuple(P_ew_w[:2] + p_oe_e)
     obj_corners = [(-OBJ_W, OBJ_H), (-OBJ_W, -OBJ_H), (OBJ_W, -OBJ_H),
@@ -131,8 +129,6 @@ def main():
     obj.friction = OBJ_MU / TRAY_MU  # so that mu with tray = OBJ_MU
     obj.collision_type = 1
     # sim.space.add(obj.body, obj)
-
-    # sim.space.add_collision_handler(1, 1).post_solve = tray_cb
 
     # reference trajectory
     # timescaling = trajectories.QuinticTimeScaling(DURATION)
@@ -149,22 +145,6 @@ def main():
     video = plotting.Video(name='tray_balance.mp4', fps=1./(SIM_DT*PLOT_PERIOD))
     plotter = plotting.RealtimePlotter(renderers, video=video)
     plotter.start()  # TODO for some reason setting grid=True messes up the base rendering
-
-    # pymunk rendering
-    # plt.ion()
-    # fig = plt.figure()
-    # ax = plt.gca()
-    # plt.grid()
-    #
-    # ax.set_xlabel('x (m)')
-    # ax.set_ylabel('y (m)')
-    # ax.set_xlim([-1, 6])
-    # ax.set_ylim([-1, 2])
-    #
-    # ax.set_aspect('equal')
-    #
-    # options = pymunk.matplotlib_util.DrawOptions(ax)
-    # options.flags = pymunk.SpaceDebugDrawOptions.DRAW_SHAPES
 
     def objective_unrolled(X_q_0, X_ee_d, var):
         ''' Unroll the objective over n timesteps. '''
@@ -194,15 +174,6 @@ def main():
         # α1, α2 = OBJ_MASS * R_ew @ (a_ew_w + g) + OBJ_MASS * (ddθ_ew*S1 - dθ_ew**2*jnp.eye(2)) @ p_oe_e
         α3 = INERTIA * ddθ_ew
 
-        # constraints considering y acceleration at each contact point
-        # β1 = jnp.array([0, 1]) @ R_ew @ (a_ew_w + ddR_we @ p_c1e_e + g)
-        # β2 = jnp.array([0, 1]) @ R_ew @ (a_ew_w + ddR_we @ p_c2e_e + g)
-
-        # ineq_con = jnp.array([
-        #     TRAY_MU*jnp.abs(α2) - jnp.abs(α1),
-        #     β1,
-        #     β2])
-
         h1 = TRAY_MU*jnp.abs(α2) - jnp.abs(α1)
         # h1 = OBJ_MU*jnp.abs(α2) - jnp.abs(α1)
         h2 = α2
@@ -228,11 +199,6 @@ def main():
             X_q = model.step_unconstrained(X_q, u, MPC_DT)
         return ineq_con
 
-    # X_ee = model.ee_state(X_q)
-    # a_ee = model.ee_acceleration(X_q, np.zeros(4))
-    # ineq_constraints(X_ee, a_ee)
-    # return
-
     # Construct the SQP controller
     obj_fun = jax.jit(objective_unrolled)
     obj_jac = jax.jit(jax.jacfwd(objective_unrolled, argnums=2))
@@ -249,7 +215,7 @@ def main():
     ub =  ACC_LIM * np.ones(MPC_STEPS * nv)
     bounds = sqp.Bounds(lb, ub)
 
-    controller = sqp.SQP(nv*MPC_STEPS, nc*MPC_STEPS, objective, constraints, bounds, num_iter=3, verbose=True)
+    controller = sqp.SQP(nv*MPC_STEPS, nc*MPC_STEPS, objective, constraints, bounds, num_iter=3, verbose=False)
 
     for i in range(N - 1):
         t = ts[i+1]
@@ -275,8 +241,6 @@ def main():
         X_ee = model.ee_state(X_q)
         a_ee = model.ee_acceleration(X_q, u)
         ineq_cons[i+1, :] = ineq_constraints(X_ee, a_ee, jnp=np)
-        # if (ineq_con < 0).any():
-        #     IPython.embed()
 
         # tray position is (ideally) a constant offset from EE frame
         θ_ew = P_ew_w[2]
@@ -291,14 +255,6 @@ def main():
         p_te_es[i+1, :] = R_we.T @ (P_tw_w[:2] - P_ew_w[:2])
 
         if i % PLOT_PERIOD == 0:
-            # ax.cla()
-            # ax.set_xlim([-1, 6])
-            # ax.set_ylim([-1, 2])
-            #
-            # sim.space.debug_draw(options)
-            # fig.canvas.draw()
-            # fig.canvas.flush_events()
-
             plotter.update()
     plotter.done()
 

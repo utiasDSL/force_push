@@ -1,4 +1,10 @@
 #!/usr/bin/env python
+"""This script investigates optimizing over an extended state: rather than just
+using the EE state for feedback, we now also include the tray position offset
+(and possibly other things) as feedback as well. The goal is to see if this
+improves robustness in the face of disturbances to these variables compared to
+when they are assumed constant."""
+
 import time
 import jax.numpy as jnp
 import jax
@@ -145,8 +151,6 @@ def main():
     obj.collision_type = 1
     # sim.space.add(obj.body, obj)
 
-    # sim.space.add_collision_handler(1, 1).post_solve = tray_cb
-
     # reference trajectory
     # timescaling = trajectories.QuinticTimeScaling(DURATION)
     # trajectory = trajectories.Circle(P_ew_w[:2], 0.25, timescaling, DURATION)
@@ -162,22 +166,6 @@ def main():
     video = plotting.Video(name='tray_balance.mp4', fps=1./(SIM_DT*PLOT_PERIOD))
     plotter = plotting.RealtimePlotter(renderers, video=None)
     plotter.start()  # TODO for some reason setting grid=True messes up the base rendering
-
-    # pymunk rendering
-    # plt.ion()
-    # fig = plt.figure()
-    # ax = plt.gca()
-    # plt.grid()
-    #
-    # ax.set_xlabel('x (m)')
-    # ax.set_ylabel('y (m)')
-    # ax.set_xlim([-1, 6])
-    # ax.set_ylim([-1, 2])
-    #
-    # ax.set_aspect('equal')
-    #
-    # options = pymunk.matplotlib_util.DrawOptions(ax)
-    # options.flags = pymunk.SpaceDebugDrawOptions.DRAW_SHAPES
 
     def objective_unrolled(X0, X_ee_d, var):
         ''' Unroll the objective over n timesteps. '''
@@ -207,15 +195,6 @@ def main():
         # α1, α2 = OBJ_MASS * R_ew @ (a_ew_w + g) + OBJ_MASS * (ddθ_ew*S1 - dθ_ew**2*jnp.eye(2)) @ p_oe_e
         α3 = INERTIA * ddθ_ew
 
-        # constraints considering y acceleration at each contact point
-        # β1 = jnp.array([0, 1]) @ R_ew @ (a_ew_w + ddR_we @ p_c1e_e + g)
-        # β2 = jnp.array([0, 1]) @ R_ew @ (a_ew_w + ddR_we @ p_c2e_e + g)
-
-        # ineq_con = jnp.array([
-        #     TRAY_MU*jnp.abs(α2) - jnp.abs(α1),
-        #     β1,
-        #     β2])
-
         h1 = TRAY_MU*jnp.abs(α2) - jnp.abs(α1)
         # h1 = OBJ_MU*jnp.abs(α2) - jnp.abs(α1)
         h2 = α2
@@ -243,11 +222,6 @@ def main():
             ineq_con = jax.ops.index_update(ineq_con, jax.ops.index[i*nc_ineq:(i+1)*nc_ineq], ineq_coni)
             X_q = model.step_unconstrained(X_q, u, MPC_DT)
         return ineq_con
-
-    # X_ee = model.ee_state(X_q)
-    # a_ee = model.ee_acceleration(X_q, np.zeros(4))
-    # ineq_constraints(X_ee, a_ee)
-    # return
 
     # Construct the SQP controller
     obj_fun = jax.jit(objective_unrolled)

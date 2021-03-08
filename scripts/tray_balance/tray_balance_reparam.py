@@ -1,4 +1,8 @@
 #!/usr/bin/env python
+"""This script investigates reparameterizing the tray state. Instead of pose
+and velocity, we experiment with the position and velocity of the contact
+points. This ultimately did not improve the theory and made the math and
+implementation more complicated."""
 import time
 import jax.numpy as jnp
 import jax

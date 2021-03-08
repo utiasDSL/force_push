@@ -32,7 +32,7 @@ MASS = 0.5
 INERTIA = MASS * (3*RADIUS**2 + 0.1**2) / 12.0
 TRAY_MU = 0.75
 TRAY_W = 0.2
-TRAY_H = 0.05
+TRAY_H = 0.3
 TRAY_G_MAT = np.diag([MASS, MASS, INERTIA])
 
 OBJ_W = 0.1
@@ -72,9 +72,9 @@ def hessian(f, argnums=0):
 
 
 def main():
-    if TRAY_W < TRAY_MU * TRAY_H:
-        print('must have w >= μh')
-        return
+    # if TRAY_W < TRAY_MU * TRAY_H:
+    #     print('must have w >= μh')
+    #     return
 
     N = int(DURATION / SIM_DT) + 1
 
@@ -265,39 +265,42 @@ def main():
         g = jnp.array([0, GRAVITY])
 
         # calculate tray state from EE state
-        r_c1w_w = r_ew_w + R_ew.T @ r_c1e_e
-        r_c2w_w = r_ew_w + R_ew.T @ r_c2e_e
-        v_c1w_w = v_ew_w + dθ_ew * S1 @ R_ew.T @ r_c1e_e
-        v_c2w_w = v_ew_w + dθ_ew * S1 @ R_ew.T @ r_c2e_e
-        qt = jnp.array([r_c1w_w[0], r_c1w_w[1], r_c2w_w[1]])
-        dqt = jnp.array([v_c1w_w[0], v_c1w_w[1], v_c2w_w[1]])
+        # r_c1w_w = r_ew_w + R_ew.T @ r_c1e_e
+        # r_c2w_w = r_ew_w + R_ew.T @ r_c2e_e
+        # v_c1w_w = v_ew_w + dθ_ew * S1 @ R_ew.T @ r_c1e_e
+        # v_c2w_w = v_ew_w + dθ_ew * S1 @ R_ew.T @ r_c2e_e
+        # qt = jnp.array([r_c1w_w[0], r_c1w_w[1], r_c2w_w[1]])
+        # dqt = jnp.array([v_c1w_w[0], v_c1w_w[1], v_c2w_w[1]])
 
         # calculate tray dynamics
-        Mt = calc_tray_mass_matrix(qt)
-        ht = calc_tray_h(qt, dqt)
-        Qt = jnp.linalg.solve(Mt, ht)  # TODO bad name: this isn't the generalized forces
+        # Mt = calc_tray_mass_matrix(qt)
+        # ht = calc_tray_h(qt, dqt)
+        # Qt = jnp.linalg.solve(Mt, ht)  # TODO bad name: this isn't the generalized forces
 
-        ddR_we = (ddθ_ew*S1 - dθ_ew**2*jnp.eye(2)) @ R_ew.T
-        ddR_wt = calc_ddR_wt(qt, dqt, Qt)
+        # ddR_we = (ddθ_ew*S1 - dθ_ew**2*jnp.eye(2)) @ R_ew.T
+        # ddR_wt = calc_ddR_wt(qt, dqt, Qt)
 
-        a_t1w_w = Qt[:2]
-        a_t2w_w = a_t1w_w + ddR_wt @ r_t2t1_t
+        # TODO: this will need some further justification
+        # a_t1w_w = Qt[:2]
+        # a_t2w_w = a_t1w_w + ddR_wt @ r_t2t1_t
 
-        ddy1 = np.array([0, 1]) @ R_ew @ (a_ew_w + ddR_we @ r_c1e_e)
-        ddy2 = np.array([0, 1]) @ R_ew @ (a_ew_w + ddR_we @ r_c2e_e)
+        # ddy1 = np.array([0, 1]) @ R_ew @ (a_ew_w + ddR_we @ r_c1e_e)
+        # ddy2 = np.array([0, 1]) @ R_ew @ (a_ew_w + ddR_we @ r_c2e_e)
+
+        α1, α2 = MASS * R_ew @ (a_ew_w+g) + MASS * (ddθ_ew*S1 - dθ_ew**2*jnp.eye(2)) @ p_te_e
 
         # TODO: how to deal with friction under this formulation?
-        h1 = 1
-        h2 = ddy1 + a_t1w_w[1]
-        h3 = ddy2 + a_t2w_w[1]
-
-        # α1, α2 = MASS * R_ew @ (a_ew_w+g) + MASS * (ddθ_ew*S1 - dθ_ew**2*jnp.eye(2)) @ p_te_e
+        # h1 = TRAY_MU*jnp.abs(α2) - jnp.abs(α1)
+        # h2 = ddy1 + a_t1w_w[1]
+        # h3 = ddy2 + a_t2w_w[1]
 
         # α3 = INERTIA * ddθ_ew
         #
-        # h1 = TRAY_MU*jnp.abs(α2) - jnp.abs(α1)
-        # h2 = α2
-        # h3 = 1
+        # h1 = 1
+        # h2 = 1
+        h1 = TRAY_MU*jnp.abs(α2) - jnp.abs(α1)
+        h2 = α2
+        h3 = 1
 
         return jnp.array([h1, h2, h3])
 
@@ -384,12 +387,18 @@ def main():
             # fig.canvas.flush_events()
 
             plotter.update()
+
+        if np.linalg.norm(P_ew_w - P_ew_wds[0, :]) < 1e-2:
+            break
+
     plotter.done()
 
     v_te_es = (p_te_es[1:] - p_te_es[:-1]) / SIM_DT
     v_te_es_smooth = np.zeros_like(v_te_es)
     v_te_es_smooth[:, 0] = np.convolve(v_te_es[:, 0], np.ones(100) / 100, 'same')
     v_te_es_smooth[:, 1] = np.convolve(v_te_es[:, 1], np.ones(100) / 100, 'same')
+
+    np.savez("data", P_tw_ws=P_tw_ws, P_ew_ws=P_ew_ws, ts=ts, P_ew_wd=P_ew_wds[0, :])
 
     plt.figure()
     plt.plot(ts[:N], P_ew_wds[:, 0], label='$x_d$', color='b', linestyle='--')

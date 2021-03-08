@@ -44,10 +44,12 @@ class SQP(object):
         self.bounds = bounds
 
         self.qp = qpoases.PySQProblem(nv, nc)
-        if not verbose:
-            options = qpoases.PyOptions()
-            options.printLevel = qpoases.PyPrintLevel.NONE
-            self.qp.setOptions(options)
+        options = qpoases.PyOptions()
+        if verbose:
+            options.printLevel = qpoases.PyPrintLevel.MEDIUM
+        else:
+            options.printLevel = qpoases.PyPrintLevel.LOW
+        self.qp.setOptions(options)
 
         self.qp_initialized = False
 

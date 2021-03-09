@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pymunk
 import pymunk.matplotlib_util
+from _tkinter import TclError
 
 from mm2d import plotter as plotting
 from mm2d import trajectory as trajectories
@@ -31,7 +32,7 @@ MASS = 0.5
 # INERTIA = 0.25*MASS*RADIUS**2
 TRAY_MU = 0.75
 TRAY_W = 0.2
-TRAY_H = 0.3
+TRAY_H = 0.05
 INERTIA = MASS * (3*RADIUS**2 + (2*TRAY_H)**2) / 12.0
 
 OBJ_W = 0.1
@@ -53,7 +54,7 @@ ns_ee = 6  # num EE states
 ns_q = 8   # num joint states
 ni = 4     # num inputs
 nc_eq = 0
-nc_ineq = 4  # num inequality constraints
+nc_ineq = 7  # num inequality constraints
 nv = ni      # num opt vars
 nc = nc_eq + nc_ineq  # num constraints
 
@@ -173,20 +174,25 @@ def main():
         α3 = INERTIA * ddθ_ew
 
         # NOTE: this is written to be >= 0
-        h1 = TRAY_MU*jnp.abs(α2) - jnp.abs(α1)
+        # h1 = TRAY_MU*α2 - jnp.abs(α1)
+        h1a = TRAY_MU*α2 + α1
+        h1b = TRAY_MU*α2 - α1
         h2 = α2
-        # h3 = TRAY_H**2*α1**2 + TRAY_W*(TRAY_W-2*TRAY_MU*TRAY_H)*α2**2 - α3**2
+
         w1 = TRAY_W
         w2 = TRAY_W
-        h3 = α3 + w1 * α2 - TRAY_H * jnp.abs(α1)
-        h4 = -α3 + w2 * α2 - TRAY_H * jnp.abs(α1)
+        # h3 = α3 + w1 * α2 - TRAY_H * jnp.abs(α1)
+        h3a = α3 + w1 * α2 + TRAY_H * α1
+        h3b = α3 + w1 * α2 - TRAY_H * α1
+
+        # h4 = -α3 + w2 * α2 - TRAY_H * jnp.abs(α1)
+        h4a = -α3 + w2 * α2 + TRAY_H * α1
+        h4b = -α3 + w2 * α2 - TRAY_H * α1
         # h3 = 1
         # h4 = 1
 
-        # h1 = OBJ_MU*jnp.abs(α2) - jnp.abs(α1)
-        # h3 = OBJ_H**2 * α1**2 + OBJ_W * (OBJ_W - 2*OBJ_MU*OBJ_H)*α2**2 - α3**2
-
-        return jnp.array([h1, h2, h3, h4])
+        # return jnp.array([h1, h2, h3, h4])
+        return jnp.array([h1a, h1b, h2, h3a, h3b, h4a, h4b])
 
     def ineq_constraints_unrolled(X_q_0, X_ee_d, var):
         # var is now just the lifted joint acceleration inputs
@@ -220,7 +226,7 @@ def main():
     ub =  ACC_LIM * np.ones(MPC_STEPS * nv)
     bounds = sqp.Bounds(lb, ub)
 
-    controller = sqp.SQP(nv*MPC_STEPS, nc*MPC_STEPS, objective, constraints, bounds, num_iter=SQP_ITER, verbose=True)
+    controller = sqp.SQP(nv*MPC_STEPS, nc*MPC_STEPS, objective, constraints, bounds, num_wsr=300, num_iter=SQP_ITER, verbose=True)
 
     for i in range(N - 1):
         t = ts[i+1]
@@ -260,7 +266,11 @@ def main():
         p_te_es[i+1, :] = R_we.T @ (P_tw_w[:2] - P_ew_w[:2])
 
         if i % PLOT_PERIOD == 0:
-            plotter.update()
+            # break early if plot window is closed
+            try:
+                plotter.update()
+            except TclError:
+                break
 
         if np.linalg.norm(P_ew_wds[0, :2] - P_ew_w[:2]) < 0.01:
             print("Position within 1 cm. Stopping.")
@@ -315,10 +325,11 @@ def main():
     # plt.title('$v^{te}_e$')
 
     plt.figure()
-    plt.plot(ts[:N], ineq_cons[:, 0], label='$h_1$')
-    plt.plot(ts[:N], ineq_cons[:, 1], label='$h_2$')
-    plt.plot(ts[:N], ineq_cons[:, 2], label='$h_3$')
-    plt.plot(ts[:N], ineq_cons[:, 3], label='$h_4$')
+    for i in range(nc_ineq):
+        plt.plot(ts[:N], ineq_cons[:, i], label=f'$h_{i+1}$')
+    # plt.plot(ts[:N], ineq_cons[:, 1], label='$h_2$')
+    # plt.plot(ts[:N], ineq_cons[:, 2], label='$h_3$')
+    # plt.plot(ts[:N], ineq_cons[:, 3], label='$h_4$')
     plt.plot([0, ts[-1]], [0, 0], color='k')
     plt.grid()
     plt.legend()

@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pymunk
 import pymunk.matplotlib_util
+from functools import partial
 from _tkinter import TclError
 
 from mm2d import plotter as plotting
@@ -23,7 +24,7 @@ import IPython
 L1 = 1
 L2 = 1
 VEL_LIM = 1
-ACC_LIM = 50
+ACC_LIM = 10
 
 # tray parameters
 GRAVITY = 9.81
@@ -70,6 +71,11 @@ def skew1(x):
 
 def hessian(f, argnums=0):
     return jax.jacfwd(jax.jacrev(f, argnums=argnums), argnums=argnums)
+
+
+# def hessian_approx(jac, *args):
+#     J = jac(*args)
+#     return J.T @ J
 
 
 def main():
@@ -144,7 +150,7 @@ def main():
     # trajectory_renderer = plotting.TrajectoryRenderer(trajectory, ts)
     renderers = [goal_renderer, sim_renderer]
     video = plotting.Video(name='tray_balance_mm.mp4', fps=1./(SIM_DT*PLOT_PERIOD))
-    plotter = plotting.RealtimePlotter(renderers, video=video)
+    plotter = plotting.RealtimePlotter(renderers, video=None)
     plotter.start()  # TODO for some reason setting grid=True messes up the base rendering
 
     def objective_unrolled(X_q_0, X_ee_d, var):
@@ -220,13 +226,19 @@ def main():
     ubA = np.infty * np.ones(MPC_STEPS * nc)
     con_fun = jax.jit(ineq_constraints_unrolled)
     con_jac = jax.jit(jax.jacfwd(ineq_constraints_unrolled, argnums=2))
-    constraints = sqp.Constraints(con_fun, con_jac, lbA, ubA)
+    con_sparsity_mask = np.kron(np.tril(np.ones((MPC_STEPS, MPC_STEPS))), np.ones((nc, nv)))
+    constraints = sqp.Constraints(con_fun, con_jac, lbA, ubA, nz_idx=np.nonzero(con_sparsity_mask))
 
     lb = -ACC_LIM * np.ones(MPC_STEPS * nv)
     ub =  ACC_LIM * np.ones(MPC_STEPS * nv)
     bounds = sqp.Bounds(lb, ub)
 
-    controller = sqp.SQP(nv*MPC_STEPS, nc*MPC_STEPS, objective, constraints, bounds, num_wsr=300, num_iter=SQP_ITER, verbose=True)
+    # controller = sqp.SQP(nv*MPC_STEPS, nc*MPC_STEPS, objective, constraints,
+    #                      bounds, num_wsr=300, num_iter=SQP_ITER, verbose=True,
+    #                      solver="qpoases")
+
+    controller = sqp.SQP(nv*MPC_STEPS, nc*MPC_STEPS, objective, constraints,
+                         bounds, num_iter=SQP_ITER, verbose=True, solver="osqp")
 
     for i in range(N - 1):
         t = ts[i+1]

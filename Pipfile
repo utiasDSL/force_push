@@ -20,6 +20,7 @@ jaxlib = "*"
 pymunk = "*"
 readline = "*"
 jedi = "==0.17.2"
+osqp = "*"
 
 [requires]
 python_version = "3.7"

@@ -44,7 +44,7 @@ OBJ_INERTIA = OBJ_MASS * (OBJ_W**2 + OBJ_H**2) / 12.0
 # simulation parameters
 SIM_DT = 0.001     # simulation timestep (s)
 MPC_DT = 0.1       # lookahead timestep of the controller
-MPC_STEPS = 12     # number of timesteps to lookahead
+MPC_STEPS = 8      # number of timesteps to lookahead
 SQP_ITER = 5       # number of iterations for the SQP solved by the controller
 PLOT_PERIOD = 100  # update plot every PLOT_PERIOD timesteps
 CTRL_PERIOD = 100  # generate new control signal every CTRL_PERIOD timesteps
@@ -91,7 +91,7 @@ def main():
 
     model = FourInputModel(l1=L1, l2=L2, vel_lim=VEL_LIM, acc_lim=ACC_LIM)
 
-    ts = SIM_DT * np.arange(N_record)
+    ts = RECORD_PERIOD * SIM_DT * np.arange(N_record)
     us = np.zeros((N_record, ni))
     P_ew_ws = np.zeros((N_record, 3))
     P_ew_wds = np.zeros((N_record, 3))
@@ -167,17 +167,17 @@ def main():
 
     def error_unrolled(X_q_0, X_ee_d, var):
         """Unroll the pose error over the time horizon."""
-        X_q = X_q_0
-        e = jnp.zeros(MPC_STEPS * ns_ee)
+        X_ee_d0 = X_ee_d[:ns_ee]
 
-        # TODO can we make this more efficient?
-        for i in range(MPC_STEPS):
-            u = var[i*nv:(i+1)*nv]
+        def error_func(X_q, u):
             X_q = model.step_unconstrained(X_q, u, MPC_DT)
             X_ee = model.ee_state(X_q)
-            ei = X_ee_d[i*ns_ee:(i+1)*ns_ee] - X_ee
-            e = jax.ops.index_update(e, jax.ops.index[i*ns_ee:(i+1)*ns_ee], ei)
-        return e
+            e = X_ee_d0 - X_ee  # TODO this is assuming setpoint
+            return X_q, e
+
+        u = var.reshape((MPC_STEPS, ni))
+        X_q, ebar = jax.lax.scan(error_func, X_q_0, u)
+        return ebar.flatten()
 
     def ineq_constraints(X_ee, a_ee, jnp=jnp):
         """Calculate inequality constraints for a single timestep."""
@@ -215,20 +215,18 @@ def main():
 
     def ineq_constraints_unrolled(X_q_0, X_ee_d, var):
         """Unroll the inequality constraints over the time horizon."""
-        # var is now just the lifted joint acceleration inputs
-        X_q = X_q_0
-        ineq_con = jnp.zeros(MPC_STEPS * nc_ineq)
-
-        for i in range(MPC_STEPS):
-            u = var[i*nv:(i+1)*nv]
-
+        def ineq_func(X_q, u):
             X_ee = model.ee_state(X_q)
             a_ee = model.ee_acceleration(X_q, u)
 
             ineq_coni = ineq_constraints(X_ee, a_ee)
-            ineq_con = jax.ops.index_update(ineq_con, jax.ops.index[i*nc_ineq:(i+1)*nc_ineq], ineq_coni)
+
             X_q = model.step_unconstrained(X_q, u, MPC_DT)
-        return ineq_con
+            return X_q, ineq_coni
+
+        u = var.reshape((MPC_STEPS, ni))
+        X_q, ineq_con = jax.lax.scan(ineq_func, X_q_0, u)
+        return ineq_con.flatten()
 
     err_jac = jax.jit(jax.jacfwd(error_unrolled, argnums=2))
 

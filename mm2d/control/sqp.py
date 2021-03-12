@@ -2,6 +2,7 @@ import numpy as np
 import qpoases
 import osqp
 from scipy import sparse
+import time
 
 
 class Objective:
@@ -58,6 +59,26 @@ class Bounds:
         self.ub = ub
 
 
+class Benchmark:
+    def __init__(self):
+        self.count = 0
+        self.time_taken = 0
+
+    def start(self):
+        self._time = time.time()
+
+    def end(self):
+        _time = time.time()
+        dt = _time - self._time
+        self._time = _time
+
+        self.count += 1
+        self.time_taken += dt
+
+    def print_stats(self):
+        print(f"count = {self.count}\ntotal time = {self.time_taken}\ntime / call = {self.time_taken / self.count}")
+
+
 def SQP(*args, solver="qpoases", **kwargs):
     if solver == "qpoases":
         return SQP_qpOASES(*args, **kwargs)
@@ -83,7 +104,7 @@ class SQP_qpOASES(object):
 
         self.qp = qpoases.PySQProblem(nv, nc)
         options = qpoases.PyOptions()
-        options.setToReliable()
+        options.setToMPC()
         if verbose:
             options.printLevel = qpoases.PyPrintLevel.MEDIUM
         else:
@@ -91,6 +112,8 @@ class SQP_qpOASES(object):
         self.qp.setOptions(options)
 
         self.qp_initialized = False
+
+        self.benchmark = Benchmark()
 
     def _lookahead(self, x0, xd, var):
         """Generate lifted matrices proprogating the state N timesteps into the
@@ -101,20 +124,18 @@ class SQP_qpOASES(object):
 
         A = np.array(self.constraints.jac(x0, xd, var), dtype=np.float64)
         a = np.array(self.constraints.fun(x0, xd, var), dtype=np.float64)
-        lbA = self.constraints.lb - a
-        ubA = self.constraints.ub - a
+        lbA = np.array(self.constraints.lb - a, dtype=np.float64)
+        ubA = np.array(self.constraints.ub - a, dtype=np.float64)
 
-        lb = self.bounds.lb - var
-        ub = self.bounds.ub - var
+        lb = np.array(self.bounds.lb - var, dtype=np.float64)
+        ub = np.array(self.bounds.ub - var, dtype=np.float64)
 
         # if np.any(np.linalg.eigvals(H) < 0):
+        #     print("H is not positive definite!")
         #     import IPython
         #     IPython.embed()
 
-        return H, g, \
-               np.array(A, dtype=np.float64), np.array(lbA, dtype=np.float64), \
-               np.array(ubA, dtype=np.float64), np.array(lb, dtype=np.float64), \
-               np.array(ub, dtype=np.float64)
+        return H, g, A, lbA, ubA, lb, ub
 
     def _iterate(self, x0, xd, var):
         delta = np.zeros(self.nv)
@@ -125,14 +146,18 @@ class SQP_qpOASES(object):
             self.qp.init(H, g, A, lb, ub, lbA, ubA, np.array([self.num_wsr]))
             self.qp_initialized = True
         else:
+            self.benchmark.start()
             self.qp.hotstart(H, g, A, lb, ub, lbA, ubA, np.array([self.num_wsr]))
+            self.benchmark.end()
         self.qp.getPrimalSolution(delta)
         var = var + delta
 
         # Remaining sequence is hotstarted from the first.
         for i in range(self.num_iter - 1):
             H, g, A, lbA, ubA, lb, ub = self._lookahead(x0, xd, var)
+            self.benchmark.start()
             self.qp.hotstart(H, g, A, lb, ub, lbA, ubA, np.array([self.num_wsr]))
+            self.benchmark.end()
             self.qp.getPrimalSolution(delta)
             var = var + delta
 
@@ -166,6 +191,8 @@ class SQP_OSQP(object):
         self.qp = osqp.OSQP()
         self.verbose = verbose
         self.qp_initialized = False
+
+        self.benchmark = Benchmark()
 
     def _lookahead(self, x0, xd, var):
         """Generate lifted matrices proprogating the state N timesteps into the
@@ -206,16 +233,21 @@ class SQP_OSQP(object):
         if not self.qp_initialized:
             self.qp.setup(P=H, q=g, A=A, l=lower, u=upper, verbose=self.verbose)
             self.qp_initialized = True
+            results = self.qp.solve()
         else:
+            self.benchmark.start()
             self.qp.update(Px=H.data, q=g, Ax=A.data, l=lower, u=upper)
-        results = self.qp.solve()
+            results = self.qp.solve()
+            self.benchmark.end()
         var = var + results.x
 
         # Remaining sequence is hotstarted from the first.
         for i in range(self.num_iter - 1):
             H, g, A, lower, upper = self._lookahead(x0, xd, var)
+            self.benchmark.start()
             self.qp.update(Px=H.data, q=g, Ax=A.data, l=lower, u=upper)
             results = self.qp.solve()
+            self.benchmark.end()
             var = var + results.x
 
         return var

@@ -234,7 +234,7 @@ def main():
 
     def obj_hess_jac(X_q_0, X_ee_d, var):
         """Calculate objective Hessian and Jacobian."""
-        # NOTE: not currently accounting for penalty on state x
+        # TODO: not currently accounting for penalty on state x
         e = error_unrolled(X_q_0, X_ee_d, var)
         dedu = err_jac(X_q_0, X_ee_d, var)
         u = var
@@ -259,12 +259,12 @@ def main():
     ub =  ACC_LIM * np.ones(MPC_STEPS * nv)
     bounds = sqp.Bounds(lb, ub)
 
-    # controller = sqp.SQP(nv*MPC_STEPS, nc*MPC_STEPS, jax.jit(obj_hess_jac), constraints,
-    #                      bounds, num_wsr=300, num_iter=SQP_ITER, verbose=False,
-    #                      solver="qpoases")
-
     controller = sqp.SQP(nv*MPC_STEPS, nc*MPC_STEPS, jax.jit(obj_hess_jac), constraints,
-                         bounds, num_iter=SQP_ITER, verbose=True, solver="osqp")
+                         bounds, num_wsr=300, num_iter=SQP_ITER, verbose=False,
+                         solver="qpoases")
+
+    # controller = sqp.SQP(nv*MPC_STEPS, nc*MPC_STEPS, jax.jit(obj_hess_jac), constraints,
+    #                      bounds, num_iter=SQP_ITER, verbose=False, solver="osqp")
 
     for i in range(N - 1):
         t = i * SIM_DT
@@ -276,9 +276,7 @@ def main():
             X_ee_d = np.hstack((pd, z, vd, z)).flatten()
             # -0.5*np.pi*np.ones((MPC_STEPS, 1))
 
-            # start = time.time()
             var = controller.solve(X_q, X_ee_d)
-            # print(time.time() - start)
             u = var[:ni]  # joint acceleration input
             sim.command_acceleration(u)
 
@@ -286,7 +284,7 @@ def main():
         X_q = np.concatenate(sim.step())
 
         if i % RECORD_PERIOD == 0:
-            idx = i // 10
+            idx = i // RECORD_PERIOD
             P_ew_w = model.ee_position(X_q)
             V_ew_w = model.ee_velocity(X_q)
 
@@ -319,12 +317,14 @@ def main():
             break
     plotter.done()
 
+    controller.benchmark.print_stats()
+
     # v_te_es = (p_te_es[1:] - p_te_es[:-1]) / SIM_DT
     # v_te_es_smooth = np.zeros_like(v_te_es)
     # v_te_es_smooth[:, 0] = np.convolve(v_te_es[:, 0], np.ones(100) / 100, 'same')
     # v_te_es_smooth[:, 1] = np.convolve(v_te_es[:, 1], np.ones(100) / 100, 'same')
 
-    idx = i // 10
+    idx = i // RECORD_PERIOD
 
     plt.figure()
     plt.plot(ts[1:idx], P_ew_wds[1:idx, 0], label='$x_d$', color='b', linestyle='--')

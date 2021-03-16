@@ -27,12 +27,12 @@ ACC_LIM = 10
 
 # tray parameters
 GRAVITY = 9.81
-RADIUS = 0.5
+RADIUS = 0.15
 MASS = 0.5
 # INERTIA = 0.25*MASS*RADIUS**2
 TRAY_MU = 0.75
 TRAY_W = 0.1
-TRAY_H = 0.05
+TRAY_H = 0.5
 INERTIA = MASS * (3*RADIUS**2 + (2*TRAY_H)**2) / 12.0
 
 OBJ_W = 0.1
@@ -44,7 +44,7 @@ OBJ_INERTIA = OBJ_MASS * (OBJ_W**2 + OBJ_H**2) / 12.0
 # simulation parameters
 SIM_DT = 0.001     # simulation timestep (s)
 MPC_DT = 0.1       # lookahead timestep of the controller
-MPC_STEPS = 8      # number of timesteps to lookahead
+MPC_STEPS = 12     # number of timesteps to lookahead
 SQP_ITER = 5       # number of iterations for the SQP solved by the controller
 PLOT_PERIOD = 100  # update plot every PLOT_PERIOD timesteps
 CTRL_PERIOD = 100  # generate new control signal every CTRL_PERIOD timesteps
@@ -151,19 +151,19 @@ def main():
     plotter = plotting.RealtimePlotter(renderers, video=video)
     plotter.start()  # TODO for some reason setting grid=True messes up the base rendering
 
-    def objective_unrolled(X_q_0, X_ee_d, var):
-        """Unroll the objective over n timesteps."""
-        obj = 0
-        X_q = X_q_0
-
-        for i in range(MPC_STEPS):
-            u = var[i*nv:(i+1)*nv]
-            X_q = model.step_unconstrained(X_q, u, MPC_DT)
-            X_ee = model.ee_state(X_q)
-            e = X_ee_d[i*ns_ee:(i+1)*ns_ee] - X_ee  # TODO this may also break down with angle wrapping
-            obj = obj + 0.5 * (e @ W @ e + X_q @ Q @ X_q + u @ R @ u)
-
-        return obj
+    # def objective_unrolled(X_q_0, X_ee_d, var):
+    #     """Unroll the objective over n timesteps."""
+    #     obj = 0
+    #     X_q = X_q_0
+    #
+    #     for i in range(MPC_STEPS):
+    #         u = var[i*nv:(i+1)*nv]
+    #         X_q = model.step_unconstrained(X_q, u, MPC_DT)
+    #         X_ee = model.ee_state(X_q)
+    #         e = X_ee_d[i*ns_ee:(i+1)*ns_ee] - X_ee  # TODO this may also break down with angle wrapping
+    #         obj = obj + 0.5 * (e @ W @ e + X_q @ Q @ X_q + u @ R @ u)
+    #
+    #     return obj
 
     def error_unrolled(X_q_0, X_ee_d, var):
         """Unroll the pose error over the time horizon."""
@@ -216,13 +216,24 @@ def main():
     def ineq_constraints_unrolled(X_q_0, X_ee_d, var):
         """Unroll the inequality constraints over the time horizon."""
         def ineq_func(X_q, u):
+
+            # TODO here we actually need to generate constraints at both ends of the timestep
+            # at the start of the timestep, we need to ensure the new inputs
+            # satisfy constraints
             X_ee = model.ee_state(X_q)
             a_ee = model.ee_acceleration(X_q, u)
-
-            ineq_coni = ineq_constraints(X_ee, a_ee)
+            ineq_con1 = ineq_constraints(X_ee, a_ee)
 
             X_q = model.step_unconstrained(X_q, u, MPC_DT)
-            return X_q, ineq_coni
+
+            # at the end of the timestep, we need to make sure that the robot
+            # ends up in a state where constraints are still satisfied given
+            # the input
+            X_ee = model.ee_state(X_q)
+            a_ee = model.ee_acceleration(X_q, u)
+            ineq_con2 = ineq_constraints(X_ee, a_ee)
+
+            return X_q, jnp.concatenate((ineq_con1, ineq_con2))
 
         u = var.reshape((MPC_STEPS, ni))
         X_q, ineq_con = jax.lax.scan(ineq_func, X_q_0, u)
@@ -246,8 +257,8 @@ def main():
         return H, g
 
     # Construct the SQP controller
-    lbA = np.zeros(MPC_STEPS * nc)
-    ubA = np.infty * np.ones(MPC_STEPS * nc)
+    lbA = np.zeros(MPC_STEPS * nc * 2)
+    ubA = np.infty * np.ones(MPC_STEPS * nc * 2)
     con_fun = jax.jit(ineq_constraints_unrolled)
     con_jac = jax.jit(jax.jacfwd(ineq_constraints_unrolled, argnums=2))
     con_sparsity_mask = np.kron(np.tril(np.ones((MPC_STEPS, MPC_STEPS))), np.ones((nc, nv)))
@@ -337,18 +348,18 @@ def main():
     plt.ylabel('Position')
     plt.title('End effector position')
 
-    plt.figure()
-    plt.plot(ts, p_te_es[:, 0], label='$x$', color='b')
-    plt.plot(ts, p_te_es[:, 1], label='$y$', color='r')
-    plt.grid()
-    plt.legend()
-    plt.xlabel('Time (s)')
-    plt.ylabel('$p^{te}_e$')
-    plt.title('$p^{te}_e$')
+    # plt.figure()
+    # plt.plot(ts, p_te_es[:, 0], label='$x$', color='b')
+    # plt.plot(ts, p_te_es[:, 1], label='$y$', color='r')
+    # plt.grid()
+    # plt.legend()
+    # plt.xlabel('Time (s)')
+    # plt.ylabel('$p^{te}_e$')
+    # plt.title('$p^{te}_e$')
 
     plt.figure()
-    plt.plot(ts, p_te_e[0] - p_te_es[:, 0], label='$x$', color='b')
-    plt.plot(ts, p_te_e[1] - p_te_es[:, 1], label='$y$', color='r')
+    plt.plot(ts[:idx], p_te_e[0] - p_te_es[:idx, 0], label='$x$', color='b')
+    plt.plot(ts[:idx], p_te_e[1] - p_te_es[:idx, 1], label='$y$', color='r')
     plt.grid()
     plt.legend()
     plt.xlabel('Time (s)')
@@ -380,10 +391,10 @@ def main():
     plt.title('Inequality constraints')
 
     plt.figure()
-    plt.plot(ts, us[:, 0], label='u1')
-    plt.plot(ts, us[:, 1], label='u2')
-    plt.plot(ts, us[:, 2], label='u3')
-    plt.plot(ts, us[:, 3], label='u4')
+    plt.plot(ts[:idx], us[:idx, 0], label='$u_1$')
+    plt.plot(ts[:idx], us[:idx, 1], label='$u_2$')
+    plt.plot(ts[:idx], us[:idx, 2], label='$u_3$')
+    plt.plot(ts[:idx], us[:idx, 3], label='$u_4$')
     plt.grid()
     plt.legend()
     plt.xlabel('Time (s)')

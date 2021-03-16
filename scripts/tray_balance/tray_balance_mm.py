@@ -164,6 +164,15 @@ def main():
     #         obj = obj + 0.5 * (e @ W @ e + X_q @ Q @ X_q + u @ R @ u)
     #
     #     return obj
+    def joint_state_unrolled(X_q_0, ubar):
+        """Unroll the joint state of the robot over the time horizon."""
+        def state_func(X_q, u):
+            X_q = model.step_unconstrained(X_q, u, MPC_DT)
+            return X_q, X_q
+
+        u = ubar.reshape((MPC_STEPS, ni))
+        _, X_q_bar = jax.lax.scan(state_func, X_q_0, u)
+        return X_q_bar.flatten()
 
     def error_unrolled(X_q_0, X_ee_d, var):
         """Unroll the pose error over the time horizon."""
@@ -217,7 +226,8 @@ def main():
         """Unroll the inequality constraints over the time horizon."""
         def ineq_func(X_q, u):
 
-            # TODO here we actually need to generate constraints at both ends of the timestep
+            # we actually two sets of constraints for each timestep: one at the
+            # start and one at the end
             # at the start of the timestep, we need to ensure the new inputs
             # satisfy constraints
             X_ee = model.ee_state(X_q)
@@ -240,19 +250,23 @@ def main():
         return ineq_con.flatten()
 
     err_jac = jax.jit(jax.jacfwd(error_unrolled, argnums=2))
+    joint_state_jac = jax.jit(jax.jacfwd(joint_state_unrolled, argnums=1))
 
     def obj_hess_jac(X_q_0, X_ee_d, var):
         """Calculate objective Hessian and Jacobian."""
-        # TODO: not currently accounting for penalty on state x
-        e = error_unrolled(X_q_0, X_ee_d, var)
-        dedu = err_jac(X_q_0, X_ee_d, var)
         u = var
 
+        e = error_unrolled(X_q_0, X_ee_d, u)
+        dedu = err_jac(X_q_0, X_ee_d, u)
+
+        x = joint_state_unrolled(X_q_0, u)
+        dxdu = joint_state_jac(X_q_0, u)
+
         # Jacobian
-        g = e.T @ Wbar @ dedu + u.T @ Rbar
+        g = e.T @ Wbar @ dedu + x.T @ Qbar @ dxdu + u.T @ Rbar
 
         # (Approximate) Hessian
-        H = dedu.T @ Wbar @ dedu + Rbar
+        H = dedu.T @ Wbar @ dedu + dxdu.T @ Qbar @ dxdu + Rbar
 
         return H, g
 
@@ -268,7 +282,7 @@ def main():
     ub =  ACC_LIM * np.ones(MPC_STEPS * nv)
     bounds = sqp.Bounds(lb, ub)
 
-    controller = sqp.SQP(nv*MPC_STEPS, nc*MPC_STEPS, jax.jit(obj_hess_jac), constraints,
+    controller = sqp.SQP(nv*MPC_STEPS, 2*nc*MPC_STEPS, jax.jit(obj_hess_jac), constraints,
                          bounds, num_wsr=300, num_iter=SQP_ITER, verbose=False,
                          solver="qpoases")
 

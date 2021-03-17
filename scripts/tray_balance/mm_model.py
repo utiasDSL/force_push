@@ -1,6 +1,7 @@
 import numpy as np
 import jax
 import jax.numpy as jnp
+from scipy.linalg import expm
 from mm2d.util import bound_array
 
 import IPython
@@ -21,6 +22,25 @@ M2 = 1
 VEL_LIM = 1
 ACC_LIM = 1
 TAU_LIM = 100
+
+
+def zoh(A, B, dt):
+    """Compute discretized system matrices assuming zero-order hold on imput."""
+    ra, ca = A.shape
+    rb, cb = B.shape
+
+    assert ra == ca  # A is square
+    assert ra == rb  # B has same number of rows as A
+
+    ch = ca + cb
+    rh = ch
+
+    H = np.block([[A, B], [np.zeros((rh - ra, ch))]])
+    Hd = expm(dt * H)
+    Ad = Hd[:ra, :ca]
+    Bd = Hd[:rb, ca:ca+cb]
+
+    return Ad, Bd
 
 
 class FourInputModel:
@@ -51,6 +71,9 @@ class FourInputModel:
         Z = np.zeros((self.ni, self.ni))
         self.A = np.block([[Z, np.eye(self.ni)], [Z, Z]])
         self.B = np.block([[Z], [np.eye(self.ni)]])
+
+        # compute discretized matrices assuming zero-order hold
+        self.Ad, self.Bd = zoh(self.A, self.B, 0.1)
 
         self.jacobian = jax.jit(jax.jacrev(self.ee_position))
         self.dJdq = jax.jit(jax.jacfwd(self.jacobian))
@@ -100,13 +123,30 @@ class FourInputModel:
     def ee_state(self, X):
         return jnp.concatenate((self.ee_position(X), self.ee_velocity(X)))
 
-    def step_unconstrained(self, Q, u, dt):
-        """Step forward one timestep without applying state or input
-        constraints.
+    def step_unconstrained(self, Q, u, dt, method="zoh"):
+        """Step forward one timestep without applying state or input constraints.
+
+        Available integration methods are: euler, rk4, zoh
         """
-        dQ = self.A @ Q + self.B @ u
-        Q = Q + dt * dQ
-        return Q
+        if method == "euler":
+            # euler integration
+            dQdt = self.A @ Q + self.B @ u
+            Q_new = Q + dt * dQdt
+        elif method == "rk4":
+            # fourth-order explicit Runge-Kutta integration method
+            dQdt = self.A @ Q + self.B @ u
+            k1 = dQdt
+            k2 = dQdt + 0.5 * dt * k1
+            k3 = dQdt + 0.5 * dt * k2
+            k4 = dQdt + k3
+            Q_new = Q + dt * (k1 + 2 * k2 + 2 * k3 + k4) / 6.0
+        elif method == "zoh":
+            # exact solution assuming zero-order hold on input (i.e. that it is
+            # constant over the time step)
+            Q_new = self.Ad @ Q + self.Bd @ u
+        else:
+            raise Exception(f"invalid method: {method}")
+        return Q_new
 
 
 def main():

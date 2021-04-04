@@ -27,12 +27,12 @@ ACC_LIM = 10
 
 # tray parameters
 GRAVITY = 9.81
-RADIUS = 0.15
+RADIUS = 0.5 #0.15
 MASS = 0.5
 # INERTIA = 0.25*MASS*RADIUS**2
-TRAY_MU = 0.75
+TRAY_MU = 0.5
 TRAY_W = 0.1
-TRAY_H = 0.5
+TRAY_H = 0.05 #0.5
 INERTIA = MASS * (3*RADIUS**2 + (2*TRAY_H)**2) / 12.0
 
 OBJ_W = 0.1
@@ -44,12 +44,12 @@ OBJ_INERTIA = OBJ_MASS * (OBJ_W**2 + OBJ_H**2) / 12.0
 # simulation parameters
 SIM_DT = 0.001     # simulation timestep (s)
 MPC_DT = 0.1       # lookahead timestep of the controller
-MPC_STEPS = 12     # number of timesteps to lookahead
-SQP_ITER = 5       # number of iterations for the SQP solved by the controller
+MPC_STEPS = 10     # number of timesteps to lookahead
+SQP_ITER = 1       # number of iterations for the SQP solved by the controller
 PLOT_PERIOD = 100  # update plot every PLOT_PERIOD timesteps
 CTRL_PERIOD = 100  # generate new control signal every CTRL_PERIOD timesteps
 RECORD_PERIOD = 10
-DURATION = 5.0     # duration of trajectory (s)
+DURATION = 10.0     # duration of trajectory (s)
 
 ns_ee = 6  # num EE states
 ns_q = 8   # num joint states
@@ -60,15 +60,19 @@ nv = ni      # num opt vars
 nc = nc_eq + nc_ineq  # num constraints
 
 # MPC weights
-Q = np.diag([0, 0, 0, 0, 0.01, 0.01, 0.01, 0.01])
-W = np.diag([1, 1, 0.1, 0, 0, 0])
+Q = np.diag([0, 0, 0, 0, 0.01, 0.01, 0.01, 0.00])
+W = np.diag([1, 1, 1, 0, 0, 0])
 R = 0.01 * np.eye(ni)
+V = MPC_DT * np.eye(ni)
 
 # lifted weight matrices
 Ibar = np.eye(MPC_STEPS)
 Qbar = np.kron(Ibar, Q)
 Wbar = np.kron(Ibar, W)
 Rbar = np.kron(Ibar, R)
+
+# velocity constraint matrix
+Vbar = np.kron(np.tril(np.ones((MPC_STEPS, MPC_STEPS))), V)
 
 
 def skew1(x):
@@ -98,6 +102,7 @@ def main():
     V_ew_ws = np.zeros((N_record, 3))
     P_tw_ws = np.zeros((N_record, 3))
     p_te_es = np.zeros((N_record, 2))
+    X_qs = np.zeros((N_record, ns_q))
     ineq_cons = np.zeros((N_record, nc_ineq))
 
     p_te_es[0, :] = p_te_e
@@ -139,31 +144,18 @@ def main():
     # sim.space.add(obj.body, obj)
 
     # reference trajectory
-    trajectory = trajectories.Point(P_ew_w[:2] + np.array([1, -1]))
-    P_ew_wds[:, :2], _, _ = trajectory.sample(ts)
-    # P_ew_wds[:, 2] = -np.pi / 2
+    setpoints = np.array([[1, -1], [2, -1], [3, 0]]) + P_ew_w[:2]
+    setpoint_idx = 0
+    trajectory = trajectories.Point(setpoints[setpoint_idx, :])
 
     # rendering
-    goal_renderer = plotting.PointRenderer(P_ew_wds[-1, :2], color='r')
+    goal_renderers = [plotting.PointRenderer(setpoints[i, :2], color='r') for i in range(setpoints.shape[0])]
     sim_renderer = PymunkRenderer(sim.space, sim.markers)
-    renderers = [goal_renderer, sim_renderer]
+    renderers = goal_renderers + [sim_renderer]
     video = plotting.Video(name='tray_balance_mm.mp4', fps=1./(SIM_DT*PLOT_PERIOD))
     plotter = plotting.RealtimePlotter(renderers, video=video)
     plotter.start()  # TODO for some reason setting grid=True messes up the base rendering
 
-    # def objective_unrolled(X_q_0, X_ee_d, var):
-    #     """Unroll the objective over n timesteps."""
-    #     obj = 0
-    #     X_q = X_q_0
-    #
-    #     for i in range(MPC_STEPS):
-    #         u = var[i*nv:(i+1)*nv]
-    #         X_q = model.step_unconstrained(X_q, u, MPC_DT)
-    #         X_ee = model.ee_state(X_q)
-    #         e = X_ee_d[i*ns_ee:(i+1)*ns_ee] - X_ee  # TODO this may also break down with angle wrapping
-    #         obj = obj + 0.5 * (e @ W @ e + X_q @ Q @ X_q + u @ R @ u)
-    #
-    #     return obj
     def joint_state_unrolled(X_q_0, ubar):
         """Unroll the joint state of the robot over the time horizon."""
         def state_func(X_q, u):
@@ -198,7 +190,6 @@ def main():
         g = jnp.array([0, GRAVITY])
 
         α1, α2 = MASS * R_ew @ (a_ew_w+g) + MASS * (ddθ_ew*S1 - dθ_ew**2*jnp.eye(2)) @ p_te_e
-        # α1, α2 = OBJ_MASS * R_ew @ (a_ew_w + g) + OBJ_MASS * (ddθ_ew*S1 - dθ_ew**2*jnp.eye(2)) @ p_oe_e
         α3 = INERTIA * ddθ_ew
 
         # NOTE: this is written to be >= 0
@@ -209,17 +200,16 @@ def main():
 
         w1 = TRAY_W
         w2 = TRAY_W
-        # h3 = α3 + w1 * α2 - TRAY_H * jnp.abs(α1)
         h3a = α3 + w1 * α2 + TRAY_H * α1
         h3b = α3 + w1 * α2 - TRAY_H * α1
+        # h3a = 1
+        # h3b = 1
 
-        # h4 = -α3 + w2 * α2 - TRAY_H * jnp.abs(α1)
         h4a = -α3 + w2 * α2 + TRAY_H * α1
         h4b = -α3 + w2 * α2 - TRAY_H * α1
-        # h3 = 1
-        # h4 = 1
+        # h4a = 1
+        # h4b = 1
 
-        # return jnp.array([h1, h2, h3, h4])
         return jnp.array([h1a, h1b, h2, h3a, h3b, h4a, h4b])
 
     def ineq_constraints_unrolled(X_q_0, X_ee_d, var):
@@ -252,6 +242,7 @@ def main():
     err_jac = jax.jit(jax.jacfwd(error_unrolled, argnums=2))
     joint_state_jac = jax.jit(jax.jacfwd(joint_state_unrolled, argnums=1))
 
+    @jax.jit
     def obj_hess_jac(X_q_0, X_ee_d, var):
         """Calculate objective Hessian and Jacobian."""
         u = var
@@ -270,19 +261,49 @@ def main():
 
         return H, g
 
+    def vel_ineq_constraints(X_q_0, X_ee_d, var):
+        """Inequality constraints on joint velocity."""
+        dq0 = X_q_0[ni:]
+        return Vbar @ var + jnp.tile(dq0, MPC_STEPS)
+
+    def vel_ineq_jacobian(X_q_0, X_ee_d, var):
+        """Jacobian of joint velocity constraints."""
+        return Vbar
+
+    @jax.jit
+    def con_fun(X_q_0, X_ee_d, var):
+        """Combined constraint function."""
+        con1 = vel_ineq_constraints(X_q_0, X_ee_d, var)
+        con2 = ineq_constraints_unrolled(X_q_0, X_ee_d, var)
+        return jnp.concatenate((con1, con2))
+
+    @jax.jit
+    def con_jac(X_q_0, X_ee_d, var):
+        """Combined constraint Jacobian."""
+        J1 = vel_ineq_jacobian(X_q_0, X_ee_d, var)
+        J2 = jax.jacfwd(ineq_constraints_unrolled, argnums=2)(X_q_0, X_ee_d, var)
+        return jnp.vstack((J1, J2))
+
     # Construct the SQP controller
-    lbA = np.zeros(MPC_STEPS * nc * 2)
-    ubA = np.infty * np.ones(MPC_STEPS * nc * 2)
-    con_fun = jax.jit(ineq_constraints_unrolled)
-    con_jac = jax.jit(jax.jacfwd(ineq_constraints_unrolled, argnums=2))
+    lb_vel = -VEL_LIM * np.ones(MPC_STEPS * ni)
+    ub_vel = VEL_LIM * np.ones(MPC_STEPS * ni)
+
+    lb_physics = np.zeros(MPC_STEPS * nc * 2)
+    ub_physics = np.infty * np.ones(MPC_STEPS * nc * 2)
+
+    con_lb = np.concatenate((lb_vel, lb_physics))
+    con_ub = np.concatenate((ub_vel, ub_physics))
+
+    # TODO sparsity mask is no longer correct: fix before using OSQP solver
     con_sparsity_mask = np.kron(np.tril(np.ones((MPC_STEPS, MPC_STEPS))), np.ones((nc, nv)))
-    constraints = sqp.Constraints(con_fun, con_jac, lbA, ubA, nz_idx=np.nonzero(con_sparsity_mask))
+    con_nz_idx = np.nonzero(con_sparsity_mask)
+    constraints = sqp.Constraints(con_fun, con_jac, con_lb, con_ub, nz_idx=con_nz_idx)
 
-    lb = -ACC_LIM * np.ones(MPC_STEPS * nv)
-    ub =  ACC_LIM * np.ones(MPC_STEPS * nv)
-    bounds = sqp.Bounds(lb, ub)
+    lb_acc = -ACC_LIM * np.ones(MPC_STEPS * nv)
+    ub_acc = ACC_LIM * np.ones(MPC_STEPS * nv)
+    bounds = sqp.Bounds(lb_acc, ub_acc)
 
-    controller = sqp.SQP(nv*MPC_STEPS, 2*nc*MPC_STEPS, jax.jit(obj_hess_jac), constraints,
+    controller = sqp.SQP(nv*MPC_STEPS, 2*nc*MPC_STEPS, obj_hess_jac, constraints,
                          bounds, num_wsr=300, num_iter=SQP_ITER, verbose=False,
                          solver="qpoases")
 
@@ -314,19 +335,23 @@ def main():
             # NOTE: calculating these quantities is fairly expensive
             X_ee = model.ee_state(X_q)
             a_ee = model.ee_acceleration(X_q, u)
-            ineq_cons[idx+1, :] = ineq_constraints(X_ee, a_ee, jnp=np)
+            ineq_cons[idx, :] = ineq_constraints(X_ee, a_ee, jnp=np)
 
             # tray position is (ideally) a constant offset from EE frame
             θ_ew = P_ew_w[2]
             R_we = util.rotation_matrix(θ_ew)
             P_tw_w = np.array([tray.body.position.x, tray.body.position.y, tray.body.angle])
 
+            pd, _, _ = trajectory.sample(t, flatten=False)
+
             # record
             us[idx, :] = u
-            P_ew_ws[idx+1, :] = P_ew_w
-            V_ew_ws[idx+1, :] = V_ew_w
-            P_tw_ws[idx+1, :] = P_tw_w
-            p_te_es[idx+1, :] = R_we.T @ (P_tw_w[:2] - P_ew_w[:2])
+            X_qs[idx, :] = X_q
+            P_ew_wds[idx, :2] = pd
+            P_ew_ws[idx, :] = P_ew_w
+            V_ew_ws[idx, :] = V_ew_w
+            P_tw_ws[idx, :] = P_tw_w
+            p_te_es[idx, :] = R_we.T @ (P_tw_w[:2] - P_ew_w[:2])
 
         if i % PLOT_PERIOD == 0:
             # break early if plot window is closed
@@ -335,9 +360,16 @@ def main():
             except TclError:
                 break
 
-        if np.linalg.norm(P_ew_wds[0, :2] - P_ew_w[:2]) < 0.01:
-            print("Position within 1 cm. Stopping.")
-            break
+        if np.linalg.norm(pd - P_ew_w[:2]) < 0.001:
+            print("Position within 1 mm.")
+            setpoint_idx += 1
+            if setpoint_idx >= setpoints.shape[0]:
+                break
+
+            trajectory = trajectories.Point(setpoints[setpoint_idx, :])
+
+            # update pd to avoid falling back into this block right away
+            pd, _, _ = trajectory.sample(t, flatten=False)
     plotter.done()
 
     controller.benchmark.print_stats()
@@ -414,6 +446,17 @@ def main():
     plt.xlabel('Time (s)')
     plt.ylabel('Commanded joint acceleration')
     plt.title('Acceleration commands')
+
+    plt.figure()
+    plt.plot(ts[:idx], X_qs[:idx, 4], label=r'$\dot{q}_1$')
+    plt.plot(ts[:idx], X_qs[:idx, 5], label=r'$\dot{q}_2$')
+    plt.plot(ts[:idx], X_qs[:idx, 6], label=r'$\dot{q}_3$')
+    plt.plot(ts[:idx], X_qs[:idx, 7], label=r'$\dot{q}_4$')
+    plt.grid()
+    plt.legend()
+    plt.xlabel('Time (s)')
+    plt.ylabel('Joint velocities')
+    plt.title('Joint velocities')
 
     plt.show()
 

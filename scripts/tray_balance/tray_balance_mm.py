@@ -23,16 +23,15 @@ import IPython
 L1 = 1
 L2 = 1
 VEL_LIM = 1
-ACC_LIM = 10
+ACC_LIM = 8
 
 # tray parameters
 GRAVITY = 9.81
-RADIUS = 0.5 #0.15
+RADIUS = 0.5
 MASS = 0.5
-# INERTIA = 0.25*MASS*RADIUS**2
 TRAY_MU = 0.5
 TRAY_W = 0.1
-TRAY_H = 0.05 #0.5
+TRAY_H = 0.05  #0.5
 INERTIA = MASS * (3*RADIUS**2 + (2*TRAY_H)**2) / 12.0
 
 OBJ_W = 0.1
@@ -60,7 +59,7 @@ nv = ni      # num opt vars
 nc = nc_eq + nc_ineq  # num constraints
 
 # MPC weights
-Q = np.diag([0, 0, 0, 0, 0.01, 0.01, 0.01, 0.00])
+Q = np.diag([0, 0, 0, 0, 0.01, 0.01, 0.01, 0.01])
 W = np.diag([1, 1, 1, 0, 0, 0])
 R = 0.01 * np.eye(ni)
 V = MPC_DT * np.eye(ni)
@@ -77,10 +76,6 @@ Vbar = np.kron(np.tril(np.ones((MPC_STEPS, MPC_STEPS))), V)
 
 def skew1(x):
     return np.array([[0, -x], [x, 0]])
-
-
-def hessian(f, argnums=0):
-    return jax.jacfwd(jax.jacrev(f, argnums=argnums), argnums=argnums)
 
 
 def main():
@@ -197,6 +192,7 @@ def main():
         h1a = TRAY_MU*α2 + α1
         h1b = TRAY_MU*α2 - α1
         h2 = α2
+        # h2 = 1
 
         w1 = TRAY_W
         w2 = TRAY_W
@@ -253,13 +249,16 @@ def main():
         x = joint_state_unrolled(X_q_0, u)
         dxdu = joint_state_jac(X_q_0, u)
 
+        # Function
+        f = e.T @ Wbar @ e + x.T @ Qbar @ x + u.T @ Rbar @ u
+
         # Jacobian
         g = e.T @ Wbar @ dedu + x.T @ Qbar @ dxdu + u.T @ Rbar
 
         # (Approximate) Hessian
         H = dedu.T @ Wbar @ dedu + dxdu.T @ Qbar @ dxdu + Rbar
 
-        return H, g
+        return f, g, H
 
     def vel_ineq_constraints(X_q_0, X_ee_d, var):
         """Inequality constraints on joint velocity."""
@@ -360,8 +359,8 @@ def main():
             except TclError:
                 break
 
-        if np.linalg.norm(pd - P_ew_w[:2]) < 0.001:
-            print("Position within 1 mm.")
+        if np.linalg.norm(pd - P_ew_w[:2]) < 0.01:
+            print("Position within 1 cm.")
             setpoint_idx += 1
             if setpoint_idx >= setpoints.shape[0]:
                 break
@@ -373,6 +372,8 @@ def main():
     plotter.done()
 
     controller.benchmark.print_stats()
+
+    print(np.min(ineq_cons))
 
     # v_te_es = (p_te_es[1:] - p_te_es[:-1]) / SIM_DT
     # v_te_es_smooth = np.zeros_like(v_te_es)

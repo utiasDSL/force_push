@@ -5,6 +5,31 @@ from scipy import sparse
 import time
 
 
+def backtrack_line_search(f, df, x, dx, alpha, beta):
+    """Backtracking line search.
+
+    Parameters:
+        f:  The function to evaluate
+        df: Derivative of f at x
+        x:  Input at which to evaluate f
+        dx: Descent direction
+        alpha: Tuning parameter in (0, 0.5)
+        beta:  Tuning parameter in (0, 1)
+
+    Typical values for alpha are between 0.01 and 0.3; typical values for beta
+    are between 0.1 and 0.8.
+
+    Returns:
+        The step size in (0, 1]
+    """
+    t = 1
+    fx = f(x)
+    a = alpha * df @ dx
+    while f(x + t * dx) > fx + t * a:
+        t = beta * t
+    return t
+
+
 class Objective:
     """Objective function fun(x) with Jacobian jac(x) and Hessian hess(x)."""
     def __init__(self, fun, jac, hess):
@@ -118,7 +143,7 @@ class SQP_qpOASES(object):
     def _lookahead(self, x0, xd, var):
         """Generate lifted matrices proprogating the state N timesteps into the
            future."""
-        H, g = self.obj_func(x0, xd, var)
+        f, g, H = self.obj_func(x0, xd, var)
         H = np.array(H, dtype=np.float64)
         g = np.array(g, dtype=np.float64)
 
@@ -130,12 +155,19 @@ class SQP_qpOASES(object):
         lb = np.array(self.bounds.lb - var, dtype=np.float64)
         ub = np.array(self.bounds.ub - var, dtype=np.float64)
 
-        # if np.any(np.linalg.eigvals(H) < 0):
-        #     print("H is not positive definite!")
-        #     import IPython
-        #     IPython.embed()
-
         return H, g, A, lbA, ubA, lb, ub
+
+    def _step(self, x0, xd, var, direction):
+        """Take a step in the direction."""
+        # _, df, _ = self.obj_func(x0, xd, var)
+        #
+        # def func(var):
+        #     f, _, _ = self.obj_func(x0, xd, var)
+        #     return f
+        #
+        # t = backtrack_line_search(func, df, var, direction, alpha=0.25, beta=0.75)
+        # return var + t * direction
+        return var + direction
 
     def _iterate(self, x0, xd, var):
         delta = np.zeros(self.nv)
@@ -150,7 +182,8 @@ class SQP_qpOASES(object):
             self.qp.hotstart(H, g, A, lb, ub, lbA, ubA, np.array([self.num_wsr]))
             self.benchmark.end()
         self.qp.getPrimalSolution(delta)
-        var = var + delta
+
+        var = self._step(x0, xd, var, delta)
 
         # Remaining sequence is hotstarted from the first.
         for i in range(self.num_iter - 1):
@@ -159,7 +192,7 @@ class SQP_qpOASES(object):
             self.qp.hotstart(H, g, A, lb, ub, lbA, ubA, np.array([self.num_wsr]))
             self.benchmark.end()
             self.qp.getPrimalSolution(delta)
-            var = var + delta
+            var = self._step(x0, xd, var, delta)
 
         return var
 
@@ -197,7 +230,7 @@ class SQP_OSQP(object):
     def _lookahead(self, x0, xd, var):
         """Generate lifted matrices proprogating the state N timesteps into the
            future."""
-        H, g = self.obj_func(x0, xd, var)
+        f, g, H = self.obj_func(x0, xd, var)
 
         A = self.constraints.jac(x0, xd, var)
         a = self.constraints.fun(x0, xd, var)

@@ -16,6 +16,7 @@ MU = 1
 
 class CollisionWatcher:
     """Tracks information about collisions."""
+
     def __init__(self):
         self.n = np.zeros(2)
         self.f = np.zeros(2)
@@ -30,8 +31,13 @@ class CollisionWatcher:
         if np.linalg.norm(self.f) > 0:
             self.nf = unit(self.f)
 
+    def get_force(self):
+        f = self.f.copy()
+        self.f = np.zeros(2)
+        return f
 
-def plot_line(ax, a, b, color='k'):
+
+def plot_line(ax, a, b, color="k"):
     patch = plt.Line2D([a[0], b[0]], [a[1], b[1]], color=color, linewidth=1)
     ax.add_line(patch)
 
@@ -41,6 +47,11 @@ def unit(x):
     if norm > 0:
         return x / norm
     return np.zeros(2)
+
+
+def rot2d(θ):
+    return np.array([[np.cos(θ), -np.sin(θ)], [np.sin(θ), np.cos(θ)]])
+
 
 
 def main():
@@ -63,7 +74,7 @@ def main():
 
     # linear friction
     pivot = pymunk.PivotJoint(space.static_body, box.body, box.body.position)
-    pivot.max_force = MU*M*G  # μmg
+    pivot.max_force = MU * M * G  # μmg
     pivot.max_bias = 0  # disable correction so that body doesn't bounce back
     space.add(pivot)
 
@@ -87,13 +98,13 @@ def main():
     fig = plt.figure()
     ax = plt.gca()
 
-    ax.set_xlabel('x (m)')
-    ax.set_ylabel('y (m)')
-    ax.set_xlim([-5, 5])
+    ax.set_xlabel("x (m)")
+    ax.set_ylabel("y (m)")
+    ax.set_xlim([-5, 10])
     ax.set_ylim([-3, 3])
     ax.grid()
 
-    ax.set_aspect('equal')
+    ax.set_aspect("equal")
 
     options = pymunk.matplotlib_util.DrawOptions(ax)
     options.flags = pymunk.SpaceDebugDrawOptions.DRAW_SHAPES
@@ -102,14 +113,22 @@ def main():
     fig.canvas.draw()
     fig.canvas.flush_events()
 
-    pd = np.array([3, 0])
+    pd = np.array([-3, -2])
     # pd = np.array([-3, 0])
     # pd = np.array([2, -2])
 
-    ax.plot(pd[0], pd[1], 'o', color='r')
+    ax.plot(pd[0], pd[1], "o", color="r")
 
     v_max = 0.2
     kp = 0.5
+    k = 1
+    θ_max = 0.75 * np.pi
+    θ_prev = 0
+    f_prev = 0
+    θ_int = 0
+
+    heading_angle = 0
+    dydt = 0
 
     for i in range(N - 1):
         t = i * DT
@@ -119,62 +138,49 @@ def main():
 
         p = np.array(control_body.position)
         Δp = pd - p
-        # Δp_unit = unit(Δp)
+        Δp_unit = unit(Δp)
 
-        c = np.array(box.body.position)
-        # Δp = pd - c
-
-        # if watcher.first_contact:
-        #     # φ = np.arccos(watcher.nf @ Δp_unit)
-        #     φ = 1 - watcher.nf @ Δp_unit
-        #
-        #     # k is still a tuning parameter -- depends to some extent on object
-        #     # curvature and friction
-        #     # k = 1 / (1 + φ**2)
-        #     k = 1
-        #     kφ = k * φ  # / np.linalg.norm(Δp)
-        #     print(φ)
-        #     R = np.array([[np.cos(kφ), -np.sin(kφ)],
-        #                   [np.sin(kφ), np.cos(kφ)]])
-        #     v_unit = R @ watcher.nf
-        #     v = min(v_max, np.linalg.norm(Δp)) * v_unit
-        # else:
-        #     v = v_max * np.array([1, 0])
+        linear_velocity = min(kp * np.linalg.norm(Δp), v_max)
 
         if watcher.first_contact:
-            v_traj = kp * Δp
-            v_mag = max(min(watcher.nf @ v_traj, v_max), 0)
+            # compute heading relative to desired direction
+            θ = np.arccos(watcher.nf @ [1, 0])
+            if watcher.nf[1] < 0:
+                θ = -θ
 
-            # reflect over nf
-            α = 0.5
-            d = (1+α) * watcher.nf * (watcher.nf @ Δp) - α*Δp
+            direction = rot2d(1.5 * θ) @ [1, 0]
 
-            # project onto d
-            v = (v_traj @ unit(d)) * unit(d)
+            # dφdt = -0.1 * k * θ_int + k * θ if f > 0.0 else -10 * k * θ
+            # dφdt = 0.1 * θ - 0.1 * dθdt
 
-            # v_unit = unit(d)
-
-            # v = v_mag * v_unit
+            # heading_angle += DT * dφdt
+            # C = rot2d(heading_angle)
+            # direction  = C @ [1, 0]
+            # direction = C @ Δp_unit
+            v_cmd = v_max * direction
+            # v_cmd = np.array([v_max, dydt])
         else:
-            v = v_max * np.array([1, 0])
+            # if haven't yet touched the box, just go straight (toward it)
+            v_cmd = v_max * np.array([1, 0])
 
-        control_body.velocity = (v[0], v[1])
+        control_body.velocity = (v_cmd[0], v_cmd[1])
 
         if i % PLOT_PERIOD == 0:
             ax.cla()
-            ax.set_xlim([-5, 5])
+            ax.set_xlim([-5, 10])
             ax.set_ylim([-3, 3])
             ax.grid()
 
-            ax.plot(pd[0], pd[1], 'o', color='r')
+            # ax.plot(pd[0], pd[1], "o", color="r")
 
-            plot_line(ax, p, p + unit(v), color='r')
-            plot_line(ax, p, p + watcher.nf, color='b')
+            plot_line(ax, p, p + unit(v_cmd), color="r")
+            plot_line(ax, p, p + watcher.nf, color="b")
+            # plot_line(ax, p, p + unit(Δp), color="g")
 
             space.debug_draw(options)
             fig.canvas.draw()
             fig.canvas.flush_events()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

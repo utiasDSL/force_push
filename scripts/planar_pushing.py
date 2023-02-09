@@ -7,11 +7,12 @@ import IPython
 
 DT = 0.01
 PLOT_PERIOD = 10
-DURATION = 60.0  # duration of trajectory (s)
+DURATION = 100.0  # duration of trajectory (s)
 
 M = 1
 G = 10
-MU = 1
+MU_GROUND = 1
+MU_CONTACT = 0.2
 
 
 class CollisionWatcher:
@@ -53,7 +54,6 @@ def rot2d(θ):
     return np.array([[np.cos(θ), -np.sin(θ)], [np.sin(θ), np.cos(θ)]])
 
 
-
 def main():
     N = int(DURATION / DT) + 1
 
@@ -68,13 +68,13 @@ def main():
     # box = pymunk.Circle(box_body, 0.5)
 
     box.mass = M
-    box.friction = 1
+    box.friction = MU_CONTACT
     box.collision_type = 1
     space.add(box.body, box)
 
     # linear friction
     pivot = pymunk.PivotJoint(space.static_body, box.body, box.body.position)
-    pivot.max_force = MU * M * G  # μmg
+    pivot.max_force = MU_GROUND * M * G  # μmg
     pivot.max_bias = 0  # disable correction so that body doesn't bounce back
     space.add(pivot)
 
@@ -120,19 +120,18 @@ def main():
     ax.plot(pd[0], pd[1], "o", color="r")
 
     v_max = 0.2
-    kp = 0.5
+    kθ = 1
     k = 1
-
+    ki = 0.01
     θ_max = 0.25 * np.pi
-
-    θ_prev = 0
-    f_prev = 0
-    θ_int = 0
-
-    heading_angle = 0
-    dydt = 0
-
     print_count = 0
+
+    θd = 0
+    θ = 0
+    Δθ_int = 0
+    φ = 0
+
+    box_positions = []
 
     for i in range(N - 1):
         t = i * DT
@@ -146,22 +145,39 @@ def main():
 
         if watcher.first_contact:
             # compute heading relative to desired direction
-            θ = np.arccos(watcher.nf @ Δ)
+            θd = np.arccos(watcher.nf @ Δ)
             if watcher.nf[1] < 0:
-                θ = -θ
+                θd = -θd
 
-            # limit the angle
-            θ = max(min(θ, θ_max), -θ_max)
+            φd = np.arccos(watcher.nf @ [1, 0])
+            if watcher.nf[1] < 0:
+               φd = -φd
+
+            dφdt = 0.5 * (φd - φ)
+            φ += DT * dφdt
+            φ = φd
+
+            # limit the angle5
+            # θ_max = np.arctan(MU_CONTACT)
+            θd = max(min(θd, θ_max), -θ_max)
+
+            # this is an attempt to smooth out the control law
+            Δθ = θd - θ
+            Δθ_int += DT * Δθ
+            dθdt = k * Δθ + ki * Δθ_int
+            θ += DT * dθdt
+
+            θ = θd
 
             # TODO why is the initial angle not zero?
             # print_count += 1
             # if print_count <= 2:
             #     print(θ)
 
-            # TODO is there a way to smooth this out? (i.e. formulate on a
-            # derivative level)
-            # direction = rot2d(1.5 * θ) @ [1, 0]
-            direction = rot2d(0.5 * θ) @ watcher.nf
+            direction = rot2d(1 * θ + φ) @ [1, 0]
+            # direction = rot2d(kθ * θ) @ watcher.nf
+            # direction = rot2d((1+kθ) * θ) @ Δ
+            # direction = rot2d(1. * θ) @ [Δ[0], -Δ[1]]
 
             v_cmd = v_max * direction
         else:
@@ -170,21 +186,33 @@ def main():
 
         control_body.velocity = (v_cmd[0], v_cmd[1])
 
-        if i % PLOT_PERIOD == 0:
-            ax.cla()
-            ax.set_xlim([-5, 10])
-            ax.set_ylim([-3, 3])
-            ax.grid()
+        box_positions.append(box.body.position)
 
-            # ax.plot(pd[0], pd[1], "o", color="r")
+        # if i % PLOT_PERIOD == 0:
+        #     ax.cla()
+        #     ax.set_xlim([-5, 10])
+        #     ax.set_ylim([-3, 3])
+        #     ax.grid()
+        #
+        #     # ax.plot(pd[0], pd[1], "o", color="r")
+        #
+        #     plot_line(ax, p, p + unit(v_cmd), color="r")
+        #     plot_line(ax, p, p + watcher.nf, color="b")
+        #     plot_line(ax, p, p + unit(Δ), color="g")
+        #
+        #     space.debug_draw(options)
+        #     fig.canvas.draw()
+        #     fig.canvas.flush_events()
 
-            plot_line(ax, p, p + unit(v_cmd), color="r")
-            plot_line(ax, p, p + watcher.nf, color="b")
-            plot_line(ax, p, p + unit(Δ), color="g")
-
-            space.debug_draw(options)
-            fig.canvas.draw()
-            fig.canvas.flush_events()
+    box_positions = np.array(box_positions)
+    plt.ioff()
+    plt.figure()
+    ts = DT * np.arange(N-1)
+    plt.plot(ts, box_positions[:, 0], label="x")
+    plt.plot(ts, box_positions[:, 1], label="y")
+    plt.legend()
+    plt.grid()
+    plt.show()
 
 
 if __name__ == "__main__":

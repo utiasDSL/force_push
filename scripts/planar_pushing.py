@@ -44,14 +44,21 @@ def plot_line(ax, a, b, color="k"):
 
 
 def unit(x):
+    """Normalize a vector."""
     norm = np.linalg.norm(x)
     if norm > 0:
         return x / norm
-    return np.zeros(2)
+    return x
 
 
 def rot2d(θ):
+    """2D rotation matrix."""
     return np.array([[np.cos(θ), -np.sin(θ)], [np.sin(θ), np.cos(θ)]])
+
+
+def signed_angle(a, b):
+    """See <https://stackoverflow.com/a/2150111/5145874>"""
+    return np.arctan2(b[1], b[0]) - np.arctan2(a[1], a[0])
 
 
 def main():
@@ -145,21 +152,12 @@ def main():
 
         if watcher.first_contact:
             # compute heading relative to desired direction
-            θd = np.arccos(watcher.nf @ Δ)
-            if watcher.nf[1] < 0:
-                θd = -θd
-
-            φd = np.arccos(watcher.nf @ [1, 0])
-            if watcher.nf[1] < 0:
-               φd = -φd
+            θd = signed_angle(Δ, watcher.nf)
+            φd = signed_angle([1, 0], watcher.nf)
 
             dφdt = 0.5 * (φd - φ)
             φ += DT * dφdt
             φ = φd
-
-            # limit the angle5
-            # θ_max = np.arctan(MU_CONTACT)
-            θd = max(min(θd, θ_max), -θ_max)
 
             # this is an attempt to smooth out the control law
             Δθ = θd - θ
@@ -169,16 +167,11 @@ def main():
 
             θ = θd
 
-            # TODO why is the initial angle not zero?
-            # print_count += 1
-            # if print_count <= 2:
-            #     print(θ)
+            # we don't ever want to go backward
+            angle = kθ * θ + φ
+            angle = max(min(angle, np.pi / 2), -np.pi / 2)
 
-            direction = rot2d(1 * θ + φ) @ [1, 0]
-            # direction = rot2d(kθ * θ) @ watcher.nf
-            # direction = rot2d((1+kθ) * θ) @ Δ
-            # direction = rot2d(1. * θ) @ [Δ[0], -Δ[1]]
-
+            direction = rot2d(angle) @ [1, 0]
             v_cmd = v_max * direction
         else:
             # if haven't yet touched the box, just go straight (toward it)
@@ -188,26 +181,26 @@ def main():
 
         box_positions.append(box.body.position)
 
-        # if i % PLOT_PERIOD == 0:
-        #     ax.cla()
-        #     ax.set_xlim([-5, 10])
-        #     ax.set_ylim([-3, 3])
-        #     ax.grid()
-        #
-        #     # ax.plot(pd[0], pd[1], "o", color="r")
-        #
-        #     plot_line(ax, p, p + unit(v_cmd), color="r")
-        #     plot_line(ax, p, p + watcher.nf, color="b")
-        #     plot_line(ax, p, p + unit(Δ), color="g")
-        #
-        #     space.debug_draw(options)
-        #     fig.canvas.draw()
-        #     fig.canvas.flush_events()
+        if i % PLOT_PERIOD == 0:
+            ax.cla()
+            ax.set_xlim([-5, 10])
+            ax.set_ylim([-3, 3])
+            ax.grid()
+
+            # ax.plot(pd[0], pd[1], "o", color="r")
+
+            plot_line(ax, p, p + unit(v_cmd), color="r")
+            plot_line(ax, p, p + watcher.nf, color="b")
+            plot_line(ax, p, p + unit(Δ), color="g")
+
+            space.debug_draw(options)
+            fig.canvas.draw()
+            fig.canvas.flush_events()
 
     box_positions = np.array(box_positions)
     plt.ioff()
     plt.figure()
-    ts = DT * np.arange(N-1)
+    ts = DT * np.arange(N - 1)
     plt.plot(ts, box_positions[:, 0], label="x")
     plt.plot(ts, box_positions[:, 1], label="y")
     plt.legend()

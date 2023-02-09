@@ -61,14 +61,14 @@ def main():
     space.gravity = (0, 0)
 
     box_body = pymunk.Body()
-    box_body.position = (1, 0.3)
+    box_body.position = (1, -0.3)
     box_r = 0.5
     box_corners = [(-box_r, box_r), (-box_r, -box_r), (box_r, -box_r), (box_r, box_r)]
     box = pymunk.Poly(box_body, box_corners, radius=0.01)
     # box = pymunk.Circle(box_body, 0.5)
 
     box.mass = M
-    box.friction = 0.5
+    box.friction = 1
     box.collision_type = 1
     space.add(box.body, box)
 
@@ -122,13 +122,17 @@ def main():
     v_max = 0.2
     kp = 0.5
     k = 1
-    θ_max = 0.75 * np.pi
+
+    θ_max = 0.25 * np.pi
+
     θ_prev = 0
     f_prev = 0
     θ_int = 0
 
     heading_angle = 0
     dydt = 0
+
+    print_count = 0
 
     for i in range(N - 1):
         t = i * DT
@@ -137,28 +141,29 @@ def main():
         space.step(DT)
 
         p = np.array(control_body.position)
-        Δp = pd - p
-        Δp_unit = unit(Δp)
-
-        linear_velocity = min(kp * np.linalg.norm(Δp), v_max)
+        Δ = unit([1, -p[1]])
+        # Δ = unit([1, 0])
 
         if watcher.first_contact:
             # compute heading relative to desired direction
-            θ = np.arccos(watcher.nf @ [1, 0])
+            θ = np.arccos(watcher.nf @ Δ)
             if watcher.nf[1] < 0:
                 θ = -θ
 
-            direction = rot2d(1.5 * θ) @ [1, 0]
+            # limit the angle
+            θ = max(min(θ, θ_max), -θ_max)
 
-            # dφdt = -0.1 * k * θ_int + k * θ if f > 0.0 else -10 * k * θ
-            # dφdt = 0.1 * θ - 0.1 * dθdt
+            # TODO why is the initial angle not zero?
+            # print_count += 1
+            # if print_count <= 2:
+            #     print(θ)
 
-            # heading_angle += DT * dφdt
-            # C = rot2d(heading_angle)
-            # direction  = C @ [1, 0]
-            # direction = C @ Δp_unit
+            # TODO is there a way to smooth this out? (i.e. formulate on a
+            # derivative level)
+            # direction = rot2d(1.5 * θ) @ [1, 0]
+            direction = rot2d(0.5 * θ) @ watcher.nf
+
             v_cmd = v_max * direction
-            # v_cmd = np.array([v_max, dydt])
         else:
             # if haven't yet touched the box, just go straight (toward it)
             v_cmd = v_max * np.array([1, 0])
@@ -175,7 +180,7 @@ def main():
 
             plot_line(ax, p, p + unit(v_cmd), color="r")
             plot_line(ax, p, p + watcher.nf, color="b")
-            # plot_line(ax, p, p + unit(Δp), color="g")
+            plot_line(ax, p, p + unit(Δ), color="g")
 
             space.debug_draw(options)
             fig.canvas.draw()

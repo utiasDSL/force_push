@@ -6,13 +6,13 @@ import IPython
 
 
 DT = 0.01
-PLOT_PERIOD = 10
-DURATION = 100.0  # duration of trajectory (s)
+PLOT_PERIOD = 100
+DURATION = 1000.0  # duration of trajectory (s)
 
 M = 1
 G = 10
 MU_GROUND = 1
-MU_CONTACT = 0.2
+MU_CONTACT = 0.5
 
 
 class CollisionWatcher:
@@ -61,6 +61,14 @@ def signed_angle(a, b):
     return np.arctan2(b[1], b[0]) - np.arctan2(a[1], a[0])
 
 
+def pursuit(p, lookahead):
+    """Pure pursuit along the x-axis."""
+    if np.abs(p[1]) >= lookahead:
+        return np.array([0, -np.sign(p[1]) * lookahead])
+    x = lookahead**2 - p[1]**2
+    return np.array([x, -p[1]])
+
+
 def main():
     N = int(DURATION / DT) + 1
 
@@ -107,7 +115,7 @@ def main():
 
     ax.set_xlabel("x (m)")
     ax.set_ylabel("y (m)")
-    ax.set_xlim([-5, 10])
+    ax.set_xlim([-5, 15])
     ax.set_ylim([-3, 3])
     ax.grid()
 
@@ -120,14 +128,16 @@ def main():
     fig.canvas.draw()
     fig.canvas.flush_events()
 
-    pd = np.array([-3, -2])
+    # pd = np.array([-3, -2])
     # pd = np.array([-3, 0])
     # pd = np.array([2, -2])
+    # ax.plot(pd[0], pd[1], "o", color="r")
 
-    ax.plot(pd[0], pd[1], "o", color="r")
+    # TODO we need the angle to be a certain size (dependent on μ) in order to
+    # escape the friction cone
 
     v_max = 0.2
-    kθ = 1
+    kθ = 0.1  #np.arctan(MU_CONTACT)
     k = 1
     ki = 0.01
     θ_max = 0.25 * np.pi
@@ -147,7 +157,7 @@ def main():
         space.step(DT)
 
         p = np.array(control_body.position)
-        Δ = unit([1, -p[1]])
+        Δ = pursuit(p, 5)
         # Δ = unit([1, 0])
 
         if watcher.first_contact:
@@ -168,6 +178,7 @@ def main():
             θ = θd
 
             # we don't ever want to go backward
+            # angle = kθ * θ + φ
             angle = kθ * θ + φ
             angle = max(min(angle, np.pi / 2), -np.pi / 2)
 
@@ -181,21 +192,21 @@ def main():
 
         box_positions.append(box.body.position)
 
-        if i % PLOT_PERIOD == 0:
-            ax.cla()
-            ax.set_xlim([-5, 10])
-            ax.set_ylim([-3, 3])
-            ax.grid()
-
-            # ax.plot(pd[0], pd[1], "o", color="r")
-
-            plot_line(ax, p, p + unit(v_cmd), color="r")
-            plot_line(ax, p, p + watcher.nf, color="b")
-            plot_line(ax, p, p + unit(Δ), color="g")
-
-            space.debug_draw(options)
-            fig.canvas.draw()
-            fig.canvas.flush_events()
+        # if i % PLOT_PERIOD == 0:
+        #     ax.cla()
+        #     ax.set_xlim([-5, 15])
+        #     ax.set_ylim([-3, 3])
+        #     ax.grid()
+        #
+        #     # ax.plot(pd[0], pd[1], "o", color="r")
+        #
+        #     plot_line(ax, p, p + unit(v_cmd), color="r")
+        #     plot_line(ax, p, p + watcher.nf, color="b")
+        #     plot_line(ax, p, p + unit(Δ), color="g")
+        #
+        #     space.debug_draw(options)
+        #     fig.canvas.draw()
+        #     fig.canvas.flush_events()
 
     box_positions = np.array(box_positions)
     plt.ioff()

@@ -69,6 +69,23 @@ def pursuit(p, lookahead):
     return np.array([x, -p[1]])
 
 
+# TODO: attempt to validate my formulation of the equations of motion
+class Slider:
+    def __init__(self, f_max, τ_max, μc):
+        self.f_max = f_max
+        self.τ_max = τ_max
+        self.M = np.diag([1. / f_max**2, 1. / f_max**2, 1. / τ_max**2])
+        self.μc = self.μc
+
+    def step(self, nc, rc, vp):
+        """Step the equations forward.
+        nc is the contact normal (in the body frame)
+        rc is the contact position (in the body frame)
+        vp is the pusher velocity (in the body frame)
+        """
+        W = np.array([[1, 0], [0, 1], [-r_co_o[1], r_co_o[0]]])
+
+
 def main():
     N = int(DURATION / DT) + 1
 

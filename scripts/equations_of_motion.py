@@ -1,3 +1,7 @@
+"""Quasistatic pushing equations of motion from Lynch (1992).
+
+Equivalently implemented as a QP.
+"""
 import numpy as np
 from scipy import sparse
 import osqp
@@ -58,8 +62,7 @@ def sticking(vp, M, r_co_o):
 
 def qp_form(vp, W, M, nc, μ):
     # cost
-    P = np.zeros((3, 3))
-    P[0, 0] = 1
+    P = np.diag([1, 0, 0])
     q = np.zeros(3)
 
     # constraints
@@ -79,7 +82,7 @@ def qp_form(vp, W, M, nc, μ):
 
     # solve the problem
     m = osqp.OSQP()
-    m.setup(P=sparse.csc_matrix(P), A=sparse.csc_matrix(A), l=L, u=U)
+    m.setup(P=sparse.csc_matrix(P), A=sparse.csc_matrix(A), l=L, u=U, verbose=False)
     res = m.solve()
 
     α = res.x[0]
@@ -92,7 +95,40 @@ def qp_form(vp, W, M, nc, μ):
     Vo_mag = np.linalg.norm(vo) / np.linalg.norm(W.T @ Vo_hat)
     Vo = Vo_mag * Vo_hat
 
-    IPython.embed()
+    return Vo
+
+# this was my original idea but it doesn't work: we want to minimize the
+# difference between vp and vo along the slip direction only, not in general
+# Cartesian space
+# def qp_form2(vp, W, M, nc, μ):
+#     # cost
+#     P = np.diag([1, 1, 0, 0])
+#     q = np.concatenate((-vp, [0, 0]))
+#
+#     # constraints
+#     # motion cone constraint
+#     Lv = np.zeros(2)
+#     Uv = np.zeros(2)
+#     Av = np.hstack((np.eye((2)), -W.T @ M @ W))
+#
+#     # friction cone constraint
+#     Lf = -np.inf * np.ones(3)
+#     Uf = np.zeros(3)
+#     Af = np.array([[0, 0, -μ, 1], [0, 0, -μ, -1], [0, 0, -1, 0]])
+#
+#     L = np.concatenate((Lv, Lf))
+#     U = np.concatenate((Uv, Uf))
+#     A = np.vstack((Av, Af))
+#
+#     # solve the problem
+#     m = osqp.OSQP()
+#     m.setup(P=sparse.csc_matrix(P), A=sparse.csc_matrix(A), q=q, l=L, u=U)
+#     res = m.solve()
+#
+#     vo = res.x[:2]
+#     f = res.x[2:]
+#
+#     IPython.embed()
 
 
 def main():
@@ -103,7 +139,7 @@ def main():
 
     r_co_o = np.array([-0.5, 0.4])
     nc = np.array([1, 0])
-    vp = np.array([1, 0])
+    vp = rot2d(0.2) @ np.array([1, 0])
     W = np.array([[1, 0], [0, 1], [-r_co_o[1], r_co_o[0]]])
 
     Vl, Vr = motion_cone(M, W, nc, μ)
@@ -117,9 +153,15 @@ def main():
     else:
         Vo = sticking(vp, M, r_co_o)
 
+    print("Analytical")
     print(f"Vo = {Vo}")
     print(f"vo = {W.T @ Vo}")
-    qp_form(vp, W, M, nc, μ)
+
+    Vo = qp_form(vp, W, M, nc, μ)
+
+    print("\nQP")
+    print(f"Vo = {Vo}")
+    print(f"vo = {W.T @ Vo}")
 
 
 if __name__ == "__main__":

@@ -14,6 +14,8 @@ G = 10
 MU_GROUND = 1
 MU_CONTACT = 0.5
 
+PLOT_SIM = False
+
 
 class CollisionWatcher:
     """Tracks information about collisions."""
@@ -28,7 +30,6 @@ class CollisionWatcher:
         self.first_contact = True
         self.n = np.array(arbiter.contact_point_set.normal)
         self.f = -np.array(arbiter.total_impulse / DT)  # negative compared to normal
-        # self.nf = 0.9 * unit(self.f) + 0.1 * self.nf
         if np.linalg.norm(self.f) > 0:
             self.nf = unit(self.f)
 
@@ -65,7 +66,7 @@ def pursuit(p, lookahead):
     """Pure pursuit along the x-axis."""
     if np.abs(p[1]) >= lookahead:
         return np.array([0, -np.sign(p[1]) * lookahead])
-    x = lookahead**2 - p[1]**2
+    x = lookahead**2 - p[1] ** 2
     return np.array([x, -p[1]])
 
 
@@ -74,7 +75,7 @@ class Slider:
     def __init__(self, f_max, τ_max, μc):
         self.f_max = f_max
         self.τ_max = τ_max
-        self.M = np.diag([1. / f_max**2, 1. / f_max**2, 1. / τ_max**2])
+        self.M = np.diag([1.0 / f_max**2, 1.0 / f_max**2, 1.0 / τ_max**2])
         self.μc = self.μc
 
     def step(self, nc, rc, vp):
@@ -126,24 +127,25 @@ def main():
     watcher = CollisionWatcher()
     space.add_collision_handler(1, 1).post_solve = watcher.update
 
-    plt.ion()
-    fig = plt.figure()
-    ax = plt.gca()
+    if PLOT_SIM:
+        plt.ion()
+        fig = plt.figure()
+        ax = plt.gca()
 
-    ax.set_xlabel("x (m)")
-    ax.set_ylabel("y (m)")
-    ax.set_xlim([-5, 15])
-    ax.set_ylim([-3, 3])
-    ax.grid()
+        ax.set_xlabel("x (m)")
+        ax.set_ylabel("y (m)")
+        ax.set_xlim([-5, 15])
+        ax.set_ylim([-10, 10])
+        ax.grid()
 
-    ax.set_aspect("equal")
+        ax.set_aspect("equal")
 
-    options = pymunk.matplotlib_util.DrawOptions(ax)
-    options.flags = pymunk.SpaceDebugDrawOptions.DRAW_SHAPES
+        options = pymunk.matplotlib_util.DrawOptions(ax)
+        options.flags = pymunk.SpaceDebugDrawOptions.DRAW_SHAPES
 
-    space.debug_draw(options)
-    fig.canvas.draw()
-    fig.canvas.flush_events()
+        space.debug_draw(options)
+        fig.canvas.draw()
+        fig.canvas.flush_events()
 
     # pd = np.array([-3, -2])
     # pd = np.array([-3, 0])
@@ -154,7 +156,7 @@ def main():
     # escape the friction cone
 
     v_max = 0.2
-    kθ = 0.1  #np.arctan(MU_CONTACT)
+    kθ = 0.1  # np.arctan(MU_CONTACT)
     k = 1
     ki = 0.01
     θ_max = 0.25 * np.pi
@@ -167,6 +169,16 @@ def main():
 
     box_positions = []
 
+    Ro = rot2d(np.pi/2)
+
+    # Δ = unit([1, 0])
+    # Δ_perp = Ro @ Δ
+    # Np = np.outer(Δ, Δ)
+    # Np_perp = np.outer(Δ_perp, Δ_perp)
+    # K = Np + (kθ + 1) * Np_perp
+    # IPython.embed()
+    # return
+
     for i in range(N - 1):
         t = i * DT
 
@@ -174,25 +186,39 @@ def main():
         space.step(DT)
 
         p = np.array(control_body.position)
-        Δ = pursuit(p, 5)
-        # Δ = unit([1, 0])
+        # Δ = unit(pursuit(p, 10))
+        Δ = unit([1, 0])
+        Δ_perp = Ro @ Δ
+
+        Np = np.outer(Δ, Δ)
+        Np_perp = np.outer(Δ_perp, Δ_perp)
+        K = Np + (kθ + 1) * Np_perp
 
         if watcher.first_contact:
             # compute heading relative to desired direction
             θd = signed_angle(Δ, watcher.nf)
             φd = signed_angle([1, 0], watcher.nf)
 
-            dφdt = 0.5 * (φd - φ)
-            φ += DT * dφdt
+            # dφdt = 0.5 * (φd - φ)
+            # φ += DT * dφdt
             φ = φd
 
             # this is an attempt to smooth out the control law
-            Δθ = θd - θ
-            Δθ_int += DT * Δθ
-            dθdt = k * Δθ + ki * Δθ_int
-            θ += DT * dθdt
+            # Δθ = θd - θ
+            # Δθ_int += DT * Δθ
+            # dθdt = k * Δθ + ki * Δθ_int
+            # θ += DT * dθdt
 
             θ = θd
+
+            # v_cmd = v_max * (Np + (kθ + 1) * Np_perp) @ watcher.nf
+
+            # print(watcher.f)
+            # v_cmd = 0.01 * (Np + (kθ + 1) * Np_perp) @ watcher.f
+            # v_cmd = np.array([0.1, 0.01 * Δ_perp @ watcher.f])
+            # if np.linalg.norm(v_cmd) < 1e-6:
+            #     IPython.embed()
+            v_cmd = 0.1 * unit(K @ watcher.f)
 
             # we don't ever want to go backward
             # angle = kθ * θ + φ
@@ -200,7 +226,11 @@ def main():
             angle = max(min(angle, np.pi / 2), -np.pi / 2)
 
             direction = rot2d(angle) @ [1, 0]
-            v_cmd = v_max * direction
+            # v_cmd = v_max * direction
+
+            θd = signed_angle(Δ, watcher.nf)
+            θ = (1 + kθ) * θd
+            v_cmd = 0.1 * rot2d(θ) @ Δ
         else:
             # if haven't yet touched the box, just go straight (toward it)
             v_cmd = v_max * np.array([1, 0])
@@ -209,21 +239,21 @@ def main():
 
         box_positions.append(box.body.position)
 
-        # if i % PLOT_PERIOD == 0:
-        #     ax.cla()
-        #     ax.set_xlim([-5, 15])
-        #     ax.set_ylim([-3, 3])
-        #     ax.grid()
-        #
-        #     # ax.plot(pd[0], pd[1], "o", color="r")
-        #
-        #     plot_line(ax, p, p + unit(v_cmd), color="r")
-        #     plot_line(ax, p, p + watcher.nf, color="b")
-        #     plot_line(ax, p, p + unit(Δ), color="g")
-        #
-        #     space.debug_draw(options)
-        #     fig.canvas.draw()
-        #     fig.canvas.flush_events()
+        if PLOT_SIM and i % PLOT_PERIOD == 0:
+            ax.cla()
+            ax.set_xlim([-5, 15])
+            ax.set_ylim([-10, 10])
+            ax.grid()
+
+            # ax.plot(pd[0], pd[1], "o", color="r")
+
+            plot_line(ax, p, p + unit(v_cmd), color="r")
+            plot_line(ax, p, p + watcher.nf, color="b")
+            plot_line(ax, p, p + unit(Δ), color="g")
+
+            space.debug_draw(options)
+            fig.canvas.draw()
+            fig.canvas.flush_events()
 
     box_positions = np.array(box_positions)
     plt.ioff()

@@ -72,13 +72,48 @@ def sticking(vp, M, r_co_o):
     return np.array([vx, vy, ω])
 
 
+class QuadSlider:
+    def __init__(self, hx, hy):
+        """Quadrilateral slider with half lengths hx and hy."""
+        self.hx = hx
+        self.hy = hy
+
+    def contact_point(self, s):
+        """Contact point given parameter s."""
+        # for a quad, s is the y position along the face
+        return np.array([-self.hx, s])
+
+    def contact_normal(self, s):
+        """Inward-facing contact normal."""
+        # constant for a quad
+        return np.array([1, 0])
+
+    def s_dot(self, α):
+        """Time derivative of s."""
+        return α
+
+
+class CircleSlider:
+    def __init__(self, r):
+        """Circle slider with radius r."""
+        self.r = r
+
+    def contact_point(self, s):
+        # for a quad, s is the angle of the contact point
+        return rot2d(s) @ [-self.r, 0]
+
+    def contact_normal(self, s):
+        return np.array([np.cos(s), np.sin(s)])
+
+    def s_dot(self, α):
+        return α / self.r
+
+
 class QPMotion:
     """Quadratic program-based equations of motion."""
 
-    def __init__(self, M, nc, μ):
+    def __init__(self, M, μ):
         self.M = M
-        self.nc = nc
-        self.nc_perp = perp2d(nc)
         self.μ = μ
 
         # cost is constant
@@ -111,21 +146,21 @@ class QPMotion:
         """Get data from A as required by CSC sparse matrix format."""
         return A.T.flatten()[self.A_idx]
 
-    def _compute_constraints(self, vp, W):
+    def _compute_constraints(self, vp, W, nc, nc_perp):
         """Compute updated constraint matrix and vectors l <= Ax <= u"""
         # motion cone constraint
         Lv = vp
         Uv = vp
-        Av = np.hstack((self.nc_perp[:, None], W.T @ self.M @ W))
+        Av = np.hstack((nc_perp[:, None], W.T @ self.M @ W))
 
         # friction cone constraint
         Lf = -np.inf * np.ones(3)
         Uf = np.zeros(3)
         # fmt: off
         Af = np.hstack((np.zeros((3, 1)), np.vstack((
-            -self.nc,
-            -self.nc_perp - self.μ * self.nc,
-            self.nc_perp - self.μ * self.nc,
+            -nc,
+            -nc_perp - self.μ * nc,
+            nc_perp - self.μ * nc,
         ))))
         # fmt: on
 
@@ -136,16 +171,17 @@ class QPMotion:
 
         return A, L, U
 
-    def solve(self, vp, W):
+    def solve(self, vp, W, nc):
         """Update and solve the problem with the new data."""
-        A, L, U = self._compute_constraints(vp, W)
+        nc_perp = perp2d(nc)
+        A, L, U = self._compute_constraints(vp, W, nc, nc_perp)
 
         self.problem.update(Ax=self._A_data(A), l=L, u=U)
         res = self.problem.solve()
 
         α = res.x[0]
         f = res.x[1:]
-        v_slip = α * self.nc_perp
+        v_slip = α * nc_perp
 
         # recover object velocity
         vo = vp - v_slip
@@ -209,9 +245,6 @@ def simulate():
     M = np.diag([1.0 / f_max**2, 1 / f_max**2, 1.0 / τ_max**2])
     μ = 0.2
 
-    xbar = -0.5
-    nc = np.array([1, 0])
-
     # control gains
     kθ = 0.2
     ky = 0.2
@@ -223,12 +256,12 @@ def simulate():
     # Np_perp = np.outer(Δ_perp, Δ_perp)
     # K = Np + (kθ + 1) * Np_perp
 
-    x = np.array([0.0, 0, 0, 0, 1, 0])
+    x = np.array([0., 0, 0, 0.1, 1, 0])
     xs = [x.copy()]
 
-    motion = QPMotion(M, nc, μ)
-    # motion._A_sparsity()
-    # return
+    motion = QPMotion(M, μ)
+    # slider = QuadSlider(0.5, 0.5)
+    slider = CircleSlider(0.5)
 
     T = 100
     N = 1000
@@ -241,7 +274,8 @@ def simulate():
         s = x[3]
         C_wb = rot2d(φ)
         f = C_wb.T @ x[4:]
-        r_co_o = np.array([xbar, s])
+        nc = slider.contact_normal(s)
+        r_co_o = slider.contact_point(s)
         W = np.array([[1, 0], [0, 1], [-r_co_o[1], r_co_o[0]]])
 
         # term to correct deviations from desired line
@@ -274,12 +308,12 @@ def simulate():
         # print(Δ_perp @ C_wb @ f)
 
         # equations of motion
-        Vo, f, α = motion.solve(vp, W)
+        Vo, f, α = motion.solve(vp, W, nc)
 
         # update state
         x[:2] += dt * C_wb @ Vo[:2]
         x[2] += dt * Vo[2]
-        x[3] += dt * α
+        x[3] += dt * slider.s_dot(α)
         x[4:] = C_wb @ f
 
         xs.append(x.copy())

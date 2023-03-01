@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "mmpush"
+version = "0.1.0"
+description = "Tools and simulations for planar robotic pushing."
+authors = ["Adam Heins <mail@adamheins.com>"]
+readme = "README.md"
+packages = [{include = "mmpush"}]
+
+[tool.poetry.dependencies]
+python = ">=3.8"
+numpy = ">=1.21.5"
+matplotlib = ">=3.5.1"
+scipy = ">=1.9.3"
+ipython = "^8.11.0"
+pymunk = "^6.4.0"
+osqp = "^0.6.2.post8"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

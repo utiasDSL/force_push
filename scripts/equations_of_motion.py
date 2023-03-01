@@ -42,6 +42,7 @@ def perp2d(x):
 
 
 def motion_cone(M, W, nc, μ):
+    """Compute the boundaries of the motion cone."""
     θc = np.arctan(μ)
     Rl = rot2d(θc)
     Rr = rot2d(-θc)
@@ -52,6 +53,7 @@ def motion_cone(M, W, nc, μ):
 
 
 def sliding(vp, W, Vi, nc):
+    """Dynamics for sliding mode."""
     vi = W.T @ Vi
     κ = (vp @ nc) / (vi @ nc)
     vo = κ * vp
@@ -60,6 +62,7 @@ def sliding(vp, W, Vi, nc):
 
 
 def sticking(vp, M, r_co_o):
+    """Dynamics for sticking mode."""
     c = M[2, 2] / M[0, 0]
     d = c**2 + r_co_o @ r_co_o
     xc, yc = r_co_o
@@ -70,18 +73,21 @@ def sticking(vp, M, r_co_o):
 
 
 class QPMotion:
+    """Quadratic program-based equations of motion."""
+
     def __init__(self, M, nc, μ):
         self.M = M
         self.nc = nc
+        self.nc_perp = perp2d(nc)
         self.μ = μ
 
-        P = np.diag([1., 0, 0])
+        # cost is constant
+        P = np.diag([1.0, 0, 0])
 
-        # setup placeholders to establish the sparsity pattern of A
-        vp = np.array([1, 0])
-        W = np.array([[1, 0], [0, 1], [1, 1]])
-        A, L, U = self._compute_constraints(vp, W)
+        # establish constraint sparsity pattern
+        A, self.A_idx = self._A_sparsity_pattern()
 
+        # initial problem setup
         self.problem = osqp.OSQP()
         self.problem.setup(
             P=sparse.csc_matrix(P),
@@ -89,20 +95,39 @@ class QPMotion:
             u=np.zeros(5),
             A=sparse.csc_matrix(A),
             verbose=False,
-            eps_abs=1e-5,
-            eps_rel=1e-5,
+            eps_abs=1e-6,
+            eps_rel=1e-6,
         )
 
+    @staticmethod
+    def _A_sparsity_pattern():
+        """Compute the sparsity pattern of A."""
+        A = np.ones((5, 3))
+        A[2:, 0] = 0
+        # indices are taken w.r.t. column-wise flattened data
+        return A, np.nonzero(A.T.flatten())
+
+    def _A_data(self, A):
+        """Get data from A as required by CSC sparse matrix format."""
+        return A.T.flatten()[self.A_idx]
+
     def _compute_constraints(self, vp, W):
+        """Compute updated constraint matrix and vectors l <= Ax <= u"""
         # motion cone constraint
         Lv = vp
         Uv = vp
-        Av = np.hstack((perp2d(self.nc)[:, None], W.T @ self.M @ W))
+        Av = np.hstack((self.nc_perp[:, None], W.T @ self.M @ W))
 
         # friction cone constraint
         Lf = -np.inf * np.ones(3)
         Uf = np.zeros(3)
-        Af = np.array([[0, -self.μ, 1], [0, -self.μ, -1], [0, -1, 0]])
+        # fmt: off
+        Af = np.hstack((np.zeros((3, 1)), np.vstack((
+            -self.nc,
+            -self.nc_perp - self.μ * self.nc,
+            self.nc_perp - self.μ * self.nc,
+        ))))
+        # fmt: on
 
         # put them together
         L = np.concatenate((Lv, Lf))
@@ -112,13 +137,15 @@ class QPMotion:
         return A, L, U
 
     def solve(self, vp, W):
+        """Update and solve the problem with the new data."""
         A, L, U = self._compute_constraints(vp, W)
-        self.problem.update(Ax=sparse.csc_matrix(A).data, l=L, u=U)
+
+        self.problem.update(Ax=self._A_data(A), l=L, u=U)
         res = self.problem.solve()
 
         α = res.x[0]
         f = res.x[1:]
-        v_slip = α * perp2d(self.nc)
+        v_slip = α * self.nc_perp
 
         # recover object velocity
         vo = vp - v_slip
@@ -157,8 +184,8 @@ def qp_form(vp, W, M, nc, μ):
         l=L,
         u=U,
         verbose=False,
-        eps_abs=1e-5,
-        eps_rel=1e-5,
+        eps_abs=1e-6,
+        eps_rel=1e-6,
     )
     res = m.solve()
 
@@ -177,7 +204,7 @@ def qp_form(vp, W, M, nc, μ):
 
 
 def simulate():
-    f_max = 1
+    f_max = 5
     τ_max = 0.1
     M = np.diag([1.0 / f_max**2, 1 / f_max**2, 1.0 / τ_max**2])
     μ = 0.2
@@ -185,20 +212,23 @@ def simulate():
     xbar = -0.5
     nc = np.array([1, 0])
 
-    kθ = 0.1
-    ky = 0.1
+    # control gains
+    kθ = 0.2
+    ky = 0.2
 
-    Ro = rot2d(np.pi / 2)
     Δ = unit([1, 0])
-    Δ_perp = Ro @ Δ
-    Np = np.outer(Δ, Δ)
-    Np_perp = np.outer(Δ_perp, Δ_perp)
-    K = Np + (kθ + 1) * Np_perp
+    # Ro = rot2d(np.pi / 2)
+    # Δ_perp = Ro @ Δ
+    # Np = np.outer(Δ, Δ)
+    # Np_perp = np.outer(Δ_perp, Δ_perp)
+    # K = Np + (kθ + 1) * Np_perp
 
-    x = np.array([0.0, 0, 0, -0.2, 1, 0])
+    x = np.array([0.0, 0, 0, 0, 1, 0])
     xs = [x.copy()]
 
     motion = QPMotion(M, nc, μ)
+    # motion._A_sparsity()
+    # return
 
     T = 100
     N = 1000
@@ -206,14 +236,25 @@ def simulate():
     for i in range(N):
         t = i / N
 
+        # compute required quantities
         φ = x[2]
         s = x[3]
-        f = x[4:]
         C_wb = rot2d(φ)
+        f = C_wb.T @ x[4:]
         r_co_o = np.array([xbar, s])
         W = np.array([[1, 0], [0, 1], [-r_co_o[1], r_co_o[0]]])
 
-        # TODO to try pure pursuit
+        # term to correct deviations from desired line
+        # this is simpler than pure pursuit!
+        r_cw_w = x[:2] + C_wb @ r_co_o
+        θy = ky * r_cw_w[1]
+
+        # angle-based control law
+        θd = signed_angle(Δ, C_wb @ unit(f))
+        θ = (1 + kθ) * θd + θy
+        vp = 1 * C_wb.T @ rot2d(θ) @ Δ
+
+        # other control formulations I tried
         # r_cw_w = x[:2] + C_wb @ r_co_o
         # Δ = unit(pursuit(r_cw_w, 1))
         # Δ_perp = Ro @ Δ
@@ -221,41 +262,38 @@ def simulate():
         # Np_perp = np.outer(Δ_perp, Δ_perp)
         # K = Np + (kθ + 1) * Np_perp
 
-        # term to correct deviations from desired line
-        # this is simpler than pure pursuit!
-        r_cw_w = x[:2] + C_wb @ r_co_o
-        φ = ky * r_cw_w[1]
+        # vp = 1 * C_wb.T @ K @ C_wb @ unit(f) + ky * r_cw_w[1]
+        # vp = C_wb.T @ K @ C_wb @ f #+ ky * r_cw_w[1]
+        # fw = C_wb @ f
+        # vp = [1, 0.1 * fw[1] + ky * r_cw_w[1]]
+        # vp = 1 * unit([1, -0.1 * fw[1]])
 
-        # angle-based control law
-        θd = signed_angle(Δ, C_wb @ unit(f))
-        θ = (1 + kθ) * θd + φ
-        vp = 1 * C_wb.T @ rot2d(θ) @ Δ
-
-        # control input
-        # vp = 0.1 * C_wb.T @ K @ C_wb @ unit(f)
         # vp = 1 * unit(C_wb.T @ K @ C_wb @ f)
         # vp = 0.1 * C_wb.T @ K @ C_wb @ f
         # vp = C_wb.T @ np.array([0.1, 0.1 * Δ_perp @ C_wb @ f])
         # print(Δ_perp @ C_wb @ f)
 
         # equations of motion
-        # Vo, f, α = qp_form(vp, W, M, nc, μ)
         Vo, f, α = motion.solve(vp, W)
 
         # update state
         x[:2] += dt * C_wb @ Vo[:2]
         x[2] += dt * Vo[2]
         x[3] += dt * α
-        x[4:] = f
+        x[4:] = C_wb @ f
 
         xs.append(x.copy())
     xs = np.array(xs)
 
+    # NOTE: it appears to be fy (in the world frame) and yc that converge
     plt.figure()
     ts = dt * np.arange(N)
     plt.plot(ts, xs[:-1, 0], label="x")
     plt.plot(ts, xs[:-1, 1], label="y")
+    plt.plot(ts, xs[:-1, 2], label="φ")
     plt.plot(ts, xs[:-1, 3], label="s")
+    plt.plot(ts, xs[:-1, 4], label="fx")
+    plt.plot(ts, xs[:-1, 5], label="fy")
     plt.legend()
     plt.grid()
     plt.show()
@@ -296,6 +334,38 @@ def main():
     print(f"vo = {W.T @ Vo}")
 
 
+def force_iteration():
+    f_max = 1
+    τ_max = 0.1
+    M = np.diag([1.0 / f_max**2, 1 / f_max**2, 1.0 / τ_max**2])
+    μ = 0.2
+
+    r_co_o = np.array([-0.5, 0.1])
+    nc = np.array([1, 0])
+    vp = rot2d(0) @ np.array([1, 0])
+    W = np.array([[1, 0], [0, 1], [-r_co_o[1], r_co_o[0]]])
+
+    kθ = 0.1
+    Δ = unit([1, 0])
+    φ = 0.1
+    C_wb = rot2d(φ)
+    A = W.T @ M @ W
+    f = np.linalg.solve(A, vp)
+
+    # print(f)
+    # for i in range(10):
+    #     # TODO enforce limits
+    #     θd = signed_angle(Δ, C_wb @ unit(f))
+    #     θ = (1 + kθ) * θd + φ
+    #     vp = 1 * C_wb.T @ rot2d(θ) @ Δ
+    #     f_new = np.linalg.solve(A, vp)
+    #     print(f_new - f)
+    #     f = f_new
+
+    IPython.embed()
+
+
 if __name__ == "__main__":
-    simulate()
     # main()
+    simulate()
+    # force_iteration()

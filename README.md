@@ -1,26 +1,24 @@
 # mm2d
 
-Simulation tools for a two-dimensional mobile manipulator. You'll need
-[pipenv](https://pipenv.pypa.io) to manage the virtual environment and
-dependencies.
+Robot planar pushing code.
 
 ## Install
 
 ```bash
 # Clone the repository
-git clone https://github.com/adamheins/mm2d
+git clone https://github.com/adamheins/mmpush
 
 # Install basic dependencies
-cd mm2d
-pipenv install
+cd mmpush
+poetry install
 
 # Activate the virtualenv
-pipenv shell
+poetry shell 
 ```
 
 ## Organization
 
-* `mm2d`: The main Python package.
+* `mmpush`: Shared utilities.
 * `scripts`: Scripts for pushing stuff.
 
 ## License

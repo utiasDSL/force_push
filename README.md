@@ -1,6 +1,6 @@
-# mm2d
+# mmpush
 
-Robot planar pushing code.
+Robot planar pushing code. This evolved out of the mm2d project.
 
 ## Install
 

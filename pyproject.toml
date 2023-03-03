@@ -14,6 +14,7 @@ scipy = ">=1.9.3"
 ipython = "^8.11.0"
 pymunk = "^6.4.0"
 osqp = "^0.6.2.post8"
+sympy = "^1.11.1"
 
 [build-system]
 requires = ["poetry-core"]

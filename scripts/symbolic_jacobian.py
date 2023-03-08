@@ -1,4 +1,5 @@
 import sympy
+import scipy
 import numpy as np
 import IPython
 
@@ -18,7 +19,7 @@ def main():
     nc_perp = sympy.Matrix([0, 1])
     μ = 0.2
 
-    stick = True
+    stick = False
 
     # control gains
     kθ = 0.1
@@ -64,13 +65,29 @@ def main():
         θo_next = θo + dt * (M * W * f_next)[2]
         yc_next = yc + dt * v * sympy.sin(θv)
 
+
+    # def next_state_no_fric(x):
+    #     sub_dict = {yc: x[0], θo: x[1], s: x[2], θf: x[3], dt: 0.1}
+    #     A = np.array(A.subs(sub_dict)).astype(np.float64)
+    #     vp_body = np.array(vp_body.subs(sub_dict)).astype(np.float64)
+    #
+    #     xhat = np.array([1, 0])
+    #     f_next = v * xhat.dot(np.linalg.solve(A @ vp_body) * xhat
+    #     θf_next = sympy.atan2(f_next[1], f_next[0]) + θo
+    #     dsdt_next = nc_perp.dot(vp_body - A * f_next)
+    #     s_next = s + dt * dsdt_next
+    #     θo_next = θo + dt * (M * W * f_next)[2]
+    #     yc_next = yc + dt * v * sympy.sin(θv)
+
     x_next = sympy.Matrix([yc_next, θo_next, s_next, θf_next])
     dfdx = x_next.jacobian(x)
-    J = np.array(dfdx.subs({yc: 0, θo: 0, s: 0.5, θf: 0, dt: 0.1})).astype(np.float64)
+    J = np.array(dfdx.subs({yc: 0, θo: 0, s: 0, θf: 0, dt: 0.1})).astype(np.float64)
     e, v = np.linalg.eig(J)
+    P = scipy.linalg.solve_discrete_lyapunov(J, np.eye(J.shape[0]))
     print(np.real(e))
 
-    # IPython.embed()
+    # with open("P.npz", "wb") as f:
+    #     np.savez(f, P)
 
 
 if __name__ == "__main__":

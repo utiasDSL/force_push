@@ -125,12 +125,49 @@ class QPMotion:
         return Vo, f, α
 
 
-def simulate_pushing(motion, slider, kθ, ky, x0, duration, timestep):
+class CirclePath:
+    def __init__(self, radius):
+        self.radius = radius
+
+    def _closest_point(self, p):
+        return self.radius * unit(p)
+
+    def compute_normal(self, p):
+        # TODO this is stupid
+        # s = np.arctan2(p[1], p[0])
+        # dxds = np.cos(s)
+        # dyds = np.sin(s)
+        # return np.array([dxds, dyds])
+        return unit(p)
+
+    def compute_lateral_offset(self, p):
+        c = self._closest_point(p)
+        n = self.compute_normal(p)
+        return n @ (p - c)
+
+    def compute_travel_direction(self, p):
+        return rot2d(np.pi/2) @ self.compute_normal(p)
+
+
+class StraightPath:
+    def __init__(self, direction, origin=None):
+        if origin is None:
+            origin = np.zeros(2)
+        self.origin = origin
+        self.direction = direction
+        self.perp = rot2d(np.pi/2) @ direction
+
+    def compute_travel_direction(self, p):
+        return self.direction
+
+    def compute_lateral_offset(self, p):
+        return self.perp @ (p - self.origin)
+
+
+def simulate_pushing(motion, slider, path, kθ, ky, x0, duration, timestep):
     x = x0.copy()
     xs = [x0.copy()]
     ts = [0]
-
-    Δ = unit([1, 0])
 
     t = 0
     while t < duration:
@@ -146,7 +183,9 @@ def simulate_pushing(motion, slider, kθ, ky, x0, duration, timestep):
         # term to correct deviations from desired line
         # this is simpler than pure pursuit!
         r_cw_w = x[:2] + C_wb @ r_co_o
-        θy = ky * r_cw_w[1]
+        # θy = ky * r_cw_w[1]
+        Δ = path.compute_travel_direction(r_cw_w)
+        θy = ky * path.compute_lateral_offset(r_cw_w)
 
         # angle-based control law
         θd = signed_angle(Δ, C_wb @ unit(f))
@@ -171,6 +210,13 @@ def simulate_pushing(motion, slider, kθ, ky, x0, duration, timestep):
 
 
 def main():
+    # path = CirclePath(1.0)
+    # IPython.embed()
+    # return
+
+    direction = np.array([1, 0])
+    path = StraightPath(direction)
+
     f_max = 5
     τ_max = 0.1
     M = np.diag([1.0 / f_max**2, 1 / f_max**2, 1.0 / τ_max**2])
@@ -180,16 +226,16 @@ def main():
     kθ = 0.2
     ky = 0.2
 
-    x0 = np.array([0.0, 0, 0, 0.1, 1, 0])
+    x0 = np.array([0.0, 0.1, 0, 0, 1, 0])
 
     motion = QPMotion(M, μ)
-    # slider = QuadSlider(0.5, 0.5)
-    slider = CircleSlider(0.5)
+    slider = QuadSlider(0.5, 0.5)
+    # slider = CircleSlider(0.5)
 
     duration = 100
     timestep = 0.1
 
-    ts, xs = simulate_pushing(motion, slider, kθ, ky, x0, duration, timestep)
+    ts, xs = simulate_pushing(motion, slider, path, kθ, ky, x0, duration, timestep)
 
     plt.figure()
     plt.plot(ts, xs[:, 0], label="x")

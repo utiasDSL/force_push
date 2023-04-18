@@ -10,37 +10,6 @@ from mmpush import *
 import IPython
 
 
-def motion_cone(M, W, nc, μ):
-    """Compute the boundaries of the motion cone."""
-    θc = np.arctan(μ)
-    Rl = rot2d(θc)
-    Rr = rot2d(-θc)
-
-    Vl = M @ W @ Rl @ nc
-    Vr = M @ W @ Rr @ nc
-    return unit(Vl), unit(Vr)
-
-
-def sliding(vp, W, Vi, nc):
-    """Dynamics for sliding mode."""
-    vi = W.T @ Vi
-    κ = (vp @ nc) / (vi @ nc)
-    vo = κ * vp
-    Vo = κ * Vi
-    return Vo
-
-
-def sticking(vp, M, r_co_o):
-    """Dynamics for sticking mode."""
-    c = M[2, 2] / M[0, 0]
-    d = c**2 + r_co_o @ r_co_o
-    xc, yc = r_co_o
-    vx = np.array([c**2 + xc**2, xc * yc]) @ vp / d
-    vy = np.array([xc * yc, c**2 + yc**2]) @ vp / d
-    ω = (xc * vy - yc * vx) / c**2
-    return np.array([vx, vy, ω])
-
-
 def qp_form(vp, W, M, nc, μ):
     # cost
     P = np.diag([1, 0, 0])
@@ -103,10 +72,13 @@ def main():
 
     A = W.T @ M @ W
 
+    # compute edges of the motion cone at the contact point
     Vl, Vr = motion_cone(M, W, nc, μ)
     vl = W.T @ Vl
     vr = W.T @ Vr
 
+    # if the pusher velocity is inside the motion cone we have sticking
+    # contact, otherwise we have sliding contact
     if signed_angle(vp, vl) < 0:
         Vo = sliding(vp, W, Vl, nc)
     elif signed_angle(vp, vr) > 0:

@@ -53,6 +53,9 @@ def simulate_pushing(motion, slider, path, speed, kθ, ky, x0, duration, timeste
             success = False
             break
 
+        # TODO hypothesis is that I can move Vo from CoF to centroid using something like
+        Vo = np.array([[1, 0, -slider.cof[1]], [0, 1, slider.cof[0]], [0, 0, 1]]) @ Vo
+
         # update state
         x[:2] += timestep * C_wb @ Vo[:2]
         x[2] = wrap_to_pi(x[2] + timestep * Vo[2])
@@ -186,7 +189,68 @@ def simulate_many(
     return successes, all_ts, all_xs, all_μs
 
 
+def test_circle_slider():
+    direction = np.array([1, 0])
+    path = StraightPath(direction)
+    speed = 0.5
+
+    f_max = 5
+    τ_max = 1
+    M = np.diag([1.0 / f_max**2, 1 / f_max**2, 1.0 / τ_max**2])
+    μ = 0
+
+    # control gains
+    kθ = 1.0
+    ky = 1.0
+
+    # x = (x, y, θ, s, f_x, f_y)
+    x0 = np.array([0.0, -0.2, 0, 0, 1, 0])
+
+    motion = QPMotion(M, μ)
+    slider = CircleSlider(0.5)
+
+    duration = 10
+    timestep = 0.01
+
+    successes, ts, xs, us = simulate_pushing(
+        motion, slider, path, speed, kθ, ky, x0, duration, timestep
+    )
+    playback_simulation(xs, us, slider, path, sleep=0.001)
+
+
+def test_quad_slider():
+    direction = np.array([1, 0])
+    path = StraightPath(direction)
+    speed = 0.5
+
+    f_max = 5
+    τ_max = 1
+    M = np.diag([1.0 / f_max**2, 1 / f_max**2, 1.0 / τ_max**2])
+    μ = 0.2
+
+    # control gains
+    kθ = 1.0
+    ky = 1.0
+
+    # x = (x, y, θ, s, f_x, f_y)
+    x0 = np.array([0.0, 0, 0, 0, 1, 0])
+
+    motion = QPMotion(M, μ)
+    slider = QuadSlider(0.5, 0.5, cof=[0, 0.25])
+
+    duration = 10
+    timestep = 0.01
+
+    successes, ts, xs, us = simulate_pushing(
+        motion, slider, path, speed, kθ, ky, x0, duration, timestep
+    )
+    playback_simulation(xs, us, slider, path, sleep=0.001)
+
+
 def main():
+    test_quad_slider()
+    return
+
     direction = np.array([1, 0])
     path = StraightPath(direction)
     # path = CirclePath(1.0)
@@ -194,7 +258,7 @@ def main():
     speed = 0.5
 
     f_max = 5
-    τ_max = 0.1
+    τ_max = 1
     M = np.diag([1.0 / f_max**2, 1 / f_max**2, 1.0 / τ_max**2])
     μ = 0
 
@@ -211,12 +275,12 @@ def main():
     duration = 10
     timestep = 0.01
 
-    slider = CircleSlider(0.5)
-    successes, ts, xs, us = simulate_pushing(
-        motion, slider, path, speed, kθ, ky, x0, duration, timestep
-    )
-    playback_simulation(xs, us, slider, path, sleep=0.001)
-    return
+    # slider = CircleSlider(0.5)
+    # successes, ts, xs, us = simulate_pushing(
+    #     motion, slider, path, speed, kθ, ky, x0, duration, timestep
+    # )
+    # playback_simulation(xs, us, slider, path, sleep=0.001)
+    # return
 
     y0s = [-0.2, 0, 0.2]
     θ0s = [-0.2, 0, 0.2]

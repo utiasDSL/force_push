@@ -83,11 +83,17 @@ class QPPusherSliderMotion:
         body about the body frame origin, f is the force at the contact, and α
         is the slip velocity.
         """
+        if vp @ nc < 0:
+            raise ValueError("Pusher pulling away from slider.")
+
         nc_perp = util.perp2d(nc)
         A, L, U = self._compute_constraints(vp, W, nc, nc_perp)
 
         self.problem.update(Ax=self._A_data(A), l=L, u=U)
         res = self.problem.solve()
+
+        if None in res.x:
+            raise ValueError("QP solver failed!")
 
         α = res.x[0]
         ρ = res.x[1:]
@@ -154,6 +160,9 @@ class PusherSliderMotion:
         self.c = τ_max / f_max
 
     def solve(self, vp, r_co_o, nc):
+        if vp @ nc < 0:
+            raise ValueError("Pusher pulling away from slider.")
+
         W = np.array([[1, 0], [0, 1], [-r_co_o[1], r_co_o[0]]])
 
         # compute edges of the motion cone at the contact point

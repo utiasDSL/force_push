@@ -21,46 +21,54 @@ def simulate_pushing(motion, slider, path, speed, kθ, ky, x0, duration, timeste
         # compute required quantities
         φ = x[2]
         s = x[3]
-        C_wb = rot2d(φ)
-        f = C_wb.T @ x[4:]
+        C_wo = rot2d(φ)
+        f = C_wo.T @ x[4:]
         nc = slider.contact_normal(s)
         # TODO catch error for sliding off
         try:
-            r_co_o = slider.contact_point(s) - slider.cof
+            r_co_o = slider.contact_point(s)
+            r_cψ_o = r_co_o - slider.cof
         except ValueError:
             print(f"Contact point left the slider at time = {t}!")
             success = False
             break
-        W = np.array([[1, 0], [0, 1], [-r_co_o[1], r_co_o[0]]])
+        # W = np.array([[1, 0], [0, 1], [-r_cψ_o[1], r_cψ_o[0]]])
 
         # term to correct deviations from desired line
         # this is simpler than pure pursuit!
-        r_cw_w = x[:2] + C_wb @ r_co_o
+        r_ow_w = x[:2]
+        r_cw_w = r_ow_w + C_wo @ r_co_o
         Δ = path.compute_travel_direction(r_cw_w)
         θy = ky * path.compute_lateral_offset(r_cw_w)
         # print(path.compute_lateral_offset(r_cw_w))
 
         # angle-based control law
-        θd = signed_angle(Δ, C_wb @ unit(f))
+        θd = signed_angle(Δ, C_wo @ unit(f))
         θv = (1 + kθ) * θd + θy
-        vp = speed * C_wb.T @ rot2d(θv) @ Δ
+        vp = speed * C_wo.T @ rot2d(θv) @ Δ
 
         # equations of motion
         try:
-            Vo, f, α = motion.solve(vp, W, nc)
-        except TypeError:
-            print(f"Solver failed at time = {t}!")
+            Vψ, f, α = motion.solve(vp, r_cψ_o, nc)
+        except ValueError as e:
+            print(e)
             success = False
             break
 
-        # TODO hypothesis is that I can move Vo from CoF to centroid using something like
-        Vo = np.array([[1, 0, -slider.cof[1]], [0, 1, slider.cof[0]], [0, 0, 1]]) @ Vo
+        # solved velocity is about the CoF, move back to the centroid of the
+        # object
+        # fmt: off
+        Vo = np.array([
+            [1, 0, -slider.cof[1]],
+            [0, 1,  slider.cof[0]],
+            [0, 0, 1]]) @ Vψ
+        # fmt: on
 
         # update state
-        x[:2] += timestep * C_wb @ Vo[:2]
+        x[:2] += timestep * C_wo @ Vo[:2]
         x[2] = wrap_to_pi(x[2] + timestep * Vo[2])
         x[3] += timestep * slider.s_dot(α)
-        x[4:] = C_wb @ f
+        x[4:] = C_wo @ f
 
         t += timestep
 
@@ -196,17 +204,16 @@ def test_circle_slider():
 
     f_max = 5
     τ_max = 1
-    M = np.diag([1.0 / f_max**2, 1 / f_max**2, 1.0 / τ_max**2])
-    μ = 0
+    μ = 0.01
 
     # control gains
     kθ = 1.0
     ky = 1.0
 
     # x = (x, y, θ, s, f_x, f_y)
-    x0 = np.array([0.0, -0.2, 0, 0, 1, 0])
+    x0 = np.array([0.0, 0.01, 0, 0, 1, 0])
 
-    motion = QPMotion(M, μ)
+    motion = QPPusherSliderMotion(f_max, τ_max, μ)
     slider = CircleSlider(0.5)
 
     duration = 10
@@ -225,7 +232,6 @@ def test_quad_slider():
 
     f_max = 5
     τ_max = 1
-    M = np.diag([1.0 / f_max**2, 1 / f_max**2, 1.0 / τ_max**2])
     μ = 0.2
 
     # control gains
@@ -235,7 +241,7 @@ def test_quad_slider():
     # x = (x, y, θ, s, f_x, f_y)
     x0 = np.array([0.0, 0, 0, 0, 1, 0])
 
-    motion = QPMotion(M, μ)
+    motion = QPPusherSliderMotion(f_max, τ_max, μ)
     slider = QuadSlider(0.5, 0.5, cof=[0, 0.25])
 
     duration = 10
@@ -248,7 +254,7 @@ def test_quad_slider():
 
 
 def main():
-    test_quad_slider()
+    test_circle_slider()
     return
 
     direction = np.array([1, 0])
@@ -259,7 +265,6 @@ def main():
 
     f_max = 5
     τ_max = 1
-    M = np.diag([1.0 / f_max**2, 1 / f_max**2, 1.0 / τ_max**2])
     μ = 0
 
     # control gains
@@ -269,7 +274,7 @@ def main():
     # x = (x, y, θ, s, f_x, f_y)
     x0 = np.array([0.0, -0.2, 0, 0, 1, 0])
 
-    motion = QPMotion(M, μ)
+    motion = QPPusherSliderMotion(f_max, τ_max, μ)
     # slider = QuadSlider(0.5, 0.5, cof=cof)
 
     duration = 10

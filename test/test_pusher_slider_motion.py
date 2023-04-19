@@ -20,7 +20,7 @@ def compare_motions(f_max, τ_max, μ, r_co_o, nc, vp):
     motion2 = QPPusherSliderMotion(f_max, τ_max, μ)
 
     V1, f1, α1 = motion1.solve(vp, r_co_o, nc)
-    V2, f2, α2 = motion2.solve(vp, W, nc)
+    V2, f2, α2 = motion2.solve(vp, r_co_o, nc)
 
     assert np.allclose(V1, V2)
     assert np.allclose(f1, f2)
@@ -95,4 +95,4 @@ def test_loss_of_contact():
         V1, f1, α1 = motion1.solve(vp, r_co_o, nc)
 
     with pytest.raises(ValueError):
-        V2, f2, α2 = motion2.solve(vp, W, nc)
+        V2, f2, α2 = motion2.solve(vp, r_co_o, nc)

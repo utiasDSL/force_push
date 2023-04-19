@@ -72,7 +72,7 @@ class QPPusherSliderMotion:
 
         return A, L, U
 
-    def solve(self, vp, W, nc):
+    def solve(self, vp, rc, nc):
         """Update and solve the problem with the new data.
 
         vp is the pusher velocity (at the contact) in the body frame
@@ -86,6 +86,7 @@ class QPPusherSliderMotion:
         if vp @ nc < 0:
             raise ValueError("Pusher pulling away from slider.")
 
+        W = np.array([[1, 0], [0, 1], [-rc[1], rc[0]]])
         nc_perp = util.perp2d(nc)
         A, L, U = self._compute_constraints(vp, W, nc, nc_perp)
 
@@ -139,10 +140,10 @@ def sliding(vp, W, Vi, nc):
     return Vo, α
 
 
-def sticking(vp, c, r_co_o):
+def sticking(vp, c, rc):
     """Dynamics for sticking mode."""
-    d = c**2 + r_co_o @ r_co_o
-    xc, yc = r_co_o
+    d = c**2 + rc @ rc
+    xc, yc = rc
     vx = np.array([c**2 + xc**2, xc * yc]) @ vp / d
     vy = np.array([xc * yc, c**2 + yc**2]) @ vp / d
     ω = (xc * vy - yc * vx) / c**2
@@ -159,11 +160,11 @@ class PusherSliderMotion:
         self.μ = μ
         self.c = τ_max / f_max
 
-    def solve(self, vp, r_co_o, nc):
+    def solve(self, vp, rc, nc):
         if vp @ nc < 0:
             raise ValueError("Pusher pulling away from slider.")
 
-        W = np.array([[1, 0], [0, 1], [-r_co_o[1], r_co_o[0]]])
+        W = np.array([[1, 0], [0, 1], [-rc[1], rc[0]]])
 
         # compute edges of the motion cone at the contact point
         Vl, Vr = motion_cone(self.M, W, nc, self.μ)
@@ -177,9 +178,9 @@ class PusherSliderMotion:
         elif util.signed_angle(vp, vr) > 0:
             Vo, α = sliding(vp, W, Vr, nc)
         else:
-            Vo, α = sticking(vp, self.c, r_co_o)
+            Vo, α = sticking(vp, self.c, rc)
 
-        Vf = np.array([Vo[0], Vo[1], util.perp2d(r_co_o) @ Vo[:2]])
+        Vf = np.array([Vo[0], Vo[1], util.perp2d(rc) @ Vo[:2]])
         f = Vo[:2] / np.sqrt(Vf @ self.M @ Vf)
 
         return Vo, f, α

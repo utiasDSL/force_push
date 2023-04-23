@@ -255,6 +255,8 @@ def test_quad_slider():
 
 def main():
     # test_circle_slider()
+    print(5 * rectangle_r_tau(1, 1))
+    print(5 * circle_r_tau(0.5))
     # return
 
     direction = np.array([1, 0])
@@ -309,50 +311,20 @@ def main():
     # plt.title("Square slider, cof offset")
     # plt.grid()
 
-    slider = CircleSlider(0.5)
-    successes, ts, xs, μs3 = simulate_many(motion, slider, path, speed, kθ, ky, duration, timestep, y0s, θ0s, s0s, μs)
-    n = len(ts)
-
-    plt.figure()
-    for i in range(n):
-        plt.plot(xs[i][:, 0], xs[i][:, 1], color="g", alpha=0.1)
-        if not successes[i]:
-            print(f"circle failed with x0 = {xs[i][0, :]}, μ = {μs3[i]}")
-    plt.xlabel("x [m]")
-    plt.ylabel("y [m]")
-    plt.title("Circle slider")
-    plt.grid()
-
-    plt.show()
-
-    # n = 11
-    # y_values = np.linspace(-1.5, 1.5, n)
-    # s_values = np.linspace(-0.4, 0.4, n)
-    # convergence = np.zeros((n, n))
-    # for i, y in enumerate(y_values):
-    #     for j, s in enumerate(s_values):
-    #         x0 = np.array([0, y, 0, s, 1, 0])
-    #         ts, xs = simulate_pushing(
-    #             motion, slider, path, speed, kθ, ky, x0, duration, timestep
-    #         )
-    #         print(f"s_max = {np.max(xs[:, 3])}")
-    #         if np.max(xs[:, 3]) > 0.5:
-    #             continue
-    #         y_final = xs[-1, 1]
-    #         θf_final = np.arctan2(xs[-1, 5], xs[-1, 4])
-    #         print(f"y = {y_final}")
-    #         print(f"θf = {θf_final}")
-    #         # IPython.embed()
-    #         # return
-    #         if np.abs(y_final) < 1e-3 and np.abs(θf_final) < 1e-3:
-    #             convergence[i, j] = 1
+    # slider = CircleSlider(0.5)
+    # successes, ts, xs, μs3 = simulate_many(motion, slider, path, speed, kθ, ky, duration, timestep, y0s, θ0s, s0s, μs)
+    # n = len(ts)
     #
-    # # TODO can we do this as a non-3D grid?
-    # x, y = np.meshgrid(y_values, s_values)
-    # fig = plt.figure()
-    # ax = fig.add_subplot(projection="3d")
-    # ax.scatter(x, y, convergence)
+    # plt.figure()
+    # for i in range(n):
+    #     plt.plot(xs[i][:, 0], xs[i][:, 1], color="g", alpha=0.1)
+    #     if not successes[i]:
+    #         print(f"circle failed with x0 = {xs[i][0, :]}, μ = {μs3[i]}")
+    # plt.xlabel("x [m]")
+    # plt.ylabel("y [m]")
+    # plt.title("Circle slider")
     # plt.grid()
+    #
     # plt.show()
 
 

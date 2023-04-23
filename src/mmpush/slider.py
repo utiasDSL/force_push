@@ -46,9 +46,10 @@ class CircleSlider:
         self.cof = np.array(cof)
 
     def contact_point(self, s, check=True):
-        # for a quad, s is the angle of the contact point
+        # for a circle, s is the angle of the contact point (negative because
+        # it increases clockwise, due to orientation of perp2d)
         # TODO nothing to check?
-        return util.rot2d(s) @ [-self.r, 0]
+        return util.rot2d(-s) @ [-self.r, 0]
 
     def contact_normal(self, s):
         return np.array([np.cos(s), np.sin(s)])

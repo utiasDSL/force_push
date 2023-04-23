@@ -22,7 +22,7 @@ def simulate_pushing(motion, slider, path, speed, kθ, ky, x0, duration, timeste
         φ = x[2]
         s = x[3]
         C_wo = rot2d(φ)
-        f = C_wo.T @ x[4:]
+        f_w = x[4:]
         nc = slider.contact_normal(s)
         # TODO catch error for sliding off
         try:
@@ -32,7 +32,6 @@ def simulate_pushing(motion, slider, path, speed, kθ, ky, x0, duration, timeste
             print(f"Contact point left the slider at time = {t}!")
             success = False
             break
-        # W = np.array([[1, 0], [0, 1], [-r_cψ_o[1], r_cψ_o[0]]])
 
         # term to correct deviations from desired line
         # this is simpler than pure pursuit!
@@ -40,12 +39,18 @@ def simulate_pushing(motion, slider, path, speed, kθ, ky, x0, duration, timeste
         r_cw_w = r_ow_w + C_wo @ r_co_o
         Δ = path.compute_travel_direction(r_cw_w)
         θy = ky * path.compute_lateral_offset(r_cw_w)
-        # print(path.compute_lateral_offset(r_cw_w))
 
         # angle-based control law
-        θd = signed_angle(Δ, C_wo @ unit(f))
-        θv = (1 + kθ) * θd + θy
-        vp = speed * C_wo.T @ rot2d(θv) @ Δ
+        θd = signed_angle(Δ, unit(f_w))
+        θp = (1 + kθ) * θd + θy
+        vp_w = speed * rot2d(θp) @ Δ
+
+        # avoid going backward (this is pathological anyway)
+        if vp_w[0] < 0:
+            vp_w[0] = 0
+            vp_w = speed * unit(vp_w)
+
+        vp = C_wo.T @ vp_w
 
         # equations of motion
         try:
@@ -149,6 +154,7 @@ def playback_simulation(xs, us, slider, path, sleep, step=1):
         r_co_o = slider.contact_point(s)
         r_cw_w = x[:2] + C_wb @ r_co_o
         vp = C_wb @ us[i, :]
+        print(s)
 
         Δ = path.compute_travel_direction(r_cw_w)
         c = path.compute_closest_point(r_cw_w)
@@ -203,15 +209,15 @@ def test_circle_slider():
     speed = 0.5
 
     f_max = 5
-    τ_max = 2.5
-    μ = 0.1
+    τ_max = 1
+    μ = 0
 
     # control gains
-    kθ = 0.1
+    kθ = 1
     ky = 0.1
 
     # x = (x, y, θ, s, f_x, f_y)
-    x0 = np.array([0.0, 0.1, 0, 0, 1, 0])
+    x0 = np.array([0.0, 0, 0, 0.1, 1, 0])
 
     motion = QPPusherSliderMotion(f_max, τ_max, μ)
     slider = CircleSlider(0.5)
@@ -254,30 +260,26 @@ def test_quad_slider():
 
 
 def main():
-    # test_circle_slider()
-    print(5 * rectangle_r_tau(1, 1))
-    print(5 * circle_r_tau(0.5))
-    # return
+    test_circle_slider()
+    return
 
     direction = np.array([1, 0])
     path = StraightPath(direction)
 
-    speed = 0.5
+    speed = 0.1
 
-    f_max = 5
-    τ_max = 2.5
+    f_max = 1
+    # τ_max = 2.5
     # τ_max = 1
     μ = 0
 
     # control gains
-    # kθ = 1.0
-    # ky = 1.0
-    kθ = 0.1
-    ky = 0.01
+    kθ = 0.5
+    ky = 0.1
+    # kθ = 0.1
+    # ky = 0.01
 
     # x = (x, y, θ, s, f_x, f_y)
-
-    motion = QPPusherSliderMotion(f_max, τ_max, μ)
 
     duration = 100
     timestep = 0.1
@@ -288,6 +290,8 @@ def main():
     μs = [0, 0.25, 0.5]
 
     # slider = QuadSlider(0.5, 0.5, cof=[0., 0.])
+    # τ_max = f_max * rectangle_r_tau(1, 1)
+    # motion = QPPusherSliderMotion(f_max, τ_max, μ)
     # successes, ts, xs, μs1 = simulate_many(motion, slider, path, speed, kθ, ky, duration, timestep, y0s, θ0s, s0s, μs)
     # n = len(ts)
     #
@@ -298,34 +302,48 @@ def main():
     # plt.ylabel("y [m]")
     # plt.title("Square slider")
     # plt.grid()
-    #
-    # slider = QuadSlider(0.5, 0.5, cof=[-0.1, -0.1])
-    # successes, ts, xs, μs2 = simulate_many(motion, slider, path, speed, kθ, ky, duration, timestep, y0s, θ0s, s0s, μs)
-    # n = len(ts)
-    #
-    # plt.figure()
-    # for i in range(n):
-    #     plt.plot(xs[i][:, 0], xs[i][:, 1], color="r", alpha=0.1)
-    # plt.xlabel("x [m]")
-    # plt.ylabel("y [m]")
-    # plt.title("Square slider, cof offset")
-    # plt.grid()
 
-    # slider = CircleSlider(0.5)
-    # successes, ts, xs, μs3 = simulate_many(motion, slider, path, speed, kθ, ky, duration, timestep, y0s, θ0s, s0s, μs)
-    # n = len(ts)
-    #
-    # plt.figure()
-    # for i in range(n):
-    #     plt.plot(xs[i][:, 0], xs[i][:, 1], color="g", alpha=0.1)
-    #     if not successes[i]:
-    #         print(f"circle failed with x0 = {xs[i][0, :]}, μ = {μs3[i]}")
-    # plt.xlabel("x [m]")
-    # plt.ylabel("y [m]")
-    # plt.title("Circle slider")
-    # plt.grid()
-    #
-    # plt.show()
+    slider = QuadSlider(0.5, 0.5, cof=[-0.25, 0])
+    τ_max = f_max * rectangle_r_tau(1, 1)
+    motion = QPPusherSliderMotion(f_max, τ_max, μ)
+    successes, ts, xs, μs2 = simulate_many(motion, slider, path, speed, kθ, ky, duration, timestep, y0s, θ0s, s0s, μs)
+    n = len(ts)
+
+    plt.figure()
+    for i in range(n):
+        plt.plot(xs[i][:, 0], xs[i][:, 1], color="r", alpha=0.1)
+    plt.xlabel("x [m]")
+    plt.ylabel("y [m]")
+    plt.title("Square slider, cof offset")
+    plt.grid()
+
+    plt.show()
+    return
+
+    y0s = [-0.1, 0, 0.1]
+    θ0s = [-0.1, 0, 0.1]
+    s0s = [-0.1, 0, 0.1]
+    μs = [0]
+
+    kθ = 0.1
+    ky = 0.01
+    τ_max = f_max * circle_r_tau(0.5)
+    motion = QPPusherSliderMotion(f_max, τ_max, μ)
+    slider = CircleSlider(0.5)
+    successes, ts, xs, μs3 = simulate_many(motion, slider, path, speed, kθ, ky, duration, timestep, y0s, θ0s, s0s, μs)
+    n = len(ts)
+
+    plt.figure()
+    for i in range(n):
+        plt.plot(xs[i][:, 0], xs[i][:, 1], color="g", alpha=0.1)
+        if not successes[i]:
+            print(f"circle failed with x0 = {xs[i][0, :]}, μ = {μs3[i]}")
+    plt.xlabel("x [m]")
+    plt.ylabel("y [m]")
+    plt.title("Circle slider")
+    plt.grid()
+
+    plt.show()
 
 
 if __name__ == "__main__":

@@ -203,26 +203,26 @@ def test_circle_slider():
     speed = 0.5
 
     f_max = 5
-    τ_max = 1
-    μ = 0.01
+    τ_max = 2.5
+    μ = 0.1
 
     # control gains
-    kθ = 1.0
-    ky = 1.0
+    kθ = 0.1
+    ky = 0.1
 
     # x = (x, y, θ, s, f_x, f_y)
-    x0 = np.array([0.0, 0.01, 0, 0, 1, 0])
+    x0 = np.array([0.0, 0.1, 0, 0, 1, 0])
 
     motion = QPPusherSliderMotion(f_max, τ_max, μ)
     slider = CircleSlider(0.5)
 
-    duration = 10
+    duration = 100
     timestep = 0.01
 
     successes, ts, xs, us = simulate_pushing(
         motion, slider, path, speed, kθ, ky, x0, duration, timestep
     )
-    playback_simulation(xs, us, slider, path, sleep=0.001)
+    playback_simulation(xs, us, slider, path, sleep=0.000)
 
 
 def test_quad_slider():
@@ -231,18 +231,18 @@ def test_quad_slider():
     speed = 0.5
 
     f_max = 5
-    τ_max = 1
+    τ_max = 2.5
     μ = 0.2
 
     # control gains
-    kθ = 1.0
-    ky = 1.0
+    kθ = 0.1
+    ky = 0.1
 
     # x = (x, y, θ, s, f_x, f_y)
-    x0 = np.array([0.0, 0, 0, 0, 1, 0])
+    x0 = np.array([0.0, 0.4, 0, 0, 1, 0])
 
     motion = QPPusherSliderMotion(f_max, τ_max, μ)
-    slider = QuadSlider(0.5, 0.5, cof=[0, 0.25])
+    slider = QuadSlider(0.5, 0.5, cof=[0, 0])
 
     duration = 10
     timestep = 0.01
@@ -254,65 +254,60 @@ def test_quad_slider():
 
 
 def main():
-    test_circle_slider()
-    return
+    # test_circle_slider()
+    # return
 
     direction = np.array([1, 0])
     path = StraightPath(direction)
-    # path = CirclePath(1.0)
 
     speed = 0.5
 
     f_max = 5
-    τ_max = 1
+    τ_max = 2.5
+    # τ_max = 1
     μ = 0
 
     # control gains
-    kθ = 1.0
-    ky = 1.0
+    # kθ = 1.0
+    # ky = 1.0
+    kθ = 0.1
+    ky = 0.01
 
     # x = (x, y, θ, s, f_x, f_y)
-    x0 = np.array([0.0, -0.2, 0, 0, 1, 0])
 
     motion = QPPusherSliderMotion(f_max, τ_max, μ)
-    # slider = QuadSlider(0.5, 0.5, cof=cof)
 
-    duration = 10
-    timestep = 0.01
-
-    # slider = CircleSlider(0.5)
-    # successes, ts, xs, us = simulate_pushing(
-    #     motion, slider, path, speed, kθ, ky, x0, duration, timestep
-    # )
-    # playback_simulation(xs, us, slider, path, sleep=0.001)
-    # return
+    duration = 100
+    timestep = 0.1
 
     y0s = [-0.2, 0, 0.2]
     θ0s = [-0.2, 0, 0.2]
     s0s = [-0.2, 0, 0.2]
     μs = [0, 0.25, 0.5]
 
-    slider = QuadSlider(0.5, 0.5, cof=[0., 0.])
-    successes, ts, xs, μs1 = simulate_many(motion, slider, path, speed, kθ, ky, duration, timestep, y0s, θ0s, s0s, μs)
-    n = len(ts)
-
-    plt.figure()
-    for i in range(n):
-        plt.plot(xs[i][:, 0], xs[i][:, 1], color="b", alpha=0.1)
-    plt.xlabel("x [m]")
-    plt.ylabel("y [m]")
-    plt.title("Square slider")
-
-    slider = QuadSlider(0.5, 0.5, cof=[-0.1, -0.1])
-    successes, ts, xs, μs2 = simulate_many(motion, slider, path, speed, kθ, ky, duration, timestep, y0s, θ0s, s0s, μs)
-    n = len(ts)
-
-    plt.figure()
-    for i in range(n):
-        plt.plot(xs[i][:, 0], xs[i][:, 1], color="r", alpha=0.1)
-    plt.xlabel("x [m]")
-    plt.ylabel("y [m]")
-    plt.title("Square slider, cof offset")
+    # slider = QuadSlider(0.5, 0.5, cof=[0., 0.])
+    # successes, ts, xs, μs1 = simulate_many(motion, slider, path, speed, kθ, ky, duration, timestep, y0s, θ0s, s0s, μs)
+    # n = len(ts)
+    #
+    # plt.figure()
+    # for i in range(n):
+    #     plt.plot(xs[i][:, 0], xs[i][:, 1], color="b", alpha=0.1)
+    # plt.xlabel("x [m]")
+    # plt.ylabel("y [m]")
+    # plt.title("Square slider")
+    # plt.grid()
+    #
+    # slider = QuadSlider(0.5, 0.5, cof=[-0.1, -0.1])
+    # successes, ts, xs, μs2 = simulate_many(motion, slider, path, speed, kθ, ky, duration, timestep, y0s, θ0s, s0s, μs)
+    # n = len(ts)
+    #
+    # plt.figure()
+    # for i in range(n):
+    #     plt.plot(xs[i][:, 0], xs[i][:, 1], color="r", alpha=0.1)
+    # plt.xlabel("x [m]")
+    # plt.ylabel("y [m]")
+    # plt.title("Square slider, cof offset")
+    # plt.grid()
 
     slider = CircleSlider(0.5)
     successes, ts, xs, μs3 = simulate_many(motion, slider, path, speed, kθ, ky, duration, timestep, y0s, θ0s, s0s, μs)
@@ -326,6 +321,7 @@ def main():
     plt.xlabel("x [m]")
     plt.ylabel("y [m]")
     plt.title("Circle slider")
+    plt.grid()
 
     plt.show()
 

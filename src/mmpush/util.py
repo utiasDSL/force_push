@@ -19,7 +19,9 @@ def signed_angle(a, b):
     """Angle to rotate a to b.
 
     See <https://stackoverflow.com/a/2150111/5145874>"""
-    return wrap_to_pi(np.arctan2(b[1], b[0]) - np.arctan2(a[1], a[0]))
+    θa = np.arctan2(a[1], a[0])
+    θb = np.arctan2(b[1], b[0])
+    return wrap_to_pi(θb - θa)
 
 
 def unit(x):

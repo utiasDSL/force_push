@@ -260,8 +260,8 @@ def test_quad_slider():
 
 
 def main():
-    test_circle_slider()
-    return
+    # test_circle_slider()
+    # return
 
     direction = np.array([1, 0])
     path = StraightPath(direction)
@@ -289,19 +289,19 @@ def main():
     s0s = [-0.2, 0, 0.2]
     μs = [0, 0.25, 0.5]
 
-    # slider = QuadSlider(0.5, 0.5, cof=[0., 0.])
-    # τ_max = f_max * rectangle_r_tau(1, 1)
-    # motion = QPPusherSliderMotion(f_max, τ_max, μ)
-    # successes, ts, xs, μs1 = simulate_many(motion, slider, path, speed, kθ, ky, duration, timestep, y0s, θ0s, s0s, μs)
-    # n = len(ts)
-    #
-    # plt.figure()
-    # for i in range(n):
-    #     plt.plot(xs[i][:, 0], xs[i][:, 1], color="b", alpha=0.1)
-    # plt.xlabel("x [m]")
-    # plt.ylabel("y [m]")
-    # plt.title("Square slider")
-    # plt.grid()
+    slider = QuadSlider(0.5, 0.5, cof=[0., 0.])
+    τ_max = f_max * rectangle_r_tau(1, 1)
+    motion = QPPusherSliderMotion(f_max, τ_max, μ)
+    successes, ts, xs, μs1 = simulate_many(motion, slider, path, speed, kθ, ky, duration, timestep, y0s, θ0s, s0s, μs)
+    n = len(ts)
+
+    plt.figure()
+    for i in range(n):
+        plt.plot(xs[i][:, 0], xs[i][:, 1], color="b", alpha=0.1)
+    plt.xlabel("x [m]")
+    plt.ylabel("y [m]")
+    plt.title("Square slider")
+    plt.grid()
 
     slider = QuadSlider(0.5, 0.5, cof=[-0.25, 0])
     τ_max = f_max * rectangle_r_tau(1, 1)
@@ -317,16 +317,6 @@ def main():
     plt.title("Square slider, cof offset")
     plt.grid()
 
-    plt.show()
-    return
-
-    y0s = [-0.1, 0, 0.1]
-    θ0s = [-0.1, 0, 0.1]
-    s0s = [-0.1, 0, 0.1]
-    μs = [0]
-
-    kθ = 0.1
-    ky = 0.01
     τ_max = f_max * circle_r_tau(0.5)
     motion = QPPusherSliderMotion(f_max, τ_max, μ)
     slider = CircleSlider(0.5)

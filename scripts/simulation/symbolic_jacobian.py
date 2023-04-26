@@ -1,3 +1,5 @@
+"""Experimental script attempting to analyse stability using symbolic Jacobian
+evaluation at the equilibrium."""
 import sympy
 import scipy
 import numpy as np

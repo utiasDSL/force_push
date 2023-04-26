@@ -1,13 +1,10 @@
+import math
 import numpy as np
 
 
 def wrap_to_pi(x):
     """Wrap a value to [-π, π]"""
-    while x > np.pi:
-        x -= 2 * np.pi
-    while x < -np.pi:
-        x += 2 * np.pi
-    return x
+    return math.remainder(x, 2 * np.pi)
 
 
 def rot2d(θ):
@@ -25,7 +22,10 @@ def signed_angle(a, b):
 
 
 def unit(x):
-    """Normalize a vector."""
+    """Normalize a vector.
+
+    If the norm of the vector is zero, just return the vector.
+    """
     norm = np.linalg.norm(x)
     if norm > 0:
         return x / norm
@@ -33,5 +33,5 @@ def unit(x):
 
 
 def perp2d(x):
-    """Return a vector perpendicular to 2d vector x."""
+    """Return a vector perpendicular to 2D vector x."""
     return np.array([-x[1], x[0]])

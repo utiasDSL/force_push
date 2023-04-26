@@ -83,7 +83,7 @@ class WrenchEstimator:
 
 
 def main():
-    rospy.init_node("wrench_node")
+    rospy.init_node("push_control_node")
 
     home = mm.load_home_position(name="pushing")
     model = mm.MobileManipulatorKinematics()

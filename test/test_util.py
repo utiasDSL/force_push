@@ -26,9 +26,16 @@ def test_signed_angle_cw():
 
 
 def test_wrap_to_pi():
-    np.random.seed(0)
+    # postive wraps to negative
+    x = np.pi + 1
+    assert np.isclose(wrap_to_pi(x), x - 2 * np.pi)
+
+    # negative wraps to positive
+    x = -np.pi - 1
+    assert np.isclose(wrap_to_pi(x), x + 2 * np.pi)
 
     # test random numbers in range [-50, 50)
+    np.random.seed(0)
     for _ in range(5):
         x = 100 * np.random.random() - 50
         assert -np.pi <= wrap_to_pi(x) <= np.pi

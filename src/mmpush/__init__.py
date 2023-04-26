@@ -6,6 +6,7 @@ from mmpush.util import *
 from mmpush.path import *
 from mmpush.slider import *
 from mmpush.motion import *
+from mmpush.simulation import *
 
 
 def pursuit(p, lookahead):

@@ -2,13 +2,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import time
+import tqdm
 from mmpush import *
 
 import IPython
 
 
 def simulate_many(
-    slider, f_max, τ_maxes, path, speed, kθ, ky, duration, timestep, y0s, θ0s, sθs, μs
+    slider, f_max, τ_maxes, path, speed, kθ, ky, duration, timestep, y0s, θ0s, s0s, μs
 ):
     """Simulate many pushes, one for each value of x0."""
     x0s = []
@@ -18,21 +19,33 @@ def simulate_many(
     successes = []
     all_μs = []
 
-    for τ_max in τ_maxes:
-        for μ in μs:
-            motion = QPPusherSliderMotion(f_max, τ_max, μ)
-            for y0 in y0s:
-                for θ0 in θ0s:
-                    for s0 in sθs:
-                        x0 = np.array([0.0, y0, θ0, s0, 1, 0])
-                        x0s.append(x0)
-                        success, ts, xs, us = simulate_pushing(
-                            motion, slider, path, speed, kθ, ky, x0, duration, timestep
-                        )
-                        successes.append(success)
-                        all_ts.append(ts)
-                        all_xs.append(xs)
-                        all_μs.append(μ)
+    num_sims = len(τ_maxes) * len(y0s) * len(θ0s) * len(s0s) * len(μs)
+
+    with tqdm.tqdm(total=num_sims) as progress:
+        for τ_max in τ_maxes:
+            for μ in μs:
+                motion = PusherSliderMotion(f_max, τ_max, μ)
+                for y0 in y0s:
+                    for θ0 in θ0s:
+                        for s0 in s0s:
+                            x0 = np.array([0.0, y0, θ0, s0, 1, 0])
+                            x0s.append(x0)
+                            success, ts, xs, us = simulate_pushing(
+                                motion,
+                                slider,
+                                path,
+                                speed,
+                                kθ,
+                                ky,
+                                x0,
+                                duration,
+                                timestep,
+                            )
+                            successes.append(success)
+                            all_ts.append(ts)
+                            all_xs.append(xs)
+                            all_μs.append(μ)
+                            progress.update(1)
     return successes, all_ts, all_xs, all_μs
 
 
@@ -50,7 +63,7 @@ def test_circle_slider():
     radius = 0.5
     speed = 0.5
     f_max = 1
-    τ_max = 0.01  #0.1 * f_max * circle_r_tau(radius)
+    τ_max = 0.1 * f_max * circle_r_tau(radius)
     μ = 0.0
 
     # control gains
@@ -60,8 +73,10 @@ def test_circle_slider():
     # x = (x, y, θ, s, f_x, f_y)
     x0 = np.array([0.0, 0.4, 0, 0, 1, 0])
 
-    # motion = QPPusherSliderMotionZeroFriction(f_max, τ_max)
-    motion = PusherSliderMotion(f_max, τ_max, μ)
+    if np.isclose(μ, 0):
+        motion = QPPusherSliderMotionZeroFriction(f_max, τ_max)
+    else:
+        motion = QPPusherSliderMotion(f_max, τ_max, μ)
     slider = CircleSlider(radius)
 
     duration = 2 * 120
@@ -108,8 +123,8 @@ def test_circle_slider():
 
 
 def main():
-    test_circle_slider()
-    return
+    # test_circle_slider()
+    # return
 
     direction = np.array([1, 0])
     path = StraightPath(direction)
@@ -126,10 +141,10 @@ def main():
     # state is x = (x, y, θ, s, f_x, f_y)
 
     duration = 120  # two minutes
-    timestep = 0.01
+    timestep = 0.005
 
     y0s = [-0.4, 0, 0.4]
-    θ0s = [-np.pi/8, 0, np.pi/8]
+    θ0s = [-np.pi / 8, 0, np.pi / 8]
     s0s = [-0.4, 0, 0.4]
     μ0s = [0, 0.5, 1.0]
 
@@ -164,29 +179,27 @@ def main():
     τ_maxes = [τ_max_min, τ_max_uniform, τ_max_max]
     slider = CircleSlider(radius)
 
-    # μ0s = [1.0]
-    # successes, ts, xs_μ1, μs = simulate_many(
-    #     slider, f_max, τ_maxes, path, speed, kθ, ky, duration, timestep, y0s, θ0s, s0s, μ0s
-    # )
-
-    μ0s = [0]
-    τ_maxes = [τ_max_min]
-    successes, ts, xs_μ0, μs = simulate_many(
-        slider, f_max, τ_maxes, path, speed, kθ, ky, duration, timestep, y0s, θ0s, s0s, μ0s
+    successes, ts, xs, μs = simulate_many(
+        slider,
+        f_max,
+        τ_maxes,
+        path,
+        speed,
+        kθ,
+        ky,
+        duration,
+        timestep,
+        y0s,
+        θ0s,
+        s0s,
+        μ0s,
     )
 
-    n = len(ts)
-
-    # plt.figure()
-    # for i in range(n):
-    #     plt.plot(xs_μ1[i][:, 0], xs_μ1[i][:, 1], color="r", alpha=0.1)
-    #     if not successes[i]:
-    #         print(f"circle failed with x0 = {xs[i][0, :]}, μ = {μs[i]}")
-    for i in range(n):
-        plt.plot(xs_μ0[i][:, 0], xs_μ0[i][:, 1], color="b", alpha=0.2)
+    plt.figure()
+    for i in range(len(xs)):
+        plt.plot(xs[i][:, 0], xs[i][:, 1], color="b", alpha=0.1)
         if not successes[i]:
             print(f"circle failed with x0 = {xs[i][0, :]}, μ = {μs[i]}")
-
     plt.xlabel("x [m]")
     plt.ylabel("y [m]")
     plt.title("Circle slider")

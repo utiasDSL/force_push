@@ -51,6 +51,8 @@ def simulate_pushing(motion, slider, path, speed, kθ, ky, x0, duration, timeste
         #     θp = θp_last + r
         # elif θp - θp_last < -r:
         #     θp = θp_last - r
+        if np.abs(θp) > 0.5 * np.pi:
+            print("Pusher is going backward.")
 
         vp_w = speed * util.rot2d(θp) @ Δ
 

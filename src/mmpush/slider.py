@@ -45,17 +45,19 @@ class CircleSlider:
             cof = np.zeros(2)
         self.cof = np.array(cof)
 
+    def _angle(self, s):
+        # negative because s increases clockwise, due to orientation of perp2d
+        return -s / self.r
+
     def contact_point(self, s, check=True):
-        # for a circle, s is the angle of the contact point (negative because
-        # it increases clockwise, due to orientation of perp2d)
-        return util.rot2d(-s) @ [-self.r, 0]
+        angle = self._angle(s)
+        return util.rot2d(angle) @ [-self.r, 0]
 
     def contact_normal(self, s):
-        return np.array([np.cos(s), np.sin(s)])
+        angle = self._angle(s)
+        return np.array([np.cos(angle), np.sin(angle)])
 
     def s_dot(self, α):
         """Return derivative of angle s representing displacement of contact
         point along slider's edge."""
-        # α always represents a distance, so we divide out radius to convert to
-        # the angle
-        return α / self.r
+        return α

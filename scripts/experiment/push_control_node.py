@@ -24,7 +24,7 @@ SPEED = 0.1
 
 # control gains
 KF = 0.1
-KY = 0.01
+KY = 0.2
 
 # only control based on force when it is high enough (i.e. in contact with
 # something)

@@ -4,6 +4,7 @@ import argparse
 import numpy as np
 import rosbag
 import matplotlib.pyplot as plt
+from spatialmath.base import q2r
 
 import mobile_manipulation_central as mm
 from mobile_manipulation_central import ros_utils
@@ -19,6 +20,8 @@ FORCE_THRESHOLD = 5
 
 DIRECTION = np.array([0, 1])
 DIRECTION_PERP = rot2d(np.pi / 2) @ DIRECTION
+
+BARREL_OFFSET = np.array([-0.00273432, -0.01013547, -0.00000609])
 
 
 def main():
@@ -55,12 +58,12 @@ def main():
         vicon_msgs, normalize_time=True
     )
     positions = poses[:, :2]
-    positions = positions - positions[0, :]
 
-    xs = positions @ DIRECTION
-    ys = positions @ DIRECTION_PERP
-
-    # TODO want to be able project this onto the appropriate path
+    # normalize x-position of slider to always start at zero, but for
+    # y-position of contact point as the reference
+    xs = (positions - c0) @ DIRECTION
+    ys = (positions - c0) @ DIRECTION_PERP
+    xs -= xs[0]
 
     plt.figure()
     plt.plot(vicon_times, xs, label="x")

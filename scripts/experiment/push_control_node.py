@@ -3,7 +3,7 @@
 import rospy
 import numpy as np
 
-from geometry_msgs.msg import WrenchStamped
+from geometry_msgs.msg import Vector3, WrenchStamped
 
 import mobile_manipulation_central as mm
 from mmpush import *
@@ -86,6 +86,14 @@ class WrenchBiasEstimator:
         return self.count >= self.num_samples
 
 
+def vec_msg_from_array(v):
+    msg = Vector3()
+    msg.x = v[0]
+    msg.y = v[1]
+    msg.z = v[2]
+    return msg
+
+
 class WrenchEstimator:
     def __init__(self, bias=None, τ=0):
         if bias is None:
@@ -96,10 +104,34 @@ class WrenchEstimator:
 
         self.smoother = ExponentialSmoother(τ=τ, x0=np.zeros(6))
 
+        # publish for logging purposes
+        self.wrench_raw_pub = rospy.Publisher(
+            "/wrench/raw", WrenchStamped, queue_size=1
+        )
+        self.wrench_filt_pub = rospy.Publisher(
+            "/wrench/filtered", WrenchStamped, queue_size=1
+        )
+
         self.prev_time = rospy.Time.now().to_sec()
         self.wrench_sub = rospy.Subscriber(
             WRENCH_TOPIC_NAME, WrenchStamped, self._wrench_cb
         )
+
+    def _publish_wrenches(self):
+        now = rospy.Time.now()
+
+        msg_raw = WrenchStamped()
+        msg_raw.header.stamp = now
+        msg_raw.wrench.force = vec_msg_from_array(self.wrench[:3])
+        msg_raw.wrench.torque = vec_msg_from_array(self.wrench[3:])
+
+        msg_filt = WrenchStamped()
+        msg_filt.header.stamp = now
+        msg_filt.wrench.force = vec_msg_from_array(self.wrench_filtered[:3])
+        msg_filt.wrench.torque = vec_msg_from_array(self.wrench_filtered[3:])
+
+        self.wrench_raw_pub.publish(msg_raw)
+        self.wrench_filt_pub.publish(msg_filt)
 
     def _wrench_cb(self, msg):
         t = mm.ros_utils.msg_time(msg)
@@ -110,6 +142,8 @@ class WrenchEstimator:
         τ = msg.wrench.torque
         self.wrench = np.array([f.x, f.y, f.z, τ.x, τ.y, τ.z]) - self.bias
         self.wrench_filtered = self.smoother.update(self.wrench, dt)
+
+        self._publish_wrenches()
 
 
 def main():
@@ -125,6 +159,9 @@ def main():
     rate = rospy.Rate(RATE)
     while not rospy.is_shutdown() and not robot.ready():
         rate.sleep()
+
+    # custom signal handler to brake the robot
+    signal_handler = mm.RobotSignalHandler(robot)
 
     # zero the F-T sensor
     print("Estimating F-T sensor bias...")
@@ -175,7 +212,6 @@ def main():
 
         rate.sleep()
 
-    # TODO properly handle ctrl-C
     robot.brake()
 
 

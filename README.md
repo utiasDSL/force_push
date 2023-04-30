@@ -4,16 +4,19 @@ Robot planar pushing code. This evolved out of the mm2d project.
 
 ## Install
 
+First install
+[mobile_manipulation_central](https://github.com/utiasDSL/mobile_manipulation_central)
+into the catkin workspace.
+
+Into the same catkin workspace, clone this repository:
 ```bash
-# Clone the repository
+cd ~/catkin_ws
 git clone https://github.com/adamheins/mmpush
+```
 
-# Install basic dependencies
-cd mmpush
-poetry install
-
-# Activate the virtualenv
-poetry shell 
+Build the workspace:
+```bash
+catkin build
 ```
 
 ## Organization

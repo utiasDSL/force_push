@@ -25,7 +25,7 @@ class CirclePath:
 
 
 class StraightPath:
-    """Straight path to track."""
+    """Straight path to track in given direction and passing through origin."""
 
     def __init__(self, direction, origin=None):
         if origin is None:

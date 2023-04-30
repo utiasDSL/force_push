@@ -11,12 +11,42 @@ from mmpush import *
 import IPython
 
 
+# Datasheet claims the sensor output rate is 100Hz, though rostopic says more
+# like ~62Hz
+RATE = 100  # Hz
+
+# Direction to push
+# Origin is taken as the EE's starting position
+DIRECTION = np.array([0, 1])
+
+# pushing speed
+SPEED = 0.1
+
+# control gains
+KF = 0.1
+KY = 0.01
+
+# only control based on force when it is high enough (i.e. in contact with
+# something)
+FORCE_THRESHOLD = 5
+
+# time constant for force filter
+FILTER_TIME_CONSTANT = 0.1
+
+WRENCH_TOPIC_NAME = "/robotiq_ft_wrench"
+
+
 class ExponentialSmoother:
+    """Exponential smoothing filter with time constant τ."""
+
     def __init__(self, τ, x0):
-        self.τ = τ
-        self.x = x0
+        self.τ = τ  # time constant
+        self.x = x0  # initial state/guess
 
     def update(self, y, dt):
+        """Update state estimate with measurement y taken dt seconds after the
+        previous update."""
+        # zero time-constant means no filtering is done
         if self.τ <= 0:
             return y
         c = 1.0 - np.exp(-dt / self.τ)
@@ -32,7 +62,7 @@ class WrenchBiasEstimator:
         self.sum = np.zeros(6)
 
         self.wrench_sub = rospy.Subscriber(
-            "/robotiq_ft_wrench", WrenchStamped, self._wrench_cb
+            WRENCH_TOPIC_NAME, WrenchStamped, self._wrench_cb
         )
 
     def _wrench_cb(self, msg):
@@ -47,7 +77,7 @@ class WrenchBiasEstimator:
             self.wrench_sub.unregister()
 
     def estimate(self):
-        rate = rospy.Rate(0.1)
+        rate = rospy.Rate(RATE)
         while not rospy.is_shutdown() and not self.done():
             rate.sleep()
         return self.sum / self.num_samples
@@ -68,7 +98,7 @@ class WrenchEstimator:
 
         self.prev_time = rospy.Time.now().to_sec()
         self.wrench_sub = rospy.Subscriber(
-            "/robotiq_ft_wrench", WrenchStamped, self._wrench_cb
+            WRENCH_TOPIC_NAME, WrenchStamped, self._wrench_cb
         )
 
     def _wrench_cb(self, msg):
@@ -90,30 +120,33 @@ def main():
     ft_idx = model.get_link_index("ft_sensor")
     q_arm = home[3:]
 
-    speed = 0.1
-    kf = 0.1
-    ky = 0.1
-
+    # wait until robot feedback has been received
     robot = mm.RidgebackROSInterface()
+    rate = rospy.Rate(RATE)
+    while not rospy.is_shutdown() and not robot.ready():
+        rate.sleep()
 
+    # zero the F-T sensor
     print("Estimating F-T sensor bias...")
     bias_estimator = WrenchBiasEstimator()
     bias = bias_estimator.estimate()
     print(f"Done. Bias = {bias}")
 
-    # we want to steer toward the line y(t) = y0
-    y0 = robot.q[1]
-    direction = np.array([1, 0])
-    cmd_vel = speed * np.append(direction, 0)
+    # desired path
+    q = np.concatenate((robot.q, q_arm))
+    model.forward(q)
+    r_fw_w = model.link_pose(link_idx=ft_idx)[0]
+    c = r_fw_w[:2]
+    path = StraightPath(DIRECTION, origin=c)
+    cmd_vel = SPEED * np.append(DIRECTION, 0)
 
-    wrench_estimator = WrenchEstimator(bias=bias, τ=0.1)
+    wrench_estimator = WrenchEstimator(bias=bias, τ=FILTER_TIME_CONSTANT)
 
-    # TODO what is FT rate?
-    rate = rospy.Rate(100)
     while not rospy.is_shutdown():
         q = np.concatenate((robot.q, q_arm))
         model.forward(q)
-        C_wf = model.link_pose(link_idx=ft_idx, rotation_matrix=True)[1]
+        r_fw_w, C_wf = model.link_pose(link_idx=ft_idx, rotation_matrix=True)
+        c = r_fw_w[:2]  # contact point
 
         f_f = wrench_estimator.wrench_filtered[:3]
         f_w = C_wf @ f_f
@@ -121,18 +154,24 @@ def main():
 
         # only control based on force when it is high enough (i.e. in contact
         # with something)
-        if np.linalg.norm(f) > 5:
+        if np.linalg.norm(f) > FORCE_THRESHOLD:
 
             # force direction is negative to switch from sensed force to applied force
+            direction = path.compute_travel_direction(c)
             θf = signed_angle(direction, -unit(f))
-            Δy = robot.q[1] - y0
+            Δy = path.compute_lateral_offset(c)
 
-            θp = (kf + 1) * θf + ky * Δy
-            vp = speed * np.array([np.cos(θp), np.sin(θp)])
+            θp = (KF + 1) * θf + KY * Δy
+            vp = SPEED * rot2d(θp) @ direction
             cmd_vel = np.append(vp, 0)
 
-        robot.publish_cmd_vel(cmd_vel, bodyframe=False)
+            print(f"direction = {direction}")
+            print(f"Δy = {Δy}")
+            print(f"θf = {θf}")
+            print(f"θp = {θp}")
+            print(f"vp = {vp}")
 
+        robot.publish_cmd_vel(cmd_vel, bodyframe=False)
 
         rate.sleep()
 

@@ -154,6 +154,7 @@ def main():
             "legend.fontsize": 6,
             "axes.titlesize": 6,
             "axes.labelsize": 6,
+            "figure.labelsize": 6,
             "xtick.labelsize": 6,
             "pgf.preamble": "\n".join(
                 [
@@ -171,25 +172,30 @@ def main():
     fig = plt.figure(figsize=(3.25, 1.5))
     ax = plt.subplot(2, 1, 1)
     ax.set_aspect("equal")
+    plt.axhline(0, color="k", linestyle="--", linewidth=0.75, zorder=-1)
     for data in box_ol_data:
         plt.plot(data[0], data[1], color="k", alpha=0.75, solid_capstyle="round")
     for data in box_cl_data:
         plt.plot(data[0], data[1], color=palette[0], alpha=0.75, solid_capstyle="round")
-    plt.ylabel("$y$ [m]")
     hide_x_ticks(ax)
-    plt.grid()
+    plt.grid(color=(0.75, 0.75, 0.75), alpha=0.5, linewidth=0.5)
     plt.legend([], [], title="Square slider", labelspacing=0, loc=(0.5, 0.65))
 
     ax = plt.subplot(2, 1, 2)
     ax.set_aspect("equal")
+    plt.axhline(0, color="k", linestyle="--", linewidth=0.75, zorder=-1)
     for data in barrel_ol_data:
         plt.plot(data[0], data[1], color="k", alpha=0.75, solid_capstyle="round")
     for data in barrel_cl_data:
         plt.plot(data[0], data[1], color=palette[3], alpha=0.75, solid_capstyle="round")
-    plt.xlabel("$x$ [m]")
-    plt.ylabel("$y$ [m]")
-    plt.grid()
+    plt.grid(color=(0.75, 0.75, 0.75), alpha=0.5, linewidth=0.5)
     plt.legend([], [], title="Circle slider", labelspacing=0, loc=(0.5, 0.65))
+
+    # fake hidden label to get correct spacing
+    plt.ylabel("$y$ [m]", alpha=0)
+
+    fig.supxlabel("$x$ [m]")
+    fig.supylabel("$y$ [m]")
 
     fig.tight_layout(pad=0.1)
     fig.savefig(FIGURE_PATH)

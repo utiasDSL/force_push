@@ -16,10 +16,12 @@ def generate_data(slider, motion):
     direction = np.array([1, 0])
     path = StraightPath(direction)
 
-    duration = 120  # two minutes
-    timestep = 0.005
+    duration = 210
+    # timestep = 0.005
+    timestep = 0.01
     f_max = 1
-    speed = 0.5
+    # speed = 0.5
+    speed = 0.1
 
     # control gains
     kθ = 0.1
@@ -45,14 +47,14 @@ def plot_data(data, ax):
     xs = data["xs"]
     us = data["us"]
     n = xs.shape[0]
-    step = n // 50
+    step = n // 15
 
     circle = type(slider) is CircleSlider
 
     palette = seaborn.color_palette("pastel")
 
     ax.set_aspect("equal")
-    plt.axhline(0, color=(0.75, 0.75, 0.75), linewidth=0.75, zorder=-1)
+    plt.axhline(0, color="k", linestyle="--", linewidth=0.75, zorder=-1)
     plt.xlim([-1, 21])
     plt.xticks([0, 5, 10, 15, 20])
     plt.ylim([-1.2, 2])
@@ -91,7 +93,7 @@ def plot_data(data, ax):
             )
         ax.add_patch(patch)
 
-        ax.add_line(make_line(r_cw_w, r_cw_w + vp, color="k"))  #(0, 0.8, 0)))
+        ax.add_line(make_line(r_cw_w, r_cw_w + 0.5 * unit(vp), color="k"))  #(0, 0.8, 0)))
         ax.plot(r_cw_w[0], r_cw_w[1], ".", color="k") #(0, 0.8, 0))
 
     plt.grid(color=(0.75, 0.75, 0.75), alpha=0.5, linewidth=0.5)
@@ -135,13 +137,13 @@ def main():
             "pgf.texsystem": "pdflatex",
             "font.size": 6,
             "font.family": "serif",
-            # "font.serif": "Palatino",
             "font.sans-serif": "DejaVu Sans",
             "font.weight": "normal",
             "text.usetex": True,
             "legend.fontsize": 6,
             "axes.titlesize": 6,
             "axes.labelsize": 6,
+            "figure.labelsize": 6,
             "xtick.labelsize": 6,
             "pgf.preamble": "\n".join(
                 [

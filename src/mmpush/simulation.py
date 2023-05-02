@@ -96,7 +96,7 @@ def simulate_pushing(motion, slider, path, speed, kθ, ky, x0, duration, timeste
 
 
 def make_line(a, b, color="k"):
-    return plt.Line2D([a[0], b[0]], [a[1], b[1]], color=color, linewidth=1)
+    return plt.Line2D([a[0], b[0]], [a[1], b[1]], color=color, linewidth=1, solid_capstyle="round")
 
 
 def update_line(line, a, b):

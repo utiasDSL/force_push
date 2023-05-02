@@ -14,8 +14,8 @@ from mmpush import *
 import IPython
 
 
-# FIGURE_PATH = "simulate_many.pdf"
-FIGURE_PATH = "/home/adam/phd/papers/pushing/heins-icra23/tex/figures/simulate_many.pdf"
+FIGURE_PATH = "simulate_many.pdf"
+# FIGURE_PATH = "/home/adam/phd/papers/pushing/heins-icra23/tex/figures/simulate_many.pdf"
 
 
 def simulate_many(
@@ -74,8 +74,9 @@ def generate_data(square=True, circle=True):
     # state is x = (x, y, θ, s, f_x, f_y)
     duration = 120  # two minutes
     timestep = 0.005
+    # timestep = 0.01
     f_max = 1
-    speed = 0.5
+    speed = 0.1
 
     # control gains
     kθ = 0.1
@@ -212,7 +213,7 @@ def plot_data(data):
         plt.grid(color=(0.75, 0.75, 0.75), alpha=0.5, linewidth=0.5)
 
         # legend with only a title
-        plt.legend([], [], title="Square slider", labelspacing=0)
+        plt.legend([], [], title="Square slider", labelspacing=0, loc="upper right")
 
     if "circle" in data:
         xs_circle = data["circle"]
@@ -223,7 +224,7 @@ def plot_data(data):
         plt.ylabel("$y$ [m]")
         plt.yticks([-3, 0, 3])
         plt.grid(color=(0.75, 0.75, 0.75), alpha=0.5, linewidth=0.5)
-        plt.legend([], [], title="Circle slider", labelspacing=0)
+        plt.legend([], [], title="Circle slider", labelspacing=0, loc="upper right")
 
     fig.tight_layout(pad=0.1)
     fig.savefig(FIGURE_PATH)
@@ -241,7 +242,7 @@ def main():
             data = pickle.load(f)
         print(f"Loaded processed data from {args.load}")
     else:
-        data = generate_data()
+        data = generate_data(square=False)
         if args.save is not None:
             with open(args.save, "wb") as f:
                 pickle.dump(data, f)

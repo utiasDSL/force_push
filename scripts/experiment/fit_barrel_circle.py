@@ -1,4 +1,5 @@
-"""Plot position of Vicon objects from a ROS bag."""
+#!/usr/bin/env python3
+"""Fit offset from barrel reference to centroid using Vicon measurements."""
 import argparse
 
 import numpy as np

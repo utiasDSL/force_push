@@ -1,4 +1,5 @@
-"""Plot position of Vicon objects from a ROS bag."""
+#!/usr/bin/env python3
+"""Plot slider position from a ROS bag."""
 import argparse
 
 import numpy as np
@@ -13,7 +14,7 @@ from mmpush import *
 import IPython
 
 
-VICON_OBJECT_NAME = "ThingBox"
+VICON_OBJECT_NAME = "ThingBarrel"
 VICON_OBJECT_TOPIC = ros_utils.vicon_topic_name(VICON_OBJECT_NAME)
 
 FORCE_THRESHOLD = 5
@@ -75,6 +76,8 @@ def main():
     plt.grid()
 
     plt.figure()
+    ax = plt.gca()
+    ax.set_aspect("equal")
     plt.plot(xs, ys)
     plt.xlabel("x [m]")
     plt.ylabel("y [m]")

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Push an object with mobile base + force-torque sensor."""
+import argparse
 import rospy
 import numpy as np
 
@@ -24,7 +25,7 @@ SPEED = 0.1
 
 # control gains
 KF = 0.1
-KY = 0.2
+KY = 0.3
 
 # only control based on force when it is high enough (i.e. in contact with
 # something)
@@ -36,6 +37,7 @@ FILTER_TIME_CONSTANT = 0.1
 WRENCH_TOPIC_NAME = "/robotiq_ft_wrench"
 
 
+# TODO to be moved to mm_central
 class ExponentialSmoother:
     """Exponential smoothing filter with time constant τ."""
 
@@ -95,7 +97,7 @@ def vec_msg_from_array(v):
 
 
 class WrenchEstimator:
-    def __init__(self, bias=None, τ=0):
+    def __init__(self, bias=None, τ=0, publish=True):
         if bias is None:
             bias = np.zeros(6)
         self.bias = bias
@@ -105,12 +107,14 @@ class WrenchEstimator:
         self.smoother = ExponentialSmoother(τ=τ, x0=np.zeros(6))
 
         # publish for logging purposes
-        self.wrench_raw_pub = rospy.Publisher(
-            "/wrench/raw", WrenchStamped, queue_size=1
-        )
-        self.wrench_filt_pub = rospy.Publisher(
-            "/wrench/filtered", WrenchStamped, queue_size=1
-        )
+        self.publish = publish
+        if self.publish:
+            self.wrench_raw_pub = rospy.Publisher(
+                "/wrench/raw", WrenchStamped, queue_size=1
+            )
+            self.wrench_filt_pub = rospy.Publisher(
+                "/wrench/filtered", WrenchStamped, queue_size=1
+            )
 
         self.prev_time = rospy.Time.now().to_sec()
         self.wrench_sub = rospy.Subscriber(
@@ -118,6 +122,7 @@ class WrenchEstimator:
         )
 
     def _publish_wrenches(self):
+        """Publish raw and filtered wrenches."""
         now = rospy.Time.now()
 
         msg_raw = WrenchStamped()
@@ -134,6 +139,7 @@ class WrenchEstimator:
         self.wrench_filt_pub.publish(msg_filt)
 
     def _wrench_cb(self, msg):
+        """Call back for wrench measurements received from FT sensor."""
         t = mm.ros_utils.msg_time(msg)
         dt = t - self.prev_time
         self.prev_time = t
@@ -143,10 +149,21 @@ class WrenchEstimator:
         self.wrench = np.array([f.x, f.y, f.z, τ.x, τ.y, τ.z]) - self.bias
         self.wrench_filtered = self.smoother.update(self.wrench, dt)
 
-        self._publish_wrenches()
+        if self.publish:
+            self._publish_wrenches()
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--open-loop",
+        help="Use open-loop pushing rather than closed-loop control",
+        action="store_true",
+        default=False,
+    )
+    args = parser.parse_args()
+    open_loop = args.open_loop
+
     rospy.init_node("push_control_node")
 
     home = mm.load_home_position(name="pushing")
@@ -191,7 +208,7 @@ def main():
 
         # only control based on force when it is high enough (i.e. in contact
         # with something)
-        if np.linalg.norm(f) > FORCE_THRESHOLD:
+        if not open_loop and np.linalg.norm(f) > FORCE_THRESHOLD:
 
             # force direction is negative to switch from sensed force to applied force
             direction = path.compute_travel_direction(c)

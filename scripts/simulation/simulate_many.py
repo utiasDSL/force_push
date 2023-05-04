@@ -14,8 +14,8 @@ from mmpush import *
 import IPython
 
 
-FIGURE_PATH = "simulate_many.pdf"
-# FIGURE_PATH = "/home/adam/phd/papers/pushing/heins-icra23/tex/figures/simulate_many.pdf"
+# FIGURE_PATH = "simulate_many.pdf"
+FIGURE_PATH = "/home/adam/phd/papers/pushing/heins-icra23/tex/figures/simulate_many.pdf"
 
 
 def simulate_many(
@@ -72,9 +72,9 @@ def generate_data(square=True, circle=True):
     path = StraightPath(direction)
 
     # state is x = (x, y, θ, s, f_x, f_y)
-    duration = 120  # two minutes
-    timestep = 0.005
-    # timestep = 0.01
+    duration = 600  # 10 minutes
+    # timestep = 0.005
+    timestep = 0.01
     f_max = 1
     speed = 0.1
 
@@ -186,6 +186,7 @@ def plot_data(data):
             "legend.fontsize": 6,
             "axes.titlesize": 6,
             "axes.labelsize": 6,
+            "figure.labelsize": 6,
             "xtick.labelsize": 6,
             "pgf.preamble": "\n".join(
                 [
@@ -200,31 +201,37 @@ def plot_data(data):
 
     palette = seaborn.color_palette("deep")
 
-    fig = plt.figure(figsize=(3.25, 2))
+    fig = plt.figure(figsize=(3.25, 1.75))
 
     if "square" in data:
         xs_square = data["square"]
         ax1 = plt.subplot(2, 1, 1)
+        plt.axhline(0, color="k", linestyle="--", linewidth=0.75, zorder=-1)
         for i in range(len(xs_square)):
             plt.plot(xs_square[i][:, 0], xs_square[i][:, 1], color=palette[0], alpha=0.1)
-        plt.ylabel("$y$ [m]")
+        # plt.ylabel("$y$ [m]")
         plt.yticks([-3, 0, 3])
         hide_x_ticks(ax1)
         plt.grid(color=(0.75, 0.75, 0.75), alpha=0.5, linewidth=0.5)
 
         # legend with only a title
-        plt.legend([], [], title="Square slider", labelspacing=0, loc="upper right")
+        plt.legend([], [], title="Square", labelspacing=0, loc="upper right")
 
     if "circle" in data:
         xs_circle = data["circle"]
         ax2 = plt.subplot(2, 1, 2)
+        plt.axhline(0, color="k", linestyle="--", linewidth=0.75, zorder=-1)
         for i in range(len(xs_circle)):
             plt.plot(xs_circle[i][:, 0], xs_circle[i][:, 1], color=palette[3], alpha=0.1)
         plt.xlabel("$x$ [m]")
-        plt.ylabel("$y$ [m]")
+
+        # fake y label
+        plt.ylabel("$y$ [m]", alpha=0)
         plt.yticks([-3, 0, 3])
         plt.grid(color=(0.75, 0.75, 0.75), alpha=0.5, linewidth=0.5)
-        plt.legend([], [], title="Circle slider", labelspacing=0, loc="upper right")
+        plt.legend([], [], title="Circular", labelspacing=0, loc="upper right")
+
+    fig.supylabel("$y$ [m]")
 
     fig.tight_layout(pad=0.1)
     fig.savefig(FIGURE_PATH)
@@ -242,7 +249,7 @@ def main():
             data = pickle.load(f)
         print(f"Loaded processed data from {args.load}")
     else:
-        data = generate_data(square=False)
+        data = generate_data()
         if args.save is not None:
             with open(args.save, "wb") as f:
                 pickle.dump(data, f)

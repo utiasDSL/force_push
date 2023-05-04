@@ -18,7 +18,8 @@ RATE = 100  # Hz
 
 # Direction to push
 # Origin is taken as the EE's starting position
-DIRECTION = np.array([0, 1])
+# DIRECTION = np.array([0, 1])
+DIRECTION = rot2d(np.deg2rad(125)) @ np.array([1, 0])
 
 # pushing speed
 SPEED = 0.1

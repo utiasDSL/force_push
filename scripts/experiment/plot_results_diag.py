@@ -16,53 +16,43 @@ from mmpush import *
 import IPython
 
 
-FIGURE_PATH = "experimental_results.pdf"
+# FIGURE_PATH = "experimental_results_diag.pdf"
+FIGURE_PATH = "/home/adam/phd/papers/pushing/heins-icra23/tex/figures/experimental_results.pdf"
 
 FORCE_THRESHOLD = 5
-MAX_DISTANCE = 5
+MAX_DISTANCE = 6
 
-DIRECTION = np.array([0, 1])
+DIRECTION = rot2d(np.deg2rad(125)) @ np.array([1, 0])
 DIRECTION_PERP = rot2d(np.pi / 2) @ DIRECTION
 
 BARREL_OFFSET = np.array([-0.00273432, -0.01013547, -0.00000609])
 
 BAG_DIR = Path(mm.BAG_DIR)
-ROOT_DIR = BAG_DIR / "../icra23"
+ROOT_DIR = BAG_DIR / "../icra23/diag"
 
 CLOSED_LOOP_BOX_BAGS = [
     ROOT_DIR / "closed-loop/box" / name
     for name in [
-        "box1_2023-05-01-13-32-03.bag",
-        "box2_2023-05-01-13-34-32.bag",
-        "box3_2023-05-01-13-37-11.bag",
-        "box4_2023-05-01-13-39-41.bag",
-        "box5_2023-05-01-13-42-13.bag",
-        "box6_2023-05-03-14-38-34.bag",
-        "box7_2023-05-03-14-42-10.bag",
-        "box8_2023-05-03-14-44-42.bag",
-        "box9_2023-05-03-14-47-04.bag",
-        "box10_2023-05-03-14-49-47.bag",
+        "box_diag1_2023-05-03-16-25-14.bag",
+        "box_diag2_2023-05-03-16-28-09.bag",
+        "box_diag3_2023-05-03-16-30-45.bag",
+        "box_diag4_2023-05-03-16-33-19.bag",
+        "box_diag5_2023-05-03-16-36-18.bag",
+        "box_diag6_2023-05-03-17-35-12.bag",
+        "box_diag7_2023-05-03-17-37-48.bag",
+        "box_diag8_2023-05-03-17-40-26.bag",
+        "box_diag9_2023-05-03-17-43-04.bag",
+        "box_diag10_2023-05-03-17-45-36.bag",
     ]
 ]
-# CLOSED_LOOP_BOX_BAGS = [
-#     BAG_DIR / "2023-05-03/ky0.1/box" / name
-#     for name in [
-#         "box1_2023-05-03-12-37-09.bag",
-#         "box2_2023-05-03-12-39-34.bag",
-#         "box3_2023-05-03-12-43-27.bag",
-#         "box4_2023-05-03-12-54-43.bag",
-#         "box5_2023-05-03-12-57-23.bag",
-#     ]
-# ]
 OPEN_LOOP_BOX_BAGS = [
     ROOT_DIR / "open-loop/box" / name
     for name in [
-        "box1_2023-05-01-13-59-26.bag",
-        # "box2_2023-05-01-14-00-24.bag",  # this one is the least interesting
-        "box3_2023-05-01-14-01-23.bag",
-        "box4_2023-05-01-14-02-31.bag",
-        "box5_2023-05-01-14-03-38.bag",
-        "box6_2023-05-01-14-04-37.bag",
+        "box_diag1_2023-05-03-17-52-01.bag",
+        "box_diag2_2023-05-03-17-53-06.bag",
+        "box_diag3_2023-05-03-17-53-58.bag",
+        "box_diag4_2023-05-03-17-54-48.bag",
+        "box_diag5_2023-05-03-17-55-51.bag",
     ]
 ]
 
@@ -70,62 +60,53 @@ OPEN_LOOP_BOX_BAGS = [
 CLOSED_LOOP_DBOX_BAGS = [
     ROOT_DIR / "closed-loop/dbox" / name
     for name in [
-        "dbox1_2023-05-03-13-22-02.bag",
-        "dbox2_2023-05-03-13-24-29.bag",
-        "dbox3_2023-05-03-13-26-55.bag",
-        "dbox4_2023-05-03-13-29-23.bag",
-        "dbox5_2023-05-03-13-33-46.bag",
-        "dbox6_2023-05-03-14-20-22.bag",
-        "dbox7_2023-05-03-14-23-14.bag",
-        "dbox8_2023-05-03-14-25-49.bag",
-        "dbox9_2023-05-03-14-28-29.bag",
-        "dbox10_2023-05-03-14-31-11.bag",
+        "dbox_diag1_2023-05-03-16-42-19.bag",
+        "dbox_diag2_2023-05-03-16-44-56.bag",
+        "dbox_diag3_2023-05-03-16-47-44.bag",
+        "dbox_diag4_2023-05-03-16-50-23.bag",
+        "dbox_diag5_2023-05-03-16-53-26.bag",
+        "dbox_diag6_2023-05-03-17-08-30.bag",
+        "dbox_diag7_2023-05-03-17-11-05.bag",
+        "dbox_diag8_2023-05-03-17-14-12.bag",
+        "dbox_diag9_2023-05-03-17-16-46.bag",
+        "dbox_diag10_2023-05-03-17-19-20.bag",
     ]
 ]
 OPEN_LOOP_DBOX_BAGS = [
     ROOT_DIR / "open-loop/dbox" / name
     for name in [
-        "dbox1_2023-05-03-13-53-36.bag",
-        "dbox2_2023-05-03-13-54-49.bag",
-        "dbox3_2023-05-03-13-55-57.bag",
-        "dbox4_2023-05-03-13-56-44.bag",
-        "dbox5_2023-05-03-13-57-34.bag",
+        # "dbox_diag1_2023-05-03-17-25-28.bag",  # too similar to runs 2 and 3
+        "dbox_diag2_2023-05-03-17-26-34.bag",
+        "dbox_diag3_2023-05-03-17-27-29.bag",
+        "dbox_diag4_2023-05-03-17-28-23.bag",
+        "dbox_diag5_2023-05-03-17-29-13.bag",
+        "dbox_diag6_2023-05-03-17-31-49.bag",
     ]
 ]
 
 CLOSED_LOOP_BARREL_BAGS = [
     ROOT_DIR / "closed-loop/barrel" / name
     for name in [
-        "barrel1_2023-05-01-13-14-34.bag",
-        "barrel2_2023-05-01-13-16-59.bag",
-        "barrel3_2023-05-01-13-19-31.bag",
-        "barrel4_2023-05-01-13-22-06.bag",
-        "barrel5_2023-05-01-13-24-57.bag",
-        "barrel6_2023-05-03-15-02-12.bag",
-        "barrel7_2023-05-03-15-16-05.bag",
-        "barrel8_2023-05-03-15-20-58.bag",
-        "barrel9_2023-05-03-15-23-35.bag",
-        "barrel10_2023-05-03-15-26-48.bag",
+        "barrel_diag1_2023-05-03-15-52-22.bag",
+        "barrel_diag2_2023-05-03-16-03-38.bag",
+        "barrel_diag3_2023-05-03-16-06-30.bag",
+        "barrel_diag4_2023-05-03-16-09-05.bag",
+        "barrel_diag5_2023-05-03-16-11-38.bag",
+        "barrel_diag6_2023-05-03-18-03-13.bag",
+        "barrel_diag7_2023-05-03-18-05-47.bag",
+        "barrel_diag8_2023-05-03-18-08-19.bag",
+        "barrel_diag9_2023-05-03-18-10-56.bag",
+        "barrel_diag10_2023-05-03-18-13-28.bag",
     ]
 ]
-# CLOSED_LOOP_BARREL_BAGS = [
-#     BAG_DIR / "2023-05-03/ky0.1/barrel" / name
-#         for name in [
-#             "barrel1_2023-05-03-12-00-37.bag",
-#             "barrel2_2023-05-03-12-06-08.bag",
-#             "barrel3_2023-05-03-12-08-49.bag",
-#             "barrel4_2023-05-03-12-12-27.bag",
-#             "barrel5_2023-05-03-12-23-51.bag",
-#         ]
-# ]
 OPEN_LOOP_BARREL_BAGS = [
     ROOT_DIR / "open-loop/barrel" / name
     for name in [
-        "barrel1_2023-05-01-13-48-50.bag",
-        "barrel2_2023-05-01-13-54-07.bag",
-        "barrel3_2023-05-01-13-55-37.bag",
-        "barrel4_2023-05-01-13-56-51.bag",
-        "barrel5_2023-05-01-13-57-54.bag",
+        "barrel_diag1_2023-05-03-18-20-57.bag",
+        "barrel_diag2_2023-05-03-18-22-12.bag",
+        "barrel_diag3_2023-05-03-18-23-22.bag",
+        "barrel_diag4_2023-05-03-18-24-31.bag",
+        "barrel_diag5_2023-05-03-18-25-20.bag",
     ]
 ]
 
@@ -149,7 +130,17 @@ def parse_bag_data(vicon_object_name, path, c0):
     vicon_times, poses = ros_utils.parse_transform_stamped_msgs(
         vicon_msgs, normalize_time=True
     )
-    positions = poses[:, :2]
+    # account for offset of Barrel's Vicon object origin from actual centroid
+    if vicon_object_topic == "ThingBarrel":
+        r_ow_ws = poses[:, :3]
+        Q_wos = poses[:, 3:]
+        r_cw_ws = np.zeros_like(r_ow_ws)
+        for i in range(r_cw_ws.shape[0]):
+            C_wo = q2r(Q_wos[i, :], order="xyzs")
+            r_cw_ws[i, :] = r_ow_ws[i, :] + C_wo @ BARREL_OFFSET
+        positions = r_cw_ws[:, :2]
+    else:
+        positions = poses[:, :2]
 
     # normalize x-position of slider to always start at zero, but for
     # y-position of contact point as the reference
@@ -164,7 +155,6 @@ def parse_bag_data(vicon_object_name, path, c0):
         ys = ys[:last_idx]
 
     return xs, ys
-    # return positions[:, 0], positions[:, 1]
 
 
 def hide_x_ticks(ax):
@@ -173,7 +163,7 @@ def hide_x_ticks(ax):
 
 
 def main():
-    home = mm.load_home_position(name="pushing")
+    home = mm.load_home_position(name="pushing2")
     model = mm.MobileManipulatorKinematics()
     ft_idx = model.get_link_index("ft_sensor")
 
@@ -234,56 +224,57 @@ def main():
 
     palette = seaborn.color_palette("deep")
 
-    XLIM = [-0.2, 5.2]
-    YLIM = [-0.5, 0.8]
-    YTICKS = [0, 0.5]
+    XLIM = [-0.2, 6.2]
+    YLIM = [-0.6, 0.6]
+    YTICKS = [-0.5, 0, 0.5]
 
-    fig = plt.figure(figsize=(3.25, 2.25))
+    fig = plt.figure(figsize=(3.25, 2))
     ax = plt.subplot(3, 1, 1)
     ax.set_aspect("equal")
     plt.axhline(0, color="k", linestyle="--", linewidth=0.75, zorder=-1)
-    for data in box_ol_data:
-        plt.plot(data[0], data[1], color="k", alpha=0.75, solid_capstyle="round")
     for data in box_cl_data:
         plt.plot(data[0], data[1], color=palette[0], alpha=0.75, solid_capstyle="round")
+    for data in box_ol_data:
+        plt.plot(data[0], data[1], color="k", alpha=0.75, solid_capstyle="round")
     hide_x_ticks(ax)
     plt.grid(color=(0.75, 0.75, 0.75), alpha=0.5, linewidth=0.5)
     plt.xlim(XLIM)
     plt.ylim(YLIM)
     ax.set_yticks(YTICKS)
-    plt.legend([], [], title="Box (5 lb)", labelspacing=0, loc=(0.5, 0.7))
+    plt.legend([], [], title="Box (5 lb)", labelspacing=0, loc="upper right") #loc=(0.5, 0.7))
 
     ax = plt.subplot(3, 1, 2)
     ax.set_aspect("equal")
     plt.axhline(0, color="k", linestyle="--", linewidth=0.75, zorder=-1)
-    for data in dbox_ol_data:
-        plt.plot(data[0], data[1], color="k", alpha=0.75, solid_capstyle="round")
     for data in dbox_cl_data:
         plt.plot(data[0], data[1], color=palette[2], alpha=0.75, solid_capstyle="round")
+    for data in dbox_ol_data:
+        plt.plot(data[0], data[1], color="k", alpha=0.75, solid_capstyle="round")
     hide_x_ticks(ax)
     plt.grid(color=(0.75, 0.75, 0.75), alpha=0.5, linewidth=0.5)
     plt.xlim(XLIM)
     plt.ylim(YLIM)
     ax.set_yticks(YTICKS)
-    plt.legend([], [], title="Box (10 lb)", labelspacing=0, loc=(0.5, 0.7))
+    plt.legend([], [], title="Box (10 lb)", labelspacing=0, loc="upper right") #loc=(0.5, 0.7))
 
     ax = plt.subplot(3, 1, 3)
     ax.set_aspect("equal")
     plt.axhline(0, color="k", linestyle="--", linewidth=0.75, zorder=-1)
-    for data in barrel_ol_data:
-        plt.plot(data[0], data[1], color="k", alpha=0.75, solid_capstyle="round")
     for data in barrel_cl_data:
         plt.plot(data[0], data[1], color=palette[3], alpha=0.75, solid_capstyle="round")
+    for data in barrel_ol_data:
+        plt.plot(data[0], data[1], color="k", alpha=0.75, solid_capstyle="round")
     plt.grid(color=(0.75, 0.75, 0.75), alpha=0.5, linewidth=0.5)
     plt.xlim(XLIM)
     plt.ylim(YLIM)
     ax.set_yticks(YTICKS)
-    plt.legend([], [], title="Barrel", labelspacing=0, loc=(0.5, 0.7))
+    plt.xlabel("$x$ [m]")
+    plt.legend([], [], title="Barrel", labelspacing=0, loc="upper right") #loc=(0.5, 0.7))
 
     # fake hidden label to get correct spacing
     plt.ylabel("$y$ [m]", alpha=0)
 
-    fig.supxlabel("$x$ [m]")
+    # fig.supxlabel("$x$ [m]")
     fig.supylabel("$y$ [m]")
 
     fig.tight_layout(pad=0.1)

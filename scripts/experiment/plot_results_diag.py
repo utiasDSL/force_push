@@ -11,19 +11,21 @@ import seaborn
 
 import mobile_manipulation_central as mm
 from mobile_manipulation_central import ros_utils
-from mmpush import *
+import mmpush
 
 import IPython
 
 
 # FIGURE_PATH = "experimental_results_diag.pdf"
-FIGURE_PATH = "/home/adam/phd/papers/pushing/heins-icra23/tex/figures/experimental_results.pdf"
+FIGURE_PATH = (
+    "/home/adam/phd/papers/pushing/heins-icra23/tex/figures/experimental_results.pdf"
+)
 
 FORCE_THRESHOLD = 5
 MAX_DISTANCE = 6
 
-DIRECTION = rot2d(np.deg2rad(125)) @ np.array([1, 0])
-DIRECTION_PERP = rot2d(np.pi / 2) @ DIRECTION
+DIRECTION = mmpush.rot2d(np.deg2rad(125)) @ np.array([1, 0])
+DIRECTION_PERP = mmpush.rot2d(np.pi / 2) @ DIRECTION
 
 BARREL_OFFSET = np.array([-0.00273432, -0.01013547, -0.00000609])
 
@@ -163,10 +165,9 @@ def hide_x_ticks(ax):
 
 
 def main():
-    home = mm.load_home_position(name="pushing2")
+    home = mm.load_home_position(name="pushing_diag", path=mmpush.HOME_CONFIG_FILE)
     model = mm.MobileManipulatorKinematics()
     ft_idx = model.get_link_index("ft_sensor")
-
 
     # initial contact point position
     model.forward(home)
@@ -241,7 +242,7 @@ def main():
     plt.xlim(XLIM)
     plt.ylim(YLIM)
     ax.set_yticks(YTICKS)
-    plt.legend([], [], title="Box (5 lb)", labelspacing=0, loc="upper right") #loc=(0.5, 0.7))
+    plt.legend([], [], title="Box (5 lb)", labelspacing=0, loc="upper right")
 
     ax = plt.subplot(3, 1, 2)
     ax.set_aspect("equal")
@@ -255,7 +256,7 @@ def main():
     plt.xlim(XLIM)
     plt.ylim(YLIM)
     ax.set_yticks(YTICKS)
-    plt.legend([], [], title="Box (10 lb)", labelspacing=0, loc="upper right") #loc=(0.5, 0.7))
+    plt.legend([], [], title="Box (10 lb)", labelspacing=0, loc="upper right")
 
     ax = plt.subplot(3, 1, 3)
     ax.set_aspect("equal")
@@ -269,7 +270,7 @@ def main():
     plt.ylim(YLIM)
     ax.set_yticks(YTICKS)
     plt.xlabel("$x$ [m]")
-    plt.legend([], [], title="Barrel", labelspacing=0, loc="upper right") #loc=(0.5, 0.7))
+    plt.legend([], [], title="Barrel", labelspacing=0, loc="upper right")
 
     # fake hidden label to get correct spacing
     plt.ylabel("$y$ [m]", alpha=0)

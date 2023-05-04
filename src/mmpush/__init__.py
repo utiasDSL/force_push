@@ -1,12 +1,17 @@
+from pathlib import Path
+
 import numpy as np
-from scipy import sparse
-import osqp
+import rospkg
 
 from mmpush.util import *
 from mmpush.path import *
 from mmpush.slider import *
 from mmpush.motion import *
 from mmpush.simulation import *
+
+
+rospack = rospkg.RosPack()
+HOME_CONFIG_FILE = Path(rospack.get_path("mmpush")) / "config/home.yaml"
 
 
 def pursuit(p, lookahead):

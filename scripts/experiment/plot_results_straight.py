@@ -11,23 +11,23 @@ import seaborn
 
 import mobile_manipulation_central as mm
 from mobile_manipulation_central import ros_utils
-from mmpush import *
+import mmpush
 
 import IPython
 
 
-FIGURE_PATH = "experimental_results.pdf"
+FIGURE_PATH = "experimental_results_straight.pdf"
 
 FORCE_THRESHOLD = 5
 MAX_DISTANCE = 5
 
 DIRECTION = np.array([0, 1])
-DIRECTION_PERP = rot2d(np.pi / 2) @ DIRECTION
+DIRECTION_PERP = mmpush.rot2d(np.pi / 2) @ DIRECTION
 
 BARREL_OFFSET = np.array([-0.00273432, -0.01013547, -0.00000609])
 
 BAG_DIR = Path(mm.BAG_DIR)
-ROOT_DIR = BAG_DIR / "../icra23"
+ROOT_DIR = BAG_DIR / "../icra23/straight"
 
 CLOSED_LOOP_BOX_BAGS = [
     ROOT_DIR / "closed-loop/box" / name
@@ -44,16 +44,6 @@ CLOSED_LOOP_BOX_BAGS = [
         "box10_2023-05-03-14-49-47.bag",
     ]
 ]
-# CLOSED_LOOP_BOX_BAGS = [
-#     BAG_DIR / "2023-05-03/ky0.1/box" / name
-#     for name in [
-#         "box1_2023-05-03-12-37-09.bag",
-#         "box2_2023-05-03-12-39-34.bag",
-#         "box3_2023-05-03-12-43-27.bag",
-#         "box4_2023-05-03-12-54-43.bag",
-#         "box5_2023-05-03-12-57-23.bag",
-#     ]
-# ]
 OPEN_LOOP_BOX_BAGS = [
     ROOT_DIR / "open-loop/box" / name
     for name in [
@@ -108,16 +98,6 @@ CLOSED_LOOP_BARREL_BAGS = [
         "barrel10_2023-05-03-15-26-48.bag",
     ]
 ]
-# CLOSED_LOOP_BARREL_BAGS = [
-#     BAG_DIR / "2023-05-03/ky0.1/barrel" / name
-#         for name in [
-#             "barrel1_2023-05-03-12-00-37.bag",
-#             "barrel2_2023-05-03-12-06-08.bag",
-#             "barrel3_2023-05-03-12-08-49.bag",
-#             "barrel4_2023-05-03-12-12-27.bag",
-#             "barrel5_2023-05-03-12-23-51.bag",
-#         ]
-# ]
 OPEN_LOOP_BARREL_BAGS = [
     ROOT_DIR / "open-loop/barrel" / name
     for name in [
@@ -164,7 +144,6 @@ def parse_bag_data(vicon_object_name, path, c0):
         ys = ys[:last_idx]
 
     return xs, ys
-    # return positions[:, 0], positions[:, 1]
 
 
 def hide_x_ticks(ax):
@@ -173,10 +152,9 @@ def hide_x_ticks(ax):
 
 
 def main():
-    home = mm.load_home_position(name="pushing")
+    home = mm.load_home_position(name="pushing_straight", path=mmpush.HOME_CONFIG_FILE)
     model = mm.MobileManipulatorKinematics()
     ft_idx = model.get_link_index("ft_sensor")
-
 
     # initial contact point position
     model.forward(home)

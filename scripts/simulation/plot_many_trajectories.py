@@ -8,8 +8,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import seaborn
 import tqdm
-
-from mmpush import *
+import mmpush
 
 import IPython
 
@@ -35,15 +34,15 @@ def simulate_many(
         for τ_max in τ_maxes:
             for μ in μs:
                 if np.isclose(μ, 0):
-                    motion = QPPusherSliderMotionZeroFriction(f_max, τ_max)
+                    motion = mmpush.QPPusherSliderMotionZeroFriction(f_max, τ_max)
                 else:
-                    motion = QPPusherSliderMotion(f_max, τ_max, μ)
+                    motion = mmpush.QPPusherSliderMotion(f_max, τ_max, μ)
                 for y0 in y0s:
                     for θ0 in θ0s:
                         for s0 in s0s:
                             x0 = np.array([0.0, y0, θ0, s0, 1, 0])
                             x0s.append(x0)
-                            success, ts, xs, us = simulate_pushing(
+                            success, ts, xs, us = mmpush.simulate_pushing(
                                 motion,
                                 slider,
                                 path,
@@ -69,11 +68,10 @@ def simulate_many(
 
 def generate_data(square=True, circle=True):
     direction = np.array([1, 0])
-    path = StraightPath(direction)
+    path = mmpush.StraightPath(direction)
 
     # state is x = (x, y, θ, s, f_x, f_y)
     duration = 600  # 10 minutes
-    # timestep = 0.005
     timestep = 0.01
     f_max = 1
     speed = 0.1
@@ -104,13 +102,13 @@ def generate_data(square=True, circle=True):
         print("Simulating square slider...")
 
         hx, hy = 0.5, 0.5
-        τ_max_uniform = f_max * rectangle_r_tau(2 * hx, 2 * hy)
+        τ_max_uniform = f_max * mmpush.rectangle_r_tau(2 * hx, 2 * hy)
         τ_max_min = 0.1 * τ_max_uniform
         τ_max_max = f_max * np.linalg.norm([hx, hy])
         τ_maxes = [τ_max_min, τ_max_uniform, τ_max_max]
-        slider = QuadSlider(hx, hy)
+        slider = mmpush.QuadSlider(hx, hy)
 
-        successes, ts, xs_square, μs = simulate_many(
+        successes, ts, xs_square, μs = mmpush.simulate_many(
             slider,
             f_max,
             τ_maxes,
@@ -136,13 +134,13 @@ def generate_data(square=True, circle=True):
         print("Simulating circle slider...")
 
         radius = 0.5
-        τ_max_uniform = f_max * circle_r_tau(radius)
+        τ_max_uniform = f_max * mmpush.circle_r_tau(radius)
         τ_max_min = 0.1 * τ_max_uniform
         τ_max_max = f_max * radius
         τ_maxes = [τ_max_min, τ_max_uniform, τ_max_max]
-        slider = CircleSlider(radius)
+        slider = mmpush.CircleSlider(radius)
 
-        successes, ts, xs_circle, μs = simulate_many(
+        successes, ts, xs_circle, μs = mmpush.simulate_many(
             slider,
             f_max,
             τ_maxes,
@@ -179,7 +177,6 @@ def plot_data(data):
             "pgf.texsystem": "pdflatex",
             "font.size": 6,
             "font.family": "serif",
-            # "font.serif": "Palatino",
             "font.sans-serif": "DejaVu Sans",
             "font.weight": "normal",
             "text.usetex": True,
@@ -201,15 +198,16 @@ def plot_data(data):
 
     palette = seaborn.color_palette("deep")
 
-    fig = plt.figure(figsize=(3.25, 1.75))
+    fig = plt.figure(figsize=(3.25, 1.65))
 
     if "square" in data:
         xs_square = data["square"]
         ax1 = plt.subplot(2, 1, 1)
         plt.axhline(0, color="k", linestyle="--", linewidth=0.75, zorder=-1)
         for i in range(len(xs_square)):
-            plt.plot(xs_square[i][:, 0], xs_square[i][:, 1], color=palette[0], alpha=0.1)
-        # plt.ylabel("$y$ [m]")
+            plt.plot(
+                xs_square[i][:, 0], xs_square[i][:, 1], color=palette[0], alpha=0.1
+            )
         plt.yticks([-3, 0, 3])
         hide_x_ticks(ax1)
         plt.grid(color=(0.75, 0.75, 0.75), alpha=0.5, linewidth=0.5)
@@ -222,7 +220,9 @@ def plot_data(data):
         ax2 = plt.subplot(2, 1, 2)
         plt.axhline(0, color="k", linestyle="--", linewidth=0.75, zorder=-1)
         for i in range(len(xs_circle)):
-            plt.plot(xs_circle[i][:, 0], xs_circle[i][:, 1], color=palette[3], alpha=0.1)
+            plt.plot(
+                xs_circle[i][:, 0], xs_circle[i][:, 1], color=palette[3], alpha=0.1
+            )
         plt.xlabel("$x$ [m]")
 
         # fake y label

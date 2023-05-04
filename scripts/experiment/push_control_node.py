@@ -7,7 +7,7 @@ import numpy as np
 from geometry_msgs.msg import Vector3, WrenchStamped
 
 import mobile_manipulation_central as mm
-from mmpush import *
+import mmpush
 
 import IPython
 
@@ -19,7 +19,7 @@ RATE = 100  # Hz
 # Direction to push
 # Origin is taken as the EE's starting position
 # DIRECTION = np.array([0, 1])
-DIRECTION = rot2d(np.deg2rad(125)) @ np.array([1, 0])
+DIRECTION = mmpush.rot2d(np.deg2rad(125)) @ np.array([1, 0])
 
 # pushing speed
 SPEED = 0.1
@@ -165,9 +165,9 @@ def main():
     args = parser.parse_args()
     open_loop = args.open_loop
 
-    rospy.init_node("push_control_node")
+    rospy.init_node("push_control_node", disable_signals=True)
 
-    home = mm.load_home_position(name="pushing")
+    home = mm.load_home_position(name="pushing_diag", path=mmpush.HOME_CONFIG_FILE)
     model = mm.MobileManipulatorKinematics()
     ft_idx = model.get_link_index("ft_sensor")
     q_arm = home[3:]
@@ -192,7 +192,7 @@ def main():
     model.forward(q)
     r_fw_w = model.link_pose(link_idx=ft_idx)[0]
     c = r_fw_w[:2]
-    path = StraightPath(DIRECTION, origin=c)
+    path = mmpush.StraightPath(DIRECTION, origin=c)
     cmd_vel = SPEED * np.append(DIRECTION, 0)
 
     wrench_estimator = WrenchEstimator(bias=bias, τ=FILTER_TIME_CONSTANT)
@@ -213,7 +213,7 @@ def main():
 
             # force direction is negative to switch from sensed force to applied force
             direction = path.compute_travel_direction(c)
-            θf = signed_angle(direction, -unit(f))
+            θf = mmpush.signed_angle(direction, -unit(f))
             Δy = path.compute_lateral_offset(c)
 
             θp = (KF + 1) * θf + KY * Δy

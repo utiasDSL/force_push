@@ -9,9 +9,6 @@ from spatialmath.base import q2r
 
 import mobile_manipulation_central as mm
 from mobile_manipulation_central import ros_utils
-from mmpush import *
-
-import IPython
 
 
 VICON_OBJECT_NAME = "ThingBarrel"

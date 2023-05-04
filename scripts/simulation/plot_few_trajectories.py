@@ -3,24 +3,22 @@ import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import seaborn
-from mmpush import *
+import mmpush
 
 import IPython
 
 
-# FIGURE_PATH = "simulate_few.pdf"
-FIGURE_PATH = "/home/adam/phd/papers/pushing/heins-icra23/tex/figures/simulate_few.pdf"
+FIGURE_PATH = "simulate_few.pdf"
+# FIGURE_PATH = "/home/adam/phd/papers/pushing/heins-icra23/tex/figures/simulate_few.pdf"
 
 
 def generate_data(slider, motion):
     direction = np.array([1, 0])
-    path = StraightPath(direction)
+    path = mmpush.StraightPath(direction)
 
     duration = 210
-    # timestep = 0.005
     timestep = 0.01
     f_max = 1
-    # speed = 0.5
     speed = 0.1
 
     # control gains
@@ -30,7 +28,7 @@ def generate_data(slider, motion):
     # x = (x, y, θ, s, f_x, f_y)
     x0 = np.array([0.0, -0.4, -np.pi / 8, -0.4, 1, 0])
 
-    success, ts, xs, us = simulate_pushing(
+    success, ts, xs, us = mmpush.simulate_pushing(
         motion, slider, path, speed, kθ, ky, x0, duration, timestep
     )
 
@@ -49,7 +47,7 @@ def plot_data(data, ax):
     n = xs.shape[0]
     step = n // 15
 
-    circle = type(slider) is CircleSlider
+    circle = type(slider) is mmpush.CircleSlider
 
     palette = seaborn.color_palette("pastel")
 
@@ -59,7 +57,9 @@ def plot_data(data, ax):
     plt.xticks([0, 5, 10, 15, 20])
     plt.ylim([-1.2, 2])
     plt.yticks([0, 1])
-    plt.legend([], [], title=f"$\mu_c={int(motion.μ)}$", labelspacing=0, loc="lower right")
+    plt.legend(
+        [], [], title=f"$\mu_c={int(motion.μ)}$", labelspacing=0, loc="lower right"
+    )
 
     for i in range(1, n - 1, step):
         x = xs[i, :]
@@ -70,7 +70,7 @@ def plot_data(data, ax):
 
         φ = x[2]
         s = x[3]
-        C_wo = rot2d(φ)
+        C_wo = mmpush.rot2d(φ)
         f = x[4:]  # world frame
         r_co_o = slider.contact_point(s)
         r_ow_w = x[:2]
@@ -78,8 +78,20 @@ def plot_data(data, ax):
         vp = C_wo @ u
 
         if circle:
-            patch = plt.Circle(r_ow_w, radius=slider.r, fill=True, ec=(0.8, 0.447, 0.498), fc=(1, 0.753, 0.796))
-            ax.add_line(make_line(r_ow_w, r_ow_w + rot2d(φ) @ [slider.r, 0], color=(0.8, 0.447, 0.498)))
+            patch = plt.Circle(
+                r_ow_w,
+                radius=slider.r,
+                fill=True,
+                ec=(0.8, 0.447, 0.498),
+                fc=(1, 0.753, 0.796),
+            )
+            ax.add_line(
+                mmpush.make_line(
+                    r_ow_w,
+                    r_ow_w + mmpush.rot2d(φ) @ [slider.r, 0],
+                    color=(0.8, 0.447, 0.498),
+                )
+            )
         else:
             patch = plt.Rectangle(
                 r_ow_w - [slider.hx, slider.hy],
@@ -93,8 +105,8 @@ def plot_data(data, ax):
             )
         ax.add_patch(patch)
 
-        ax.add_line(make_line(r_cw_w, r_cw_w + 0.5 * unit(vp), color="k"))  #(0, 0.8, 0)))
-        ax.plot(r_cw_w[0], r_cw_w[1], ".", color="k") #(0, 0.8, 0))
+        ax.add_line(mmpush.make_line(r_cw_w, r_cw_w + 0.5 * mmpush.unit(vp), color="k"))
+        ax.plot(r_cw_w[0], r_cw_w[1], ".", color="k")
 
     plt.grid(color=(0.75, 0.75, 0.75), alpha=0.5, linewidth=0.5)
 
@@ -110,23 +122,23 @@ def main():
     print("Simulating square slider...")
 
     hx, hy = 0.5, 0.5
-    τ_max = f_max * rectangle_r_tau(2 * hx, 2 * hy)
-    slider = QuadSlider(hx, hy)
-    motion = QPPusherSliderMotion(f_max, τ_max, μ=0)
+    τ_max = f_max * mmpush.rectangle_r_tau(2 * hx, 2 * hy)
+    slider = mmpush.QuadSlider(hx, hy)
+    motion = mmpush.QPPusherSliderMotion(f_max, τ_max, μ=0)
     square_data0 = generate_data(slider, motion)
 
-    motion = QPPusherSliderMotion(f_max, τ_max, μ=1.0)
+    motion = mmpush.QPPusherSliderMotion(f_max, τ_max, μ=1.0)
     square_data1 = generate_data(slider, motion)
 
     print("Simulating circle slider...")
 
     r = 0.5
-    τ_max = f_max * circle_r_tau(r)
-    slider = CircleSlider(r)
-    motion = QPPusherSliderMotion(f_max, τ_max, μ=0)
+    τ_max = f_max * mmpush.circle_r_tau(r)
+    slider = mmpush.CircleSlider(r)
+    motion = mmpush.QPPusherSliderMotion(f_max, τ_max, μ=0)
     circle_data0 = generate_data(slider, motion)
 
-    motion = QPPusherSliderMotion(f_max, τ_max, μ=1.0)
+    motion = mmpush.QPPusherSliderMotion(f_max, τ_max, μ=1.0)
     circle_data1 = generate_data(slider, motion)
 
     print("Plotting...")

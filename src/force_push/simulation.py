@@ -3,8 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time
 
-from mmpush import util
-from mmpush.slider import CircleSlider, QuadSlider
+from force_push import util
+from force_push.slider import CircleSlider, QuadSlider
 
 
 def simulate_pushing(motion, slider, path, speed, kθ, ky, x0, duration, timestep):

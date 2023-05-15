@@ -3,15 +3,15 @@ from pathlib import Path
 import numpy as np
 import rospkg
 
-from mmpush.util import *
-from mmpush.path import *
-from mmpush.slider import *
-from mmpush.motion import *
-from mmpush.simulation import *
+from force_push.util import *
+from force_push.path import *
+from force_push.slider import *
+from force_push.motion import *
+from force_push.simulation import *
 
 
 rospack = rospkg.RosPack()
-HOME_CONFIG_FILE = Path(rospack.get_path("mmpush")) / "config/home.yaml"
+HOME_CONFIG_FILE = Path(rospack.get_path("force_push")) / "config/home.yaml"
 
 
 def pursuit(p, lookahead):

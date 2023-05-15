@@ -1,6 +1,7 @@
-# mmpush
+# Force Push
 
-Robot planar pushing code. This evolved out of the mm2d project.
+Quasistatic robotic planar pushing with single-point contact using only force
+feedback. 
 
 ## Install
 
@@ -11,18 +12,13 @@ into the catkin workspace.
 Into the same catkin workspace, clone this repository:
 ```bash
 cd ~/catkin_ws
-git clone https://github.com/adamheins/mmpush
+git clone https://github.com/adamheins/force_push
 ```
 
 Build the workspace:
 ```bash
 catkin build
 ```
-
-## Organization
-
-* `mmpush`: Shared utilities.
-* `scripts`: Scripts for pushing stuff.
 
 ## Experiments
 Experiments are done using utilities in mobile_manipulation_central.

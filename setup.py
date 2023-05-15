@@ -6,7 +6,7 @@ from distutils.core import setup
 from catkin_pkg.python_setup import generate_distutils_setup
 
 setup_args = generate_distutils_setup(
-    packages=["mmpush"], package_dir={"": "src"}
+    packages=["force_push"], package_dir={"": "src"}
 )
 
 setup(**setup_args)

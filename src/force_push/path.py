@@ -1,6 +1,6 @@
 import numpy as np
 
-from mmpush import util
+from force_push import util
 
 
 class CirclePath:

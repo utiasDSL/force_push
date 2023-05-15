@@ -8,7 +8,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import seaborn
 import tqdm
-import mmpush
+import force_push as fp
 
 import IPython
 
@@ -34,15 +34,15 @@ def simulate_many(
         for τ_max in τ_maxes:
             for μ in μs:
                 if np.isclose(μ, 0):
-                    motion = mmpush.QPPusherSliderMotionZeroFriction(f_max, τ_max)
+                    motion = fp.QPPusherSliderMotionZeroFriction(f_max, τ_max)
                 else:
-                    motion = mmpush.QPPusherSliderMotion(f_max, τ_max, μ)
+                    motion = fp.QPPusherSliderMotion(f_max, τ_max, μ)
                 for y0 in y0s:
                     for θ0 in θ0s:
                         for s0 in s0s:
                             x0 = np.array([0.0, y0, θ0, s0, 1, 0])
                             x0s.append(x0)
-                            success, ts, xs, us = mmpush.simulate_pushing(
+                            success, ts, xs, us = fp.simulate_pushing(
                                 motion,
                                 slider,
                                 path,
@@ -68,7 +68,7 @@ def simulate_many(
 
 def generate_data(square=True, circle=True):
     direction = np.array([1, 0])
-    path = mmpush.StraightPath(direction)
+    path = fp.StraightPath(direction)
 
     # state is x = (x, y, θ, s, f_x, f_y)
     duration = 600  # 10 minutes
@@ -102,13 +102,13 @@ def generate_data(square=True, circle=True):
         print("Simulating square slider...")
 
         hx, hy = 0.5, 0.5
-        τ_max_uniform = f_max * mmpush.rectangle_r_tau(2 * hx, 2 * hy)
+        τ_max_uniform = f_max * fp.rectangle_r_tau(2 * hx, 2 * hy)
         τ_max_min = 0.1 * τ_max_uniform
         τ_max_max = f_max * np.linalg.norm([hx, hy])
         τ_maxes = [τ_max_min, τ_max_uniform, τ_max_max]
-        slider = mmpush.QuadSlider(hx, hy)
+        slider = fp.QuadSlider(hx, hy)
 
-        successes, ts, xs_square, μs = mmpush.simulate_many(
+        successes, ts, xs_square, μs = fp.simulate_many(
             slider,
             f_max,
             τ_maxes,
@@ -134,13 +134,13 @@ def generate_data(square=True, circle=True):
         print("Simulating circle slider...")
 
         radius = 0.5
-        τ_max_uniform = f_max * mmpush.circle_r_tau(radius)
+        τ_max_uniform = f_max * fp.circle_r_tau(radius)
         τ_max_min = 0.1 * τ_max_uniform
         τ_max_max = f_max * radius
         τ_maxes = [τ_max_min, τ_max_uniform, τ_max_max]
-        slider = mmpush.CircleSlider(radius)
+        slider = fp.CircleSlider(radius)
 
-        successes, ts, xs_circle, μs = mmpush.simulate_many(
+        successes, ts, xs_circle, μs = fp.simulate_many(
             slider,
             f_max,
             τ_maxes,

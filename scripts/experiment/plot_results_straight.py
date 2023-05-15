@@ -11,7 +11,7 @@ import seaborn
 
 import mobile_manipulation_central as mm
 from mobile_manipulation_central import ros_utils
-import mmpush
+import force_push as fp
 
 import IPython
 
@@ -22,7 +22,7 @@ FORCE_THRESHOLD = 5
 MAX_DISTANCE = 5
 
 DIRECTION = np.array([0, 1])
-DIRECTION_PERP = mmpush.rot2d(np.pi / 2) @ DIRECTION
+DIRECTION_PERP = fp.rot2d(np.pi / 2) @ DIRECTION
 
 BARREL_OFFSET = np.array([-0.00273432, -0.01013547, -0.00000609])
 
@@ -151,7 +151,7 @@ def hide_x_ticks(ax):
 
 
 def main():
-    home = mm.load_home_position(name="pushing_straight", path=mmpush.HOME_CONFIG_FILE)
+    home = mm.load_home_position(name="pushing_straight", path=fp.HOME_CONFIG_FILE)
     model = mm.MobileManipulatorKinematics()
     ft_idx = model.get_link_index("ft_sensor")
 

@@ -9,7 +9,7 @@ from spatialmath.base import q2r
 
 import mobile_manipulation_central as mm
 from mobile_manipulation_central import ros_utils
-import mmpush
+import force_push as fp
 
 import IPython
 
@@ -20,7 +20,7 @@ VICON_OBJECT_TOPIC = ros_utils.vicon_topic_name(VICON_OBJECT_NAME)
 FORCE_THRESHOLD = 5
 
 DIRECTION = np.array([0, 1])
-DIRECTION_PERP = mmpush.rot2d(np.pi / 2) @ DIRECTION
+DIRECTION_PERP = fp.rot2d(np.pi / 2) @ DIRECTION
 
 BARREL_OFFSET = np.array([-0.00273432, -0.01013547, -0.00000609])
 
@@ -31,7 +31,7 @@ def main():
     args = parser.parse_args()
     bag = rosbag.Bag(args.bagfile)
 
-    home = mm.load_home_position(name="pushing_diag", path=mmpush.HOME_CONFIG_FILE)
+    home = mm.load_home_position(name="pushing_diag", path=fp.HOME_CONFIG_FILE)
     model = mm.MobileManipulatorKinematics()
     ft_idx = model.get_link_index("ft_sensor")
     q_arm = home[3:]

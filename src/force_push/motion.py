@@ -3,7 +3,7 @@ import numpy as np
 from scipy import sparse
 import osqp
 
-from mmpush import util
+from force_push import util
 
 
 def limit_surface_ellipsoid(f_max, τ_max):

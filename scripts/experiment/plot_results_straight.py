@@ -26,7 +26,7 @@ DIRECTION_PERP = fp.rot2d(np.pi / 2) @ DIRECTION
 
 BARREL_OFFSET = np.array([-0.00273432, -0.01013547, -0.00000609])
 
-ROOT_DIR = Path("/media/adam/Data/PhD/Data/pushing/icra23/straight")
+ROOT_DIR = Path("/media/adam/Data/PhD/Data/force_push/icra23/straight")
 
 CLOSED_LOOP_BOX_BAGS = [
     ROOT_DIR / "closed-loop/box" / name

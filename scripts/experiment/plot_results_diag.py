@@ -29,8 +29,7 @@ DIRECTION_PERP = mmpush.rot2d(np.pi / 2) @ DIRECTION
 
 BARREL_OFFSET = np.array([-0.00273432, -0.01013547, -0.00000609])
 
-BAG_DIR = Path(mm.BAG_DIR)
-ROOT_DIR = BAG_DIR / "../icra23/diag"
+ROOT_DIR = Path("/media/adam/Data/PhD/Data/pushing/icra23/diag")
 
 CLOSED_LOOP_BOX_BAGS = [
     ROOT_DIR / "closed-loop/box" / name

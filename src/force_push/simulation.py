@@ -7,6 +7,88 @@ from force_push import util
 from force_push.slider import CircleSlider, QuadSlider
 
 
+def simulate_pushing2(motion, slider, path, speed, kθ, ky, x0, duration, timestep):
+    """Simulate pushing a slider with single-point contact. [EXPERIMENTAL VERSION]"""
+    x = x0.copy()
+    xs = [x0.copy()]
+    us = []
+    ts = [0]
+
+    success = True
+    yc_int = 0
+    θd_int = 0
+    ki_y = 0.03
+    ki_d = 0.03
+
+    t = 0
+    while t < duration:
+        # compute required quantities
+        φ = x[2]
+        s = x[3]
+        C_wo = util.rot2d(φ)
+        f_w = x[4:]
+        nc = slider.contact_normal(s)
+
+        try:
+            r_co_o = slider.contact_point(s)
+            r_cψ_o = r_co_o - slider.cof
+        except ValueError:
+            print(f"Contact point left the slider at time = {t}!")
+            success = False
+            break
+
+        # term to correct deviations from desired line
+        # this is simpler than pure pursuit!
+        r_ow_w = x[:2]
+        r_cw_w = r_ow_w + C_wo @ r_co_o
+        Δ = path.compute_travel_direction(r_cw_w)
+        yc = path.compute_lateral_offset(r_cw_w)
+        yc_int += timestep * yc
+        θy = ky * yc + ki_y * yc_int
+
+        # angle-based control law
+        θd = util.signed_angle(Δ, util.unit(f_w))
+        θd_int += timestep * θd
+        θp = (1 + kθ) * θd + ki_d * θd_int + θy
+
+        if np.abs(θp) > 0.5 * np.pi:
+            print("Pusher is going backward.")
+
+        vp_w = speed * util.rot2d(θp) @ Δ
+        vp = C_wo.T @ vp_w
+
+        # equations of motion
+        try:
+            Vψ, f, α = motion.solve(vp, r_cψ_o, nc)
+        except ValueError as e:
+            print(e)
+            success = False
+            break
+
+        # solved velocity is about the CoF, move back to the centroid of the
+        # object
+        # fmt: off
+        Vo = np.array([
+            [1, 0, -slider.cof[1]],
+            [0, 1,  slider.cof[0]],
+            [0, 0, 1]]) @ Vψ
+        # fmt: on
+
+        # update state
+        x[:2] += timestep * C_wo @ Vo[:2]
+        x[2] = util.wrap_to_pi(x[2] + timestep * Vo[2])
+        x[3] += timestep * slider.s_dot(α)
+        x[4:] = C_wo @ f
+
+        t += timestep
+
+        us.append(vp)
+        xs.append(x.copy())
+        ts.append(t)
+
+    return success, np.array(ts), np.array(xs), np.array(us)
+
+
 def simulate_pushing(motion, slider, path, speed, kθ, ky, x0, duration, timestep):
     """Simulate pushing a slider with single-point contact."""
     x = x0.copy()

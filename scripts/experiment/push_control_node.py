@@ -38,25 +38,6 @@ FILTER_TIME_CONSTANT = 0.1
 WRENCH_TOPIC_NAME = "/robotiq_ft_wrench"
 
 
-# TODO to be moved to mm_central
-class ExponentialSmoother:
-    """Exponential smoothing filter with time constant τ."""
-
-    def __init__(self, τ, x0):
-        self.τ = τ  # time constant
-        self.x = x0  # initial state/guess
-
-    def update(self, y, dt):
-        """Update state estimate with measurement y taken dt seconds after the
-        previous update."""
-        # zero time-constant means no filtering is done
-        if self.τ <= 0:
-            return y
-        c = 1.0 - np.exp(-dt / self.τ)
-        self.x = c * y + (1 - c) * self.x
-        return self.x
-
-
 class WrenchBiasEstimator:
     def __init__(self, num_samples=100):
         self.num_samples = num_samples
@@ -105,7 +86,7 @@ class WrenchEstimator:
         self.wrench = np.zeros(6)
         self.wrench_filtered = np.zeros(6)
 
-        self.smoother = ExponentialSmoother(τ=τ, x0=np.zeros(6))
+        self.smoother = mm.ExponentialSmoother(τ=τ, x0=np.zeros(6))
 
         # publish for logging purposes
         self.publish = publish

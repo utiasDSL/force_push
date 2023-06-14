@@ -18,9 +18,14 @@ def compare_motions(f_max, τ_max, μ, r_co_o, nc, vp):
     W = np.array([[1, 0], [0, 1], [-r_co_o[1], r_co_o[0]]])
     motion1 = fp.PusherSliderMotion(f_max, τ_max, μ)
     motion2 = fp.QPPusherSliderMotion(f_max, τ_max, μ)
+    motion3 = fp.QPPusherSliderMotion2(f_max, τ_max, μ)
 
     V1, f1, α1 = motion1.solve(vp, r_co_o, nc)
     V2, f2, α2 = motion2.solve(vp, r_co_o, nc)
+    V3, f3, α3 = motion3.solve(vp, r_co_o, nc)
+
+    import IPython
+    IPython.embed()
 
     assert np.allclose(V1, V2)
     assert np.allclose(f1, f2)

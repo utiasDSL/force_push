@@ -8,7 +8,7 @@ import force_push as fp
 import IPython
 
 
-FIGURE_PATH = "simulate_few.pdf"
+FIGURE_PATH = "simulate_few.svg"
 # FIGURE_PATH = "/home/adam/phd/papers/pushing/heins-icra23/tex/figures/simulate_few.pdf"
 
 
@@ -144,29 +144,7 @@ def main():
     print("Plotting...")
 
     mpl.use("pgf")
-    plt.rcParams.update(
-        {
-            "pgf.texsystem": "pdflatex",
-            "font.size": 6,
-            "font.family": "serif",
-            "font.sans-serif": "DejaVu Sans",
-            "font.weight": "normal",
-            "text.usetex": True,
-            "legend.fontsize": 6,
-            "axes.titlesize": 6,
-            "axes.labelsize": 6,
-            "figure.labelsize": 6,
-            "xtick.labelsize": 6,
-            "pgf.preamble": "\n".join(
-                [
-                    r"\usepackage[utf8]{inputenc}",
-                    r"\usepackage[T1]{fontenc}",
-                    r"\usepackage{siunitx}",
-                    r"\usepackage{bm}",
-                ]
-            ),
-        }
-    )
+    plt.rcParams.update(fp.rcparams(fontsize=8))
 
     fig = plt.figure(figsize=(3.25, 2))
     for i, data in enumerate([square_data0, square_data1, circle_data0, circle_data1]):

@@ -115,6 +115,133 @@ class QPPusherSliderMotion:
         return Vo, f, α
 
 
+class QPPusherSliderMotion2:
+    """Quadratic program-based equations of motion."""
+
+    def __init__(self, f_max, τ_max, μ):
+        self.M = limit_surface_ellipsoid(f_max, τ_max)
+        self.μ = μ
+
+        # Optimization variables are (α, β, f), with all quantities in the
+        # body frame. If μ = 0, then we actually only need a single scalar
+        # variable to represent the force, since it must act along the contact
+        # normal.
+
+        # the gain represents a sort of compliance in the pusher-slider system:
+        # as it increases, we appraoch perfect velocity tracking
+        self.gain = 100
+
+        # cost is constant
+        P = np.diag([1.0, self.gain, 0, 0])
+
+        # establish constraint sparsity pattern
+        A, self.A_idx = self._A_sparsity_pattern()
+
+        # initial problem setup
+        self.problem = osqp.OSQP()
+        self.problem.setup(
+            P=sparse.csc_matrix(P),
+            q=np.zeros(4),
+            l=np.zeros(6),
+            u=np.zeros(6),
+            A=sparse.csc_matrix(A),
+            verbose=False,
+            eps_abs=1e-10,
+            eps_rel=1e-10,
+        )
+
+    @staticmethod
+    def _A_sparsity_pattern():
+        """Compute the sparsity pattern of A."""
+        A = np.ones((6, 4))
+        # A[2:, 0] = 0
+        # indices are taken w.r.t. column-wise flattened data
+        return A, np.nonzero(A.T.flatten())
+
+    def _A_data(self, A):
+        """Get data from A as required by CSC sparse matrix format."""
+        return A.T.flatten()[self.A_idx]
+
+    def _compute_constraints(self, u, W, nc, nc_perp):
+        """Compute updated constraint matrix and vectors l <= Ax <= u"""
+        # motion cone constraint
+        Lv = u
+        Uv = u
+        Av = np.hstack((nc_perp[:, None], nc[:, None], W.T @ self.M @ W))
+
+        # friction cone constraint
+        Lf = -np.inf * np.ones(3)
+        Uf = np.zeros(3)
+        # fmt: off
+        Af = np.hstack((np.zeros((3, 2)), np.vstack((
+            -nc,
+            -nc_perp - self.μ * nc,
+            nc_perp - self.μ * nc,
+        ))))
+        # fmt: on
+
+        # obstacle constraint
+        no = np.array([-1, 0])
+        ro = np.array([1, 0])
+        Wo = np.array([[1, 0], [0, 1], [-ro[1], ro[0]]])
+        Ao = np.concatenate((np.zeros(2), no @ Wo.T @ self.M @ W))
+
+        # put them together
+        L = np.concatenate((Lv, Lf, [0]))
+        U = np.concatenate((Uv, Uf, [np.inf]))
+        A = np.vstack((Av, Af, Ao[:, None].T))
+
+        return A, L, U
+
+    def solve(self, u, rc, nc):
+        """Update and solve the problem with the new data.
+
+        vp is the pusher velocity (at the contact) in the body frame
+        W is the matrix mapping the velocity at the contact to the body frame origin
+        nc is the contact normal (in the body frame)
+
+        Returns a tuple (Vo, f, α), where Vo is the generalized velocity of the
+        body about the body frame origin, f is the force at the contact, and α
+        is the slip velocity.
+        """
+        # TODO
+        if u @ nc < 0:
+            raise ValueError("Pusher pulling away from slider.")
+
+        W = np.array([[1, 0], [0, 1], [-rc[1], rc[0]]])
+        nc_perp = util.perp2d(nc)
+        A, L, U = self._compute_constraints(u, W, nc, nc_perp)
+
+        # Q = np.concatenate((-self.gain * u, np.zeros(2)))
+
+        self.problem.update(Ax=self._A_data(A), l=L, u=U)
+        res = self.problem.solve()
+
+        if None in res.x:
+            raise ValueError("QP solver failed!")
+
+        α = res.x[0]
+        β = res.x[1]
+        ρ = res.x[2:]
+
+        # α = (u - vp) @ nc_perp
+        vp = u - β * nc
+        v_slip = α * nc_perp
+
+        # recover object velocity
+        vo = vp - v_slip
+        Vo = self.M @ W @ ρ
+
+        # normalize ρ to obtain the contact force
+        f = ρ / np.sqrt(ρ @ W.T @ self.M @ W @ ρ)
+
+        f_comp = β * self.gain * nc
+        print(f_comp)
+        print(f + f_comp)
+
+        return Vo, f, α
+
+
 class QPPusherSliderMotionZeroFriction:
     """Quadratic program-based equations of motion, specialized for zero
     contact friction.

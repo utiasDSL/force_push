@@ -17,8 +17,14 @@ def plot_simulation(xs):
 
 def main():
     direction = np.array([1, 0])
-    radius = 2.0
-    path = fp.CirclePath(radius)
+
+    # radius = 2.0
+    # path = fp.CirclePath(radius)
+
+    radius = 0
+    vertices = np.array([[0, 0], [5, 0]])
+    path = fp.SegmentPath(vertices, final_direction=[0, 1])
+
     speed = 0.5
 
     hx = 0.5
@@ -28,8 +34,8 @@ def main():
     μ = 0.2
 
     # control gains
-    kθ = 0.25
-    ky = 0.1
+    kθ = 0.1
+    ky = 0.01
 
     # x = (x, y, θ, s, f_x, f_y)
     x0 = np.array([hx, -radius, 0, 0, 1, 0])
@@ -41,7 +47,7 @@ def main():
     timestep = 0.001
 
     success, ts, xs, us = fp.simulate_pushing2(
-        motion, slider, path, speed, kθ, ky, x0, duration, timestep
+        motion, slider, path, speed, kθ, ky, x0, duration, timestep, ki_θ=0.0, ki_y=0.0,
     )
     if not success:
         print("pushing failed!")

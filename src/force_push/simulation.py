@@ -7,7 +7,7 @@ from force_push import util
 from force_push.slider import CircleSlider, QuadSlider
 
 
-def simulate_pushing2(motion, slider, path, speed, kθ, ky, x0, duration, timestep):
+def simulate_pushing2(motion, slider, path, speed, kθ, ky, x0, duration, timestep, ki_θ=0, ki_y=0):
     """Simulate pushing a slider with single-point contact. [EXPERIMENTAL VERSION]"""
     x = x0.copy()
     xs = [x0.copy()]
@@ -17,8 +17,6 @@ def simulate_pushing2(motion, slider, path, speed, kθ, ky, x0, duration, timest
     success = True
     yc_int = 0
     θd_int = 0
-    ki_y = 0.03
-    ki_d = 0.03
 
     t = 0
     while t < duration:
@@ -49,10 +47,10 @@ def simulate_pushing2(motion, slider, path, speed, kθ, ky, x0, duration, timest
         # angle-based control law
         θd = util.signed_angle(Δ, util.unit(f_w))
         θd_int += timestep * θd
-        θp = (1 + kθ) * θd + ki_d * θd_int + θy
+        θp = (1 + kθ) * θd + ki_θ * θd_int + θy
 
-        if np.abs(θp) > 0.5 * np.pi:
-            print("Pusher is going backward.")
+        # if np.abs(θp) > 0.5 * np.pi:
+        #     print("Pusher is going backward.")
 
         vp_w = speed * util.rot2d(θp) @ Δ
         vp = C_wo.T @ vp_w

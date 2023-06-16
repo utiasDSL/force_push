@@ -34,8 +34,8 @@ def main():
     μ = 0.2
 
     # control gains
-    kθ = 0.1
-    ky = 0.01
+    kθ = 0.3
+    ky = 0.1
 
     # x = (x, y, θ, s, f_x, f_y)
     x0 = np.array([hx, -radius, 0, 0, 1, 0])
@@ -47,7 +47,7 @@ def main():
     timestep = 0.001
 
     success, ts, xs, us = fp.simulate_pushing2(
-        motion, slider, path, speed, kθ, ky, x0, duration, timestep, ki_θ=0.0, ki_y=0.0,
+        motion, slider, path, speed, kθ, ky, x0, duration, timestep, ki_θ=0.0, ki_y=0.0, lookahead=2
     )
     if not success:
         print("pushing failed!")

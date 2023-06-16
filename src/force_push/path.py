@@ -167,37 +167,48 @@ class SegmentPath:
     def compute_closest_point(self, p):
         return self._compute_closest_segment_and_point(p)[2]
 
-    def compute_travel_direction(self, p, d=0.5):
+    def compute_travel_direction(self, p, lookahead=0):
         # idx, _, _ = self._compute_closest_segment_and_point(p)
         # return self.directions[idx, :]
-        idx, _, c1 = self._compute_closest_segment_and_point(p)
-        n = self.vertices.shape[0]
-        if idx == n - 1 or d < np.linalg.norm(self.vertices[idx + 1, :] - c1):
-            return self.directions[idx, :]
-        return self.directions[idx + 1, :]
+        return self.compute_direction_and_offset(p, lookahead)[0]
 
     def compute_shortest_distance(self, p):
         return self._compute_closest_segment_and_point(p)[1]
 
-    def compute_lateral_offset(self, p, d=0.5):
+    def compute_lateral_offset(self, p, lookahead=0):
         # idx, _, _ = self._compute_closest_segment_and_point(p)
         # return self.perps[idx, :] @ (p - self.vertices[idx, :])
-        idx, _, c1 = self._compute_closest_segment_and_point(p)
-        n = self.vertices.shape[0]
-        if idx == n - 1 or d < np.linalg.norm(self.vertices[idx + 1, :] - c1):
-            return self.perps[idx, :] @ (p - self.vertices[idx, :])
-        return self.perps[idx + 1, :] @ (p - self.vertices[idx + 1, :])
+        return self.compute_direction_and_offset(p, lookahead)[1]
 
-    def compute_point_ahead(self, p, d):
-        """Compute point distance d ahead of closest point on path to p."""
+    def compute_direction_and_offset(self, p, lookahead=0):
+        """Compute travel direction and lateral offset for a point p and given
+        lookahead distance."""
+        assert lookahead >= 0
+        if lookahead < 1e-8:
+            idx, _, c = self._compute_closest_segment_and_point(p)
+            direction = self.directions[idx, :]
+            offset = self.perps[idx, :] @ (p - c)
+        else:
+            c1, c2 = self._compute_lookahead_points(p, lookahead)
+            direction = util.unit(c2 - c1)
+            perp = util.rot2d(np.pi / 2) @ direction
+            offset = perp @ (p - c1)
+        return direction, offset
+
+    def _compute_lookahead_points(self, p, lookahead):
+        """Compute the closest point on the path to `p` as well as the point
+        `lookahead` distance ahead of the closest point."""
         idx, _, c1 = self._compute_closest_segment_and_point(p)
-        n = self.vertices.shape[0]
-        if idx == n - 1:
-            return c1 + d * self.directions[idx, :]
+        c2 = c1 + lookahead * self.directions[idx, :]
+
+        # short circuit when no more vertices ahead
+        if idx == self.vertices.shape[0] - 1:
+            return c1, c2
+
         Δ = np.linalg.norm(self.vertices[idx + 1, :] - c1)
-        if d < Δ:
-            return c1 + d * self.directions[idx, :]
         # NOTE: right now we are assuming the lookahead is not so high as to
         # cover more than one vertex
-        return self.vertices[idx + 1, :] + (Δ - d) * self.directions[idx + 1, :]
+        if lookahead > Δ:
+            c2 = self.vertices[idx + 1, :] + (lookahead - Δ) * self.directions[idx + 1, :]
+        return c1, c2
 

@@ -68,10 +68,9 @@ def test_segment_path():
 
     p = np.array([2, 1])
     c = path.compute_closest_point(p)
-    d = path.compute_lateral_offset(p)
-    direction = path.compute_travel_direction(p)
+    direction, offset = path.compute_direction_and_offset(p)
 
-    assert np.allclose(d, 1)
+    assert np.allclose(offset, -1)
     assert np.allclose(c, [1, 1])
     assert np.allclose(direction, [0, 1])
 
@@ -81,10 +80,9 @@ def test_square_path():
 
     p = np.array([3, 1])
     c = path.compute_closest_point(p)
-    d = path.compute_lateral_offset(p)
-    direction = path.compute_travel_direction(p)
+    direction, offset = path.compute_direction_and_offset(p)
 
-    assert np.allclose(d, 1)
+    assert np.allclose(offset, -1)
     assert np.allclose(c, [2, 1])
     assert np.allclose(direction, [0, 1])
 
@@ -94,9 +92,8 @@ def test_line_path():
 
     p = np.array([1, 1])
     c = path.compute_closest_point(p)
-    d = path.compute_lateral_offset(p)
-    direction = path.compute_travel_direction(p)
+    direction, offset = path.compute_direction_and_offset(p)
 
-    assert np.allclose(d, 1)
+    assert np.allclose(offset, 1)
     assert np.allclose(c, [1, 0])
     assert np.allclose(direction, [1, 0])

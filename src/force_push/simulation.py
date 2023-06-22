@@ -42,6 +42,7 @@ def simulate_pushing2(motion, slider, path, speed, kθ, ky, x0, duration, timest
 
         # Δ = path.compute_travel_direction(r_cw_w)
         # yc = path.compute_lateral_offset(r_cw_w)
+        # TODO make this a separate function
         Δ, yc = path.compute_direction_and_offset(r_cw_w, lookahead)
 
         yc_int += timestep * yc

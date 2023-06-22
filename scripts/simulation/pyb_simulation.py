@@ -12,15 +12,35 @@ import IPython
 
 SIM_TIMESTEP = 0.01
 
-CONTACT_MU = 0.5
-SURFACE_MU = 0.5
+CONTACT_MU = 0.2
+SURFACE_MU = 1.0
 PUSH_SPEED = 0.1
 
 
-class Pusher:
-    def __init__(self, position, radius=0.05):
+class BulletBody:
+    def __init__(self, position, collision_uid, visual_uid, mass=0, orientation=None):
+        if orientation is None:
+            orientation = (0, 0, 0, 1)
 
-        # create the object
+        self.uid = pyb.createMultiBody(
+            baseMass=mass,
+            baseCollisionShapeIndex=collision_uid,
+            baseVisualShapeIndex=visual_uid,
+            basePosition=tuple(position),
+            baseOrientation=tuple(orientation),
+        )
+
+    def get_position(self):
+        pos, _ = pyb.getBasePositionAndOrientation(self.uid)
+        return np.array(pos)
+
+    def command_velocity(self, v):
+        assert len(v) == 3
+        pyb.resetBaseVelocity(self.uid, linearVelocity=list(v))
+
+
+class Pusher(BulletBody):
+    def __init__(self, position, radius=0.05):
         collision_uid = pyb.createCollisionShape(
             shapeType=pyb.GEOM_SPHERE,
             radius=radius,
@@ -30,18 +50,9 @@ class Pusher:
             radius=radius,
             rgbaColor=[1, 0, 0, 1],
         )
-        self.uid = pyb.createMultiBody(
-            baseMass=0,
-            baseCollisionShapeIndex=collision_uid,
-            baseVisualShapeIndex=visual_uid,
-            basePosition=tuple(position),
-        )
+        super().__init__(position, collision_uid, visual_uid)
 
         pyb.changeDynamics(self.uid, -1, lateralFriction=CONTACT_MU)
-
-    def get_position(self):
-        pos, _ = pyb.getBasePositionAndOrientation(self.uid)
-        return np.array(pos)
 
     def get_contact_force(self, slider):
         """Return contact force, expressed in the world frame."""
@@ -62,12 +73,8 @@ class Pusher:
         force = nf + ff1 + ff2
         return force
 
-    def command_velocity(self, v):
-        assert len(v) == 3
-        pyb.resetBaseVelocity(self.uid, linearVelocity=list(v))
 
-
-class Slider:
+class SquareSlider(BulletBody):
     def __init__(self, position, mass=1, half_extents=(0.5, 0.5, 0.1)):
         collision_uid = pyb.createCollisionShape(
             shapeType=pyb.GEOM_BOX,
@@ -78,13 +85,24 @@ class Slider:
             halfExtents=tuple(half_extents),
             rgbaColor=[0, 0, 1, 1],
         )
-        self.uid = pyb.createMultiBody(
-            baseMass=mass,
-            baseCollisionShapeIndex=collision_uid,
-            baseVisualShapeIndex=visual_uid,
-            basePosition=tuple(position),
-        )
+        super().__init__(position, collision_uid, visual_uid, mass=mass)
+        pyb.changeDynamics(self.uid, -1, lateralFriction=1.)
 
+
+class CircleSlider(BulletBody):
+    def __init__(self, position, mass=1, radius=0.5, height=0.2):
+        collision_uid = pyb.createCollisionShape(
+            shapeType=pyb.GEOM_CYLINDER,
+            radius=radius,
+            height=height,
+        )
+        visual_uid = pyb.createVisualShape(
+            shapeType=pyb.GEOM_CYLINDER,
+            radius=radius,
+            length=height,
+            rgbaColor=[0, 0, 1, 1],
+        )
+        super().__init__(position, collision_uid, visual_uid, mass=mass)
         pyb.changeDynamics(self.uid, -1, lateralFriction=1.)
 
 
@@ -93,7 +111,7 @@ def main():
     pyb.changeDynamics(sim.ground_id, -1, lateralFriction=SURFACE_MU)
 
     pusher = Pusher([0, 0, 0.1])
-    slider = Slider([0.7, 0.4, 0.1])
+    slider = CircleSlider([0.7, 0.4, 0.1])
 
     # desired path
     path = fp.SegmentPath.line(direction=[1, 0])

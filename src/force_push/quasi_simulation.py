@@ -1,4 +1,5 @@
-"""Basic functions for simulating and viewing the pusher-slider system."""
+"""Basic functions for simulating and viewing the pusher-slider system under
+the quasi-static assumption."""
 import numpy as np
 import matplotlib.pyplot as plt
 import time
@@ -7,6 +8,7 @@ from force_push import util
 from force_push.slider import CircleSlider, QuadSlider
 
 
+# TODO: eventually this will replace the original simulate_pushing function below
 def simulate_pushing2(motion, slider, controller, x0, duration, timestep):
     """Simulate pushing a slider with single-point contact. [EXPERIMENTAL VERSION]"""
     x = x0.copy()

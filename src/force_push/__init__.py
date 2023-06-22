@@ -7,7 +7,8 @@ from force_push.util import *
 from force_push.path import *
 from force_push.slider import *
 from force_push.motion import *
-from force_push.simulation import *
+from force_push.quasi_simulation import *
+from force_push.pyb_simulation import *
 from force_push.plotting import *
 from force_push.control import *
 

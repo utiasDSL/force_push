@@ -7,7 +7,7 @@ from force_push import util
 from force_push.slider import CircleSlider, QuadSlider
 
 
-def simulate_pushing2(motion, slider, path, speed, kθ, ky, x0, duration, timestep, ki_θ=0, ki_y=0, lookahead=0):
+def simulate_pushing2(motion, slider, controller, x0, duration, timestep):
     """Simulate pushing a slider with single-point contact. [EXPERIMENTAL VERSION]"""
     x = x0.copy()
     xs = [x0.copy()]
@@ -15,8 +15,6 @@ def simulate_pushing2(motion, slider, path, speed, kθ, ky, x0, duration, timest
     ts = [0]
 
     success = True
-    yc_int = 0
-    θd_int = 0
 
     t = 0
     while t < duration:
@@ -35,25 +33,10 @@ def simulate_pushing2(motion, slider, path, speed, kθ, ky, x0, duration, timest
             success = False
             break
 
-        # term to correct deviations from desired line
-        # this is simpler than pure pursuit!
         r_ow_w = x[:2]
         r_cw_w = r_ow_w + C_wo @ r_co_o
 
-        # Δ = path.compute_travel_direction(r_cw_w)
-        # yc = path.compute_lateral_offset(r_cw_w)
-        # TODO make this a separate function
-        Δ, yc = path.compute_direction_and_offset(r_cw_w, lookahead)
-
-        yc_int += timestep * yc
-        θy = ky * yc + ki_y * yc_int
-
-        # angle-based control law
-        θd = util.signed_angle(Δ, util.unit(f_w))
-        θd_int += timestep * θd
-        θp = (1 + kθ) * θd + ki_θ * θd_int + θy
-
-        vp_w = speed * util.rot2d(θp) @ Δ
+        vp_w = controller.update(r_cw_w, f_w, timestep)
         vp = C_wo.T @ vp_w
 
         # equations of motion
@@ -177,7 +160,9 @@ def simulate_pushing(motion, slider, path, speed, kθ, ky, x0, duration, timeste
 
 
 def make_line(a, b, color="k"):
-    return plt.Line2D([a[0], b[0]], [a[1], b[1]], color=color, linewidth=1, solid_capstyle="round")
+    return plt.Line2D(
+        [a[0], b[0]], [a[1], b[1]], color=color, linewidth=1, solid_capstyle="round"
+    )
 
 
 def update_line(line, a, b):

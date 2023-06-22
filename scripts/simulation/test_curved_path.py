@@ -42,12 +42,13 @@ def main():
 
     motion = fp.QPPusherSliderMotion(f_max, τ_max, μ)
     slider = fp.QuadSlider(hx, hy, cof=[0, 0])
+    controller = fp.Controller(speed, kθ, ky, path, ki_θ=0, ki_y=0, lookahead=2)
 
     duration = 100
     timestep = 0.001
 
     success, ts, xs, us = fp.simulate_pushing2(
-        motion, slider, path, speed, kθ, ky, x0, duration, timestep, ki_θ=0.0, ki_y=0.0, lookahead=2
+        motion, slider, controller, x0, duration, timestep
     )
     if not success:
         print("pushing failed!")

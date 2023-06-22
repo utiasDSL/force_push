@@ -212,3 +212,16 @@ class SegmentPath:
             c2 = self.vertices[idx + 1, :] + (lookahead - Δ) * self.directions[idx + 1, :]
         return c1, c2
 
+    def get_coords(self, dist=5):
+        """Get coordinates of the path (for plotting).
+
+        For an open path, the `dist` parameter defines how far the final
+        coordinate should be from the final vertex along the final direction.
+
+        Returns a shape (n, 2) array of (x, y) coordinates.
+        """
+        if self.closed:
+            last_vertex = self.vertices[0, :]
+        else:
+            last_vertex = self.vertices[-1, :] + dist * self.directions[-1, :]
+        return np.vstack((self.vertices, last_vertex))

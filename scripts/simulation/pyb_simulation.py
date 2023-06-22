@@ -3,6 +3,8 @@ import time
 import pybullet as pyb
 import pybullet_data
 import numpy as np
+import matplotlib.pyplot as plt
+from pyb_utils.frame import debug_frame_world
 
 import mobile_manipulation_central as mm
 import force_push as fp
@@ -10,11 +12,20 @@ import force_push as fp
 import IPython
 
 
-SIM_TIMESTEP = 0.01
+# Hz
+SIM_FREQ = 1000
+CTRL_FREQ = 100
+
+DURATION = 60
 
 CONTACT_MU = 0.2
 SURFACE_MU = 1.0
-PUSH_SPEED = 0.1
+
+# controller params
+PUSH_SPEED = 0.5
+Kθ = 0.5
+KY = 0.1
+LOOKAHEAD = 2.0
 
 
 class BulletBody:
@@ -86,7 +97,7 @@ class SquareSlider(BulletBody):
             rgbaColor=[0, 0, 1, 1],
         )
         super().__init__(position, collision_uid, visual_uid, mass=mass)
-        pyb.changeDynamics(self.uid, -1, lateralFriction=1.)
+        pyb.changeDynamics(self.uid, -1, lateralFriction=1.0)
 
 
 class CircleSlider(BulletBody):
@@ -103,39 +114,67 @@ class CircleSlider(BulletBody):
             rgbaColor=[0, 0, 1, 1],
         )
         super().__init__(position, collision_uid, visual_uid, mass=mass)
-        pyb.changeDynamics(self.uid, -1, lateralFriction=1.)
+        pyb.changeDynamics(self.uid, -1, lateralFriction=1.0)
 
 
 def main():
-    sim = mm.BulletSimulation(SIM_TIMESTEP)
-    pyb.changeDynamics(sim.ground_id, -1, lateralFriction=SURFACE_MU)
+    sim = mm.BulletSimulation(1.0 / SIM_FREQ)
+    pyb.changeDynamics(sim.ground_uid, -1, lateralFriction=SURFACE_MU)
 
     pusher = Pusher([0, 0, 0.1])
-    slider = CircleSlider([0.7, 0.4, 0.1])
+    slider = SquareSlider([0.7, 0.4, 0.1])
 
     # desired path
-    path = fp.SegmentPath.line(direction=[1, 0])
+    # path = fp.SegmentPath.line(direction=[1, 0])
+    vertices = np.array([[0, 0], [5, 0]])
+    path = fp.SegmentPath(vertices, final_direction=[0, 1])
 
-    # control gains
-    kθ = 0.3
-    ky = 0.1
+    for vertex in path.vertices:
+        r = np.append(vertex, 0.1)
+        debug_frame_world(0.2, tuple(r), line_width=3)
+
+    controller = fp.Controller(
+        speed=PUSH_SPEED, kθ=Kθ, ky=KY, path=path, lookahead=LOOKAHEAD
+    )
+
+    r_pw_ws = []
+    r_sw_ws = []
+    ts = []
 
     t = 0
-    while True:
-        force = pusher.get_contact_force(slider)
-        r_cw_w = pusher.get_position()
+    steps = DURATION * SIM_FREQ
+    for i in range(DURATION * SIM_FREQ):
+        t = sim.timestep * i
 
-        # angle-based control law
-        Δ, yc = path.compute_direction_and_offset(r_cw_w[:2], lookahead=0)
-        θy = ky * yc
-        θd = fp.signed_angle(Δ, fp.unit(force[:2]))
-        θp = (1 + kθ) * θd + ky * yc
-        vp_w = PUSH_SPEED * fp.rot2d(θp) @ Δ
+        if i % CTRL_FREQ == 0:
+            force = pusher.get_contact_force(slider)
+            r_pw_w = pusher.get_position()
+            v_cmd = controller.update(r_pw_w[:2], force[:2])
+            pusher.command_velocity(np.append(v_cmd, 0))
 
-        pusher.command_velocity(np.append(vp_w, 0))
+            # record information
+            r_pw_ws.append(r_pw_w)
+            r_sw_ws.append(slider.get_position())
+            ts.append(t)
 
-        t = sim.step(t)
-        time.sleep(SIM_TIMESTEP)
+        sim.step(t)
+        # time.sleep(SIM_TIMESTEP)
+
+    r_pw_ws = np.array(r_pw_ws)
+    r_sw_ws = np.array(r_sw_ws)
+
+    d = path.directions[-1, :]
+    v = path.vertices[-1, :]
+    dist = np.max(np.concatenate(((r_pw_ws[:, :2] - v) @ d, (r_sw_ws[:, :2] - v) @ d)))
+    r_dw_ws = path.get_coords(dist)
+
+    plt.figure()
+    plt.plot(r_sw_ws[:, 0], r_sw_ws[:, 1], label="Slider")
+    plt.plot(r_pw_ws[:, 0], r_pw_ws[:, 1], label="Pusher")
+    plt.plot(r_dw_ws[:, 0], r_dw_ws[:, 1], "--", color="k", label="Desired")
+    plt.legend()
+    plt.grid()
+    plt.show()
 
 
 if __name__ == "__main__":

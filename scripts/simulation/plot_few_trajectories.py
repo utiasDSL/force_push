@@ -18,7 +18,6 @@ def generate_data(slider, motion):
 
     duration = 210
     timestep = 0.01
-    f_max = 1
     speed = 0.1
 
     # control gains

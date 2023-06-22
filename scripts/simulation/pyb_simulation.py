@@ -15,13 +15,13 @@ import IPython
 SIM_FREQ = 1000
 CTRL_FREQ = 100
 
-DURATION = 60
+DURATION = 200
 
 CONTACT_MU = 0.2
 SURFACE_MU = 1.0
 
 # controller params
-PUSH_SPEED = 0.5
+PUSH_SPEED = 0.1
 Kθ = 0.5
 KY = 0.1
 LOOKAHEAD = 2.0
@@ -32,7 +32,12 @@ def main():
     pyb.changeDynamics(sim.ground_uid, -1, lateralFriction=SURFACE_MU)
 
     pusher = fp.BulletPusher([0, 0, 0.1], mu=CONTACT_MU)
-    slider = fp.BulletSquareSlider([0.7, 0.4, 0.1])
+    # slider = fp.BulletCircleSlider([0.7, 0.25, 0.1])
+    slider = fp.BulletSquareSlider([0.7, 0.25, 0.1])
+    pyb.changeDynamics(slider.uid, -1, contactDamping=100, contactStiffness=10000)
+
+    block1 = fp.BulletBlock([2, 1.5, 0.5], [2, 0.5, 0.5], mu=0.5)
+    block2 = fp.BulletBlock([6, 0.5, 0.5], [0.5, 1.5, 0.5], mu=0.5)
 
     # desired path
     # path = fp.SegmentPath.line(direction=[1, 0])
@@ -67,8 +72,8 @@ def main():
             r_sw_ws.append(slider.get_position())
             ts.append(t)
 
-        sim.step(t)
-        # time.sleep(SIM_TIMESTEP)
+        sim.step()
+        # time.sleep(sim.timestep)
 
     r_pw_ws = np.array(r_pw_ws)
     r_sw_ws = np.array(r_sw_ws)

@@ -5,7 +5,10 @@ import pybullet as pyb
 
 class BulletBody:
     """Generic rigid body in PyBullet."""
-    def __init__(self, position, collision_uid, visual_uid, mass=0, mu=1.0, orientation=None):
+
+    def __init__(
+        self, position, collision_uid, visual_uid, mass=0, mu=1.0, orientation=None
+    ):
         if orientation is None:
             orientation = (0, 0, 0, 1)
 
@@ -88,3 +91,19 @@ class BulletCircleSlider(BulletBody):
             rgbaColor=[0, 0, 1, 1],
         )
         super().__init__(position, collision_uid, visual_uid, mass=mass)
+
+
+class BulletBlock(BulletBody):
+    def __init__(self, position, half_extents, mu=1.0, orientation=None):
+        collision_uid = pyb.createCollisionShape(
+            shapeType=pyb.GEOM_BOX,
+            halfExtents=tuple(half_extents),
+        )
+        visual_uid = pyb.createVisualShape(
+            shapeType=pyb.GEOM_BOX,
+            halfExtents=tuple(half_extents),
+            rgbaColor=[0, 1, 0, 1],
+        )
+        super().__init__(
+            position, collision_uid, visual_uid, mu=mu, orientation=orientation
+        )

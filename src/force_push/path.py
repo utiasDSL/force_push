@@ -167,18 +167,8 @@ class SegmentPath:
     def compute_closest_point(self, p):
         return self._compute_closest_segment_and_point(p)[2]
 
-    def compute_travel_direction(self, p, lookahead=0):
-        # idx, _, _ = self._compute_closest_segment_and_point(p)
-        # return self.directions[idx, :]
-        return self.compute_direction_and_offset(p, lookahead)[0]
-
     def compute_shortest_distance(self, p):
         return self._compute_closest_segment_and_point(p)[1]
-
-    def compute_lateral_offset(self, p, lookahead=0):
-        # idx, _, _ = self._compute_closest_segment_and_point(p)
-        # return self.perps[idx, :] @ (p - self.vertices[idx, :])
-        return self.compute_direction_and_offset(p, lookahead)[1]
 
     def compute_direction_and_offset(self, p, lookahead=0):
         """Compute travel direction and lateral offset for a point p and given
@@ -198,19 +188,34 @@ class SegmentPath:
     def _compute_lookahead_points(self, p, lookahead):
         """Compute the closest point on the path to `p` as well as the point
         `lookahead` distance ahead of the closest point."""
-        idx, _, c1 = self._compute_closest_segment_and_point(p)
-        c2 = c1 + lookahead * self.directions[idx, :]
+        idx, _, c = self._compute_closest_segment_and_point(p)
+        # c2 = c1 + lookahead * self.directions[idx, :]
 
         # short circuit when no more vertices ahead
-        if idx == self.vertices.shape[0] - 1:
-            return c1, c2
+        # if idx == self.vertices.shape[0] - 1:
+        #     return c1, c2
 
-        Δ = np.linalg.norm(self.vertices[idx + 1, :] - c1)
-        # NOTE: right now we are assuming the lookahead is not so high as to
-        # cover more than one vertex
-        if lookahead > Δ:
-            c2 = self.vertices[idx + 1, :] + (lookahead - Δ) * self.directions[idx + 1, :]
-        return c1, c2
+        # TODO experimental cost to generalize lookahead to any distance b/t
+        # vertices
+        v0 = c
+        for j in range(idx + 1, self.vertices.shape[0]):
+            v = self.vertices[j, :]
+            dist = np.linalg.norm(v - v0)
+            if lookahead > dist:
+                lookahead -= dist
+                v0 = v
+            else:
+                return c, v0 + lookahead * self.directions[j - 1, :]
+
+        # TODO this doesn't handle closed paths
+        return c, v0 + lookahead * self.directions[-1, :]
+
+        # Δ = np.linalg.norm(self.vertices[idx + 1, :] - c1)
+        # # NOTE: right now we are assuming the lookahead is not so high as to
+        # # cover more than one vertex
+        # if lookahead > Δ:
+        #     c2 = self.vertices[idx + 1, :] + (lookahead - Δ) * self.directions[idx + 1, :]
+        # return c1, c2
 
     def get_coords(self, dist=5):
         """Get coordinates of the path (for plotting).

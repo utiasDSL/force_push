@@ -189,33 +189,33 @@ class SegmentPath:
         """Compute the closest point on the path to `p` as well as the point
         `lookahead` distance ahead of the closest point."""
         idx, _, c = self._compute_closest_segment_and_point(p)
-        # c2 = c1 + lookahead * self.directions[idx, :]
 
-        # short circuit when no more vertices ahead
-        # if idx == self.vertices.shape[0] - 1:
-        #     return c1, c2
+        # when the path is closed we can wrap around to vertices at the start
+        # of the path, soo we need to iterate beyond the end of the vertex
+        # array (and module to wrap back around)
+        n = self.vertices.shape[0]
+        if self.closed:
+            N = 2 * n
+        else:
+            N = n
 
-        # TODO experimental cost to generalize lookahead to any distance b/t
-        # vertices
+        # iterate through vertices until we find the point `lookahead` distance
+        # beyond the current point
         v0 = c
-        for j in range(idx + 1, self.vertices.shape[0]):
-            v = self.vertices[j, :]
+        for j in range(idx + 1, N):
+            i = j % n
+            v = self.vertices[i, :]
             dist = np.linalg.norm(v - v0)
             if lookahead > dist:
                 lookahead -= dist
                 v0 = v
             else:
-                return c, v0 + lookahead * self.directions[j - 1, :]
+                return c, v0 + lookahead * self.directions[i - 1, :]
 
-        # TODO this doesn't handle closed paths
+        # at this point we must have run out of vertices, which means we must
+        # have an open path
+        assert not self.closed
         return c, v0 + lookahead * self.directions[-1, :]
-
-        # Δ = np.linalg.norm(self.vertices[idx + 1, :] - c1)
-        # # NOTE: right now we are assuming the lookahead is not so high as to
-        # # cover more than one vertex
-        # if lookahead > Δ:
-        #     c2 = self.vertices[idx + 1, :] + (lookahead - Δ) * self.directions[idx + 1, :]
-        # return c1, c2
 
     def get_coords(self, dist=5):
         """Get coordinates of the path (for plotting).

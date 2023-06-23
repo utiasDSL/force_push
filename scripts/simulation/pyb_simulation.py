@@ -34,6 +34,8 @@ def main():
     pusher = fp.BulletPusher([0, 0, 0.1], mu=CONTACT_MU)
     # slider = fp.BulletCircleSlider([0.7, 0.25, 0.1])
     slider = fp.BulletSquareSlider([0.7, 0.25, 0.1])
+
+    # see e.g. <https://github.com/bulletphysics/bullet3/issues/4428>
     pyb.changeDynamics(slider.uid, -1, contactDamping=100, contactStiffness=10000)
 
     block1 = fp.BulletBlock([2, 1.5, 0.5], [2, 0.5, 0.5], mu=0.5)

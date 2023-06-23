@@ -75,6 +75,52 @@ def test_segment_path():
     assert np.allclose(direction, [0, 1])
 
 
+def test_segment_lookahead_closed():
+    vertices = np.array([[0, 0], [2, 0], [2, 2], [0, 2]])
+    path = fp.SegmentPath(vertices)
+
+    # test lookahead on the same edge
+    p = np.array([0, 0])
+    c1, c2 = path._compute_lookahead_points(p, lookahead=1)
+    assert np.allclose(p, c1)
+    assert np.allclose(c2, [1, 0])
+
+    # test lookahead on the next edge
+    p = np.array([1, 0])
+    c1, c2 = path._compute_lookahead_points(p, lookahead=2)
+    assert np.allclose(p, c1)
+    assert np.allclose(c2, [2, 1])
+
+    # test lookahead two edges ahead
+    p = np.array([1, 0])
+    c1, c2 = path._compute_lookahead_points(p, lookahead=4)
+    assert np.allclose(p, c1)
+    assert np.allclose(c2, [1, 2])
+
+    # test lookahead wrap-around
+    p = np.array([0, 1])
+    c1, c2 = path._compute_lookahead_points(p, lookahead=2)
+    assert np.allclose(p, c1)
+    assert np.allclose(c2, [1, 0])
+
+
+def test_segment_lookahead_open():
+    vertices = np.array([[0, 0], [2, 0]])
+    path = fp.SegmentPath(vertices, final_direction=[0, 1])
+
+    # test lookahead on the same edge
+    p = np.array([0, 0])
+    c1, c2 = path._compute_lookahead_points(p, lookahead=1)
+    assert np.allclose(p, c1)
+    assert np.allclose(c2, [1, 0])
+
+    # test lookahead on the next (final) edge
+    p = np.array([1, 0])
+    c1, c2 = path._compute_lookahead_points(p, lookahead=4)
+    assert np.allclose(p, c1)
+    assert np.allclose(c2, [2, 3])
+
+
 def test_square_path():
     path = fp.SegmentPath.square(half_length=1.0, center=[1, 1])
 

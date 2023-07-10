@@ -13,7 +13,14 @@ def rot2d(θ):
 
 
 def skew2d(x):
+    """Form a skew-symmetric matrix out of scalar x."""
     return np.array([[0, -x], [x, 0]])
+
+
+def skew3d(v):
+    """Form a skew-symmetric matrix out of 3-dimensional vector v."""
+    x, y, z = v
+    return np.array([[0, -z, y], [z, 0, -x], [-y, x, 0]])
 
 
 def signed_angle(a, b):

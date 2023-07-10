@@ -32,8 +32,13 @@ class BulletBody:
         assert len(v) == 3
         pyb.resetBaseVelocity(self.uid, linearVelocity=list(v))
 
-    def reset(self):
+    def reset(self, position=None, orientation=None):
         """Reset the body to initial pose and zero velocity."""
+        if position is not None:
+            self.pos_init = position
+        if orientation is not None:
+            self.orn_init = orientation
+
         pyb.resetBaseVelocity(
             self.uid, linearVelocity=[0, 0, 0], angularVelocity=[0, 0, 0]
         )

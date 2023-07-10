@@ -12,8 +12,12 @@ def rot2d(θ):
     return np.array([[np.cos(θ), -np.sin(θ)], [np.sin(θ), np.cos(θ)]])
 
 
+def skew2d(x):
+    return np.array([[0, -x], [x, 0]])
+
+
 def signed_angle(a, b):
-    """Angle to rotate a to b.
+    """Angle to rotate a to b (in radians).
 
     See <https://stackoverflow.com/a/2150111/5145874>"""
     θa = np.arctan2(a[1], a[0])

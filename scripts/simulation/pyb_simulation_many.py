@@ -15,7 +15,8 @@ import IPython
 SIM_FREQ = 1000
 CTRL_FREQ = 100
 
-DURATION = 200
+# seconds
+DURATION = 20
 
 CONTACT_MU = 0.2
 SURFACE_MU = 1.0
@@ -27,46 +28,7 @@ KY = 0.1
 LOOKAHEAD = 2.0
 
 
-def main():
-    sim = mm.BulletSimulation(1.0 / SIM_FREQ)
-    pyb.changeDynamics(sim.ground_uid, -1, lateralFriction=SURFACE_MU)
-
-    pusher = fp.BulletPusher([0, 0, 0.1], mu=CONTACT_MU)
-    # slider = fp.BulletCircleSlider([0.7, 0.25, 0.1])
-    slider = fp.BulletSquareSlider([1, 0.25, 0.1])
-
-    # see e.g. <https://github.com/bulletphysics/bullet3/issues/4428>
-    pyb.changeDynamics(slider.uid, -1, contactDamping=100, contactStiffness=10000)
-
-    # constraint to keep the slider fixed in place (to test out recovery
-    # mechanism)
-    # pyb.createConstraint(
-    #     slider.uid,
-    #     -1,
-    #     -1,
-    #     -1,
-    #     pyb.JOINT_FIXED,
-    #     jointAxis=[0, 0, 1],  # doesn't matter
-    #     parentFramePosition=[0, 0, 0],
-    #     childFramePosition=[1, 0.25, 0.1],
-    # )
-
-    # block1 = fp.BulletBlock([2, 1.5, 0.5], [2, 0.5, 0.5], mu=0.5)
-    # block2 = fp.BulletBlock([6, 0.5, 0.5], [0.5, 1.5, 0.5], mu=0.5)
-    # vertices = np.array([[0, 0], [5, 0]])
-    # path = fp.SegmentPath(vertices, final_direction=[0, 1])
-
-    # pillar1 = fp.BulletPillar([3, 0.1, 0.5], radius=0.2, mu=0.5)
-    path = fp.SegmentPath.line(direction=[1, 0])
-
-    for vertex in path.vertices:
-        r = np.append(vertex, 0.1)
-        debug_frame_world(0.2, tuple(r), line_width=3)
-
-    controller = fp.Controller(
-        speed=PUSH_SPEED, kθ=Kθ, ky=KY, path=path, lookahead=LOOKAHEAD
-    )
-
+def simulate(sim, pusher, slider, controller):
     r_pw_ws = []
     r_sw_ws = []
     ts = []
@@ -88,10 +50,46 @@ def main():
             ts.append(t)
 
         sim.step()
-        time.sleep(sim.timestep)
+        # time.sleep(sim.timestep)
 
+    ts = np.array(ts)
     r_pw_ws = np.array(r_pw_ws)
     r_sw_ws = np.array(r_sw_ws)
+    return ts, r_pw_ws, r_sw_ws
+
+
+def main():
+    sim = mm.BulletSimulation(1.0 / SIM_FREQ)
+    pyb.changeDynamics(sim.ground_uid, -1, lateralFriction=SURFACE_MU)
+
+    pusher = fp.BulletPusher([0, 0, 0.1], mu=CONTACT_MU)
+    # slider = fp.BulletCircleSlider([0.7, 0.25, 0.1])
+    slider = fp.BulletSquareSlider([0.7, 0.25, 0.1])
+
+    # see e.g. <https://github.com/bulletphysics/bullet3/issues/4428>
+    pyb.changeDynamics(slider.uid, -1, contactDamping=100, contactStiffness=10000)
+
+    # block1 = fp.BulletBlock([2, 1.5, 0.5], [2, 0.5, 0.5], mu=0.5)
+    # block2 = fp.BulletBlock([6, 0.5, 0.5], [0.5, 1.5, 0.5], mu=0.5)
+    # vertices = np.array([[0, 0], [5, 0]])
+    # path = fp.SegmentPath(vertices, final_direction=[0, 1])
+
+    path = fp.SegmentPath.line(direction=[1, 0])
+
+    for vertex in path.vertices:
+        r = np.append(vertex, 0.1)
+        debug_frame_world(0.2, tuple(r), line_width=3)
+
+    controller = fp.Controller(
+        speed=PUSH_SPEED, kθ=Kθ, ky=KY, path=path, lookahead=LOOKAHEAD
+    )
+
+    ts, r_pw_ws, r_sw_ws = simulate(sim, pusher, slider, controller)
+    pusher.reset()
+    slider.reset()
+    controller.reset()
+    sim.step()
+    ts, r_pw_ws, r_sw_ws = simulate(sim, pusher, slider, controller)
 
     d = path.directions[-1, :]
     v = path.vertices[-1, :]

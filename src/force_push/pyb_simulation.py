@@ -12,6 +12,9 @@ class BulletBody:
         if orientation is None:
             orientation = (0, 0, 0, 1)
 
+        self.pos_init = np.copy(position)
+        self.orn_init = np.copy(orientation)
+
         self.uid = pyb.createMultiBody(
             baseMass=mass,
             baseCollisionShapeIndex=collision_uid,
@@ -28,6 +31,15 @@ class BulletBody:
     def command_velocity(self, v):
         assert len(v) == 3
         pyb.resetBaseVelocity(self.uid, linearVelocity=list(v))
+
+    def reset(self):
+        """Reset the body to initial pose and zero velocity."""
+        pyb.resetBaseVelocity(
+            self.uid, linearVelocity=[0, 0, 0], angularVelocity=[0, 0, 0]
+        )
+        pyb.resetBasePositionAndOrientation(
+            self.uid, posObj=list(self.pos_init), ornObj=list(self.orn_init)
+        )
 
 
 class BulletPusher(BulletBody):
@@ -107,3 +119,19 @@ class BulletBlock(BulletBody):
         super().__init__(
             position, collision_uid, visual_uid, mu=mu, orientation=orientation
         )
+
+
+class BulletPillar(BulletBody):
+    def __init__(self, position, radius, height=1.0, mu=1.0):
+        collision_uid = pyb.createCollisionShape(
+            shapeType=pyb.GEOM_CYLINDER,
+            radius=radius,
+            height=height,
+        )
+        visual_uid = pyb.createVisualShape(
+            shapeType=pyb.GEOM_CYLINDER,
+            radius=radius,
+            length=height,
+            rgbaColor=[0, 1, 0, 1],
+        )
+        super().__init__(position, collision_uid, visual_uid, mu=mu, orientation=None)

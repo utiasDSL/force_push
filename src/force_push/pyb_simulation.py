@@ -58,26 +58,53 @@ class BulletPusher(BulletBody):
             radius=radius,
             rgbaColor=[1, 0, 0, 1],
         )
-        super().__init__(position, collision_uid, visual_uid, mu=mu)
+        super().__init__(position, collision_uid, visual_uid, mass=0, mu=mu)
 
-    def get_contact_force(self, slider):
+        self.v_last = np.zeros(3)
+        self.v_err_int = np.zeros(3)
+
+    def get_contact_force(self, uids):
         """Return contact force, expressed in the world frame."""
-        pts = pyb.getContactPoints(self.uid, slider.uid, -1, -1)
-        assert len(pts) <= 1
-        if len(pts) == 0:
-            return np.zeros(3)
+        force = np.zeros(3)
+        for uid in uids:
+            pts = pyb.getContactPoints(self.uid, uid, -1, -1)
+            assert len(pts) <= 1
+            if len(pts) == 0:
+                continue
 
-        pt = pts[0]
-        # pos = np.array(pt[5])
-        normal = -np.array(pt[7])
-        nf = pt[9] * normal
+            pt = pts[0]
+            # pos = np.array(pt[5])
+            normal = -np.array(pt[7])
+            nf = pt[9] * normal
 
-        # TODO not sure if friction directions should also be negated to get
-        # the force applied by pusher on slider
-        ff1 = -pt[10] * np.array(pt[11])
-        ff2 = -pt[12] * np.array(pt[13])
-        force = nf + ff1 + ff2
+            # TODO not sure if friction directions should also be negated to get
+            # the force applied by pusher on slider
+            ff1 = -pt[10] * np.array(pt[11])
+            ff2 = -pt[12] * np.array(pt[13])
+            force += nf + ff1 + ff2
         return force
+
+    def control_velocity(self, vd):
+        # TODO thus far unsuccessful attempts at force control (which would
+        # allow the pusher to interact with the walls)
+        B = np.diag([200, 200, 1])
+        k = 1
+        v, _ = pyb.getBaseVelocity(self.uid)
+        p = self.get_position()
+
+        # a = 1 * (np.array(v) - self.v_last)
+
+        v_err = vd - v
+        self.v_err_int += 0.001 * v_err
+
+        f = B @ v_err + 0.01 * B @ self.v_err_int
+        f[2] += k * (self.pos_init[2] - p[2]) + 9.81
+        print(f)
+        pyb.applyExternalForce(
+            self.uid, -1, forceObj=list(f), posObj=[0, 0, 0], flags=pyb.LINK_FRAME
+        )
+
+        self.v_last = v
 
 
 class BulletSquareSlider(BulletBody):

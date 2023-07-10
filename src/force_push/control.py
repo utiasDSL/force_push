@@ -20,7 +20,8 @@ class Controller:
         self.θd_int = 0
 
         # force thresholds
-        self.ft_max = 10
+        # self.ft_max = 10
+        self.ft_max = 50
         self.ft_min = 1
 
         self.k_div = 0.05
@@ -72,7 +73,8 @@ class Controller:
         if f_norm < self.ft_min:
             # if we've lost contact, try to recover by circling back
             # TODO I'd like to actually seek the previous contact point
-            θp = self.θp_last - np.sign(self.θp_last_good) * self.inc
+            # θp = self.θp_last - np.sign(self.θp_last_good) * self.inc
+            θp = self.θp_last - self.inc_sign * self.inc
         elif f_div > 0:
             # TODO this is messy! one option may be to always converge back to
             # path and diverge away from the path
@@ -82,7 +84,9 @@ class Controller:
 
             # TODO we can just say screw it and definitely break contact by
             # turning 90 deg away
-            θp = self.θp_last + np.sign(self.θp_last_good) * np.pi / 2
+            # θp = self.θp_last + np.sign(self.θp_last_good) * np.pi / 2
+            # θp = self.θp_last + np.sign(self.θp_last_good) * self.inc  #np.pi / 4
+            θp = self.θp_last + self.inc_sign * self.inc
             # θp = (1 + self.k_div * f_div) * θd
         else:
             θp = (
@@ -92,7 +96,10 @@ class Controller:
                 + self.ki_y * self.yc_int
             )
             direction = np.array([np.cos(θp), np.sin(θp)])
-            self.inc_sign = np.sign(util.signed_angle(pathdir, direction))
+
+            # self.inc_sign = np.sign(util.signed_angle(pathdir, direction))
+            self.inc_sign = np.sign(θd)
+
             self.θp_last_good = θp
         θp = util.wrap_to_pi(θp)
         self.θp_last = θp

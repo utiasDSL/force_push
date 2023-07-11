@@ -6,7 +6,9 @@ from force_push import util
 class Controller:
     """Force angle-based pushing controller."""
 
-    def __init__(self, speed, kθ, ky, path, ki_θ=0, ki_y=0, lookahead=0):
+    def __init__(
+        self, speed, kθ, ky, path, ki_θ=0, ki_y=0, lookahead=0, corridor_radius=np.inf
+    ):
         self.speed = speed
         self.kθ = kθ
         self.ky = ky
@@ -16,28 +18,33 @@ class Controller:
         self.ki_y = ki_y
         self.lookahead = lookahead
 
-        self.yc_int = 0
-        self.θd_int = 0
+        # distance from center of corridor the edges
+        # if infinite, then the corridor is just open space
+        # to be used with hallways (won't work if there aren't actually walls
+        # present)
+        self.corridor_radius = corridor_radius
 
         # force thresholds
         # self.ft_max = 10
         self.ft_max = 50
         self.ft_min = 1
 
-        self.k_div = 0.05
-
-        self.first_contact = False
-        self.θp_last = 0
-        self.θp_last_good = 0
-        self.inc_sign = 1
+        # convergence and divergence increment
         self.inc = 0.3
 
-    def reset(self):
+        # variables
         self.first_contact = False
         self.yc_int = 0
         self.θd_int = 0
-        self.θp_last = 0
-        self.θp_last_good = 0
+        self.θp = 0
+        self.inc_sign = 1
+
+    def reset(self):
+        """Reset the controller to its initial state."""
+        self.first_contact = False
+        self.yc_int = 0
+        self.θd_int = 0
+        self.θp = 0
         self.inc_sign = 1
 
     def update(self, position, force, dt=0):
@@ -50,9 +57,8 @@ class Controller:
             position, lookahead=self.lookahead
         )
         f_norm = np.linalg.norm(force)
-        # print(f_norm)
 
-        # Bail if we haven't ever made contact yet
+        # bail if we haven't ever made contact yet
         if not self.first_contact:
             if f_norm < self.ft_min:
                 return self.speed * pathdir
@@ -64,47 +70,37 @@ class Controller:
         self.yc_int += dt * yc
         self.θd_int += dt * θd
 
-        # term to diverge if force magnitude is above ft_max
-        f_div = max(f_norm - self.ft_max, 0)
-
-        θp0 = (1 + self.kθ) * θd + self.ky * yc
-
         # pushing angle
         if f_norm < self.ft_min:
             # if we've lost contact, try to recover by circling back
-            # TODO I'd like to actually seek the previous contact point
-            # θp = self.θp_last - np.sign(self.θp_last_good) * self.inc
-            θp = self.θp_last - self.inc_sign * self.inc
-        elif f_div > 0:
-            # TODO this is messy! one option may be to always converge back to
-            # path and diverge away from the path
-            if np.isclose(self.θp_last_good, 0):
-                self.θp_last_good = np.random.random() - 0.5
-            # θp = self.θp_last + np.sign(self.θp_last_good) * self.inc  #self.k_div * f_div
+            θp = self.θp - self.inc_sign * self.inc
+        elif f_norm > self.ft_max > 0:
+            # diverge from the path if force is too high
 
-            # TODO we can just say screw it and definitely break contact by
-            # turning 90 deg away
-            # θp = self.θp_last + np.sign(self.θp_last_good) * np.pi / 2
-            # θp = self.θp_last + np.sign(self.θp_last_good) * self.inc  #np.pi / 4
-            θp = self.θp_last + self.inc_sign * self.inc
-            # θp = (1 + self.k_div * f_div) * θd
+            # θp = self.θp + self.inc_sign * self.inc
+            θp = self.θp + np.sign(θd) * self.inc
         else:
             θp = (
-                (1 + self.kθ + self.k_div * f_div) * θd
+                (1 + self.kθ) * θd
                 + self.ky * yc
                 + self.ki_θ * self.θd_int
                 + self.ki_y * self.yc_int
             )
-            direction = np.array([np.cos(θp), np.sin(θp)])
-
-            # self.inc_sign = np.sign(util.signed_angle(pathdir, direction))
             self.inc_sign = np.sign(θd)
-
-            self.θp_last_good = θp
-        θp = util.wrap_to_pi(θp)
-        self.θp_last = θp
-
-        # print(f"θp = {θp}")
+        self.θp = util.wrap_to_pi(θp)
 
         # pushing velocity
-        return self.speed * util.rot2d(θp) @ pathdir
+        pushdir = util.rot2d(self.θp) @ pathdir
+
+        # avoid the walls of the corridor
+        tangent, off = self.path.compute_direction_and_offset(position, lookahead=0)
+        if np.abs(off) >= self.corridor_radius:
+            R = util.rot2d(np.pi / 2)
+            perp = R @ tangent
+            print("correction!")
+            if off > 0 and perp @ pushdir > 0:
+                pushdir = util.unit(pushdir - (perp @ pushdir) * perp)
+            elif off < 0 and perp @ pushdir < 0:
+                pushdir = util.unit(pushdir - (perp @ pushdir) * perp)
+
+        return self.speed * pushdir

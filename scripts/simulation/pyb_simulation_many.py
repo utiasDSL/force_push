@@ -33,6 +33,7 @@ PUSH_SPEED = 0.1
 Kθ = 0.3
 KY = 0.1
 LOOKAHEAD = 2.0
+CORRIDOR_RADIUS = 1.4
 
 
 def simulate(sim, pusher, slider, controller, obstacles):
@@ -60,7 +61,7 @@ def simulate(sim, pusher, slider, controller, obstacles):
         # pusher.control_velocity(np.append(v_cmd, 0))
 
         sim.step()
-        # time.sleep(sim.timestep)
+        # time.sleep(0.0001)
 
     ts = np.array(ts)
     r_pw_ws = np.array(r_pw_ws)
@@ -96,7 +97,12 @@ def main():
         debug_frame_world(0.2, tuple(r), line_width=3)
 
     controller = fp.Controller(
-        speed=PUSH_SPEED, kθ=Kθ, ky=KY, path=path, lookahead=LOOKAHEAD
+        speed=PUSH_SPEED,
+        kθ=Kθ,
+        ky=KY,
+        path=path,
+        lookahead=LOOKAHEAD,
+        corridor_radius=CORRIDOR_RADIUS,
     )
 
     # TODO we would also like to vary the inertia

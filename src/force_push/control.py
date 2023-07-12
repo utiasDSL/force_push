@@ -7,8 +7,36 @@ class Controller:
     """Force angle-based pushing controller."""
 
     def __init__(
-        self, speed, kθ, ky, path, ki_θ=0, ki_y=0, lookahead=0, corridor_radius=np.inf
+        self,
+        speed,
+        kθ,
+        ky,
+        path,
+        ki_θ=0,
+        ki_y=0,
+        lookahead=0,
+        corridor_radius=np.inf,
+        force_min=1,
+        force_max=50,
+        con_inc=0.3,
+        div_inc=0.3,
     ):
+        """Force-based pushing controller.
+
+        Parameters:
+            speed: linear pushing speed
+            kθ: gain for stable pushing
+            ky: gain for path tracking
+            path: path to track
+            ki_θ: integral gain for stable pushing
+            ki_y: integral gain for path tracking
+            lookahead: distance to lookahead on the path when determining
+                direction and offset
+            force_min: contact requires a force of at least this much
+            force_max: diverge if force exceeds this much
+            con_inc: increment to push angle to converge back to previous point
+            div_inc: increment to push angle to diverge when force is too high
+        """
         self.speed = speed
         self.kθ = kθ
         self.ky = ky
@@ -25,12 +53,13 @@ class Controller:
         self.corridor_radius = corridor_radius
 
         # force thresholds
-        # self.ft_max = 10
-        self.ft_max = 50
-        self.ft_min = 1
+        # self.force_max = 10
+        self.force_min = force_min
+        self.force_max = force_max
 
         # convergence and divergence increment
-        self.inc = 0.3
+        self.con_inc = con_inc
+        self.div_inc = div_inc
 
         # variables
         self.first_contact = False
@@ -60,7 +89,7 @@ class Controller:
 
         # bail if we haven't ever made contact yet
         if not self.first_contact:
-            if f_norm < self.ft_min:
+            if f_norm < self.force_min:
                 return self.speed * pathdir
             self.first_contact = True
 
@@ -71,14 +100,15 @@ class Controller:
         self.θd_int += dt * θd
 
         # pushing angle
-        if f_norm < self.ft_min:
+        if f_norm < self.force_min:
             # if we've lost contact, try to recover by circling back
-            θp = self.θp - self.inc_sign * self.inc
-        elif f_norm > self.ft_max > 0:
+            θp = self.θp - self.inc_sign * self.con_inc
+        elif f_norm > self.force_max:
             # diverge from the path if force is too high
 
+            # TODO
             # θp = self.θp + self.inc_sign * self.inc
-            θp = self.θp + np.sign(θd) * self.inc
+            θp = self.θp + np.sign(θd) * self.div_inc
         else:
             θp = (
                 (1 + self.kθ) * θd

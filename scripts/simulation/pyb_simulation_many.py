@@ -1,13 +1,15 @@
-import time
+import argparse
 import itertools
+import pickle
+import time
 
-import pybullet as pyb
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from pyb_utils.frame import debug_frame_world
-import tqdm
-from spatialmath.base import rotz, r2q
+import pybullet as pyb
 import seaborn
+from spatialmath.base import rotz, r2q
+import tqdm
 
 import mobile_manipulation_central as mm
 import force_push as fp
@@ -22,6 +24,7 @@ CTRL_FREQ = 100
 # seconds
 DURATION = 200
 
+# friction
 CONTACT_MU = 0.2
 SURFACE_MU = 1.0
 OBSTACLE_MU = 0.25
@@ -35,13 +38,25 @@ KY = 0.1
 LOOKAHEAD = 2.0
 CORRIDOR_RADIUS = 1.4
 
+# slider params
+SLIDER_MASS = 1.0
+BOX_SLIDER_HALF_EXTENTS = (0.5, 0.5, 0.1)
+CIRCLE_SLIDER_RADIUS = 0.5
+CIRCLE_SLIDER_HEIGHT = 0.2
 
-def simulate(sim, pusher, slider, controller, obstacles):
+SLIDER_INIT_POS = np.array([0, 0, 0.1])
+PUSHER_INIT_POS = np.array([-0.7, 0, 0.1])
+
+# if the closest distance between pusher and slider exceeds this amount, then
+# the trial is considered to have failed
+FAILURE_DIST = 0.5
+
+
+def simulate(sim, pusher, slider, controller):
+    success = True
     r_pw_ws = []
     r_sw_ws = []
     ts = []
-
-    uids = [slider.uid] + [o.uid for o in obstacles]
 
     t = 0
     steps = DURATION * SIM_FREQ
@@ -49,7 +64,7 @@ def simulate(sim, pusher, slider, controller, obstacles):
         t = sim.timestep * i
 
         if i % CTRL_FREQ == 0:
-            force = pusher.get_contact_force(uids)
+            force = pusher.get_contact_force([slider.uid])
             r_pw_w = pusher.get_position()
             v_cmd = controller.update(r_pw_w[:2], force[:2])
             pusher.command_velocity(np.append(v_cmd, 0))
@@ -61,36 +76,144 @@ def simulate(sim, pusher, slider, controller, obstacles):
         # pusher.control_velocity(np.append(v_cmd, 0))
 
         sim.step()
+
+        # check if the trial has failed (pusher has lost the slider)
+        pts = pyb.getClosestPoints(pusher.uid, slider.uid, distance=10)
+        dist = pts[0][8]
+        if dist > FAILURE_DIST:
+            success = False
+            break
+
         # time.sleep(0.0001)
 
     ts = np.array(ts)
     r_pw_ws = np.array(r_pw_ws)
     r_sw_ws = np.array(r_sw_ws)
-    return ts, r_pw_ws, r_sw_ws
+    return ts, r_pw_ws, r_sw_ws, success
 
 
-def main():
-    sim = mm.BulletSimulation(1.0 / SIM_FREQ, gui=True)
-    pyb.changeDynamics(sim.ground_uid, -1, lateralFriction=SURFACE_MU)
+def setup_box_slider(position):
+    slider = fp.BulletSquareSlider(
+        position, mass=SLIDER_MASS, half_extents=BOX_SLIDER_HALF_EXTENTS
+    )
 
-    pusher = fp.BulletPusher([0, 0, 0.1], mu=CONTACT_MU)
-    # slider = fp.BulletCircleSlider([0.7, 0.25, 0.1])
-    slider = fp.BulletSquareSlider([0.7, 0.25, 0.1])
+    slider_vertices = fp.cuboid_vertices(BOX_SLIDER_HALF_EXTENTS)
+    slider_masses = (
+        SLIDER_MASS * np.ones(slider_vertices.shape[0]) / slider_vertices.shape[0]
+    )
+    I_max = fp.point_mass_system_inertia(slider_masses, slider_vertices)
+    I_uni = fp.uniform_cuboid_inertia(
+        mass=SLIDER_MASS, half_extents=BOX_SLIDER_HALF_EXTENTS
+    )
+    I_low = 0.1 * I_uni
+    inertias = [I_low, I_uni, I_max]
 
-    # see e.g. <https://github.com/bulletphysics/bullet3/issues/4428>
-    pyb.changeDynamics(slider.uid, -1, contactDamping=100, contactStiffness=10000)
+    return slider, inertias
 
-    block1 = fp.BulletBlock([1, 4, 0.5], [2.5, 2.5, 0.5], mu=OBSTACLE_MU)
-    block2 = fp.BulletBlock([7, 2.5, 0.5], [0.5, 5, 0.5], mu=OBSTACLE_MU)
-    block3 = fp.BulletBlock([2.5, -2, 0.5], [4, 0.5, 0.5], mu=OBSTACLE_MU)
-    obstacles = [block1, block2, block3]
 
-    # corner path
+def setup_circle_slider(position):
+    slider = fp.BulletCircleSlider(position)
+
+    I_max = fp.thin_walled_cylinder_inertia(
+        SLIDER_MASS, CIRCLE_SLIDER_RADIUS, CIRCLE_SLIDER_HEIGHT
+    )
+    I_uni = fp.uniform_cylinder_inertia(
+        SLIDER_MASS, CIRCLE_SLIDER_RADIUS, CIRCLE_SLIDER_HEIGHT
+    )
+    I_low = 0.1 * I_uni
+    inertias = [I_low, I_uni, I_max]
+
+    return slider, inertias
+
+
+def setup_straight_path():
+    return fp.SegmentPath.line(direction=[1, 0])
+
+
+def setup_corner_path(corridor=False):
     vertices = np.array([[0, 0], [5, 0]])
     path = fp.SegmentPath(vertices, final_direction=[0, 1])
 
-    # straight path
-    # path = fp.SegmentPath.line(direction=[1, 0])
+    if corridor:
+        block1 = fp.BulletBlock([1, 6.5, 0.5], [2.5, 5, 0.5], mu=OBSTACLE_MU)
+        block2 = fp.BulletBlock([7, 4.5, 0.5], [0.5, 7, 0.5], mu=OBSTACLE_MU)
+        block3 = fp.BulletBlock([2.5, -2, 0.5], [4, 0.5, 0.5], mu=OBSTACLE_MU)
+
+    return path
+
+
+def plot_results(data):
+    all_r_sw_ws = data["slider_positions"]
+    r_dw_ws = data["path_positions"]
+
+    # plotting
+    palette = seaborn.color_palette("deep")
+
+    plt.figure()
+    plt.plot(r_dw_ws[:, 0], r_dw_ws[:, 1], "--", color="k")
+    for i in range(len(all_r_sw_ws)):
+        plt.plot(
+            all_r_sw_ws[i][:, 0], all_r_sw_ws[i][:, 1], color=palette[0], alpha=0.1
+        )
+    plt.grid()
+    plt.show()
+
+
+def main():
+    np.set_printoptions(precision=6, suppress=True)
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--slider",
+        choices=["box", "circle"],
+        help="Type of slider to use.",
+        default="box",
+    )
+    parser.add_argument(
+        "--environment",
+        choices=["straight", "corner", "corridor"],
+        help="Which environment to use",
+        default="straight",
+    )
+    parser.add_argument("--save", help="Save data to this file.")
+    parser.add_argument("--load", help="Load data from this file.")
+    parser.add_argument("--no-gui", action="store_true", help="Disable simulation GUI.")
+    args = parser.parse_args()
+
+    if args.load is not None:
+        with open(args.load, "rb") as f:
+            data = pickle.load(f)
+        print(f"Loaded processed data from {args.load}")
+        plot_results(data)
+        return
+
+    sim = mm.BulletSimulation(1.0 / SIM_FREQ, gui=not args.no_gui)
+    pyb.changeDynamics(sim.ground_uid, -1, lateralFriction=SURFACE_MU)
+    pyb.resetDebugVisualizerCamera(
+        cameraDistance=5.6,
+        cameraYaw=28,
+        cameraPitch=-48.6,
+        cameraTargetPosition=[3.66, 0.42, 0.49],
+    )
+
+    pusher = fp.BulletPusher(PUSHER_INIT_POS, mu=CONTACT_MU)
+    if args.slider == "box":
+        slider, slider_inertias = setup_box_slider(SLIDER_INIT_POS)
+    elif args.slider == "circle":
+        slider, slider_inertias = setup_circle_slider(SLIDER_INIT_POS)
+
+    # see e.g. <https://github.com/bulletphysics/bullet3/issues/4428>
+    # pyb.changeDynamics(slider.uid, -1, contactDamping=100, contactStiffness=10000)
+
+    if args.environment == "straight":
+        path = setup_straight_path()
+        corridor_radius = np.inf
+    elif args.environment == "corner":
+        path = setup_corner_path(corridor=False)
+        corridor_radius = np.inf
+    elif args.environment == "corridor":
+        path = setup_corner_path(corridor=True)
+        corridor_radius = CORRIDOR_RADIUS
 
     for vertex in path.vertices:
         r = np.append(vertex, 0.1)
@@ -102,43 +225,61 @@ def main():
         ky=KY,
         path=path,
         lookahead=LOOKAHEAD,
-        corridor_radius=CORRIDOR_RADIUS,
+        corridor_radius=corridor_radius,
     )
-
-    # TODO we would also like to vary the inertia
 
     # y0s = [-0.4, 0, 0.4]
     # θ0s = [-np.pi / 8, 0, np.pi / 8]
     # s0s = [-0.4, 0, 0.4]
     # μ0s = [0, 0.5, 1.0]
 
-    # TODO this one is problematic!
-    # y0s = [-0.4]
-    # θ0s = [-np.pi / 8]
-    # s0s = [0]
+    y0s = [-0.4]
+    θ0s = [-np.pi / 8]
+    s0s = [-0.4]
+    μ0s = [0]
 
-    y0s = [-0.4, 0, 0.4]
-    θ0s = [-np.pi / 8, 0, np.pi / 8]
-    s0s = [-0.4, 0, 0.4]
-    μ0s = [1.0]
+    # y0s = [-0.4, 0, 0.4]
+    # θ0s = [-np.pi / 8, 0, np.pi / 8]
+    # s0s = [-0.4, 0, 0.4]
+    # μ0s = [1.0]
 
-    num_sims = len(y0s) * len(θ0s) * len(s0s) * len(μ0s)
+    data = {
+        "slider": args.slider,
+        "environment": args.environment,
+        "duration": DURATION,
+        "sim_freq": SIM_FREQ,
+        "ctrl_freq": CTRL_FREQ,
+        "push_speed": PUSH_SPEED,
+        "kθ": Kθ,
+        "ky": KY,
+        "lookahead": LOOKAHEAD,
+        "inertias": slider_inertias,
+        "y0s": y0s,
+        "θ0s": θ0s,
+        "s0s": s0s,
+        "μ0s": μ0s,
+    }
+
+    num_sims = len(slider_inertias) * len(y0s) * len(θ0s) * len(s0s) * len(μ0s)
 
     all_ts = []
     all_r_pw_ws = []
     all_r_sw_ws = []
+    successes = []
 
-    r_pw_w0 = np.array([0, 0, 0.1])
-    r_sw_w0 = np.array([0.7, 0, 0.1])
-
+    count = 0
     with tqdm.tqdm(total=num_sims) as progress:
-        for (μ0, y0, θ0, s0) in itertools.product(μ0s, y0s, θ0s, s0s):
-            # reset everything to proper states
-            r_pw_w = r_pw_w0 + [0, s0 + y0, 0]
-            r_sw_w = r_sw_w0 + [0, y0, 0]
+        for (I, μ0, y0, θ0, s0) in itertools.product(
+            slider_inertias, μ0s, y0s, θ0s, s0s
+        ):
+            # set the new parameters
+            r_pw_w = PUSHER_INIT_POS + [0, s0 + y0, 0]
+            r_sw_w = SLIDER_INIT_POS + [0, y0, 0]
             Q_ws = r2q(rotz(θ0), order="xyzs")
             pyb.changeDynamics(pusher.uid, -1, lateralFriction=μ0)
+            slider.set_inertia_diagonal(I)
 
+            # reset everything to initial states
             pusher.reset(position=r_pw_w)
             slider.reset(position=r_sw_w, orientation=Q_ws)
             controller.reset()
@@ -147,28 +288,35 @@ def main():
             # time.sleep(5.0)
 
             # run the sim
-            ts, r_pw_ws, r_sw_ws = simulate(sim, pusher, slider, controller, obstacles)
+            ts, r_pw_ws, r_sw_ws, success = simulate(sim, pusher, slider, controller)
+            if not success:
+                print(f"Trial {count + 1} failed.")
+                print(f"I = {np.diag(I)}\nμ = {μ0}\ny0 = {y0}\nθ0 = {θ0}\ns0 = {s0}")
             all_ts.append(ts)
             all_r_pw_ws.append(r_pw_ws)
             all_r_sw_ws.append(r_sw_ws)
+            successes.append(success)
             progress.update(1)
+            count += 1
 
-    # plotting
-    palette = seaborn.color_palette("deep")
-
+    # parse path points to plot
     d = path.directions[-1, :]
     v = path.vertices[-1, :]
     dist = np.max((np.vstack(all_r_sw_ws)[:, :2] - v) @ d)
     r_dw_ws = path.get_coords(dist=dist)
 
-    plt.figure()
-    plt.plot(r_dw_ws[:, 0], r_dw_ws[:, 1], "--", color="k")
-    for i in range(num_sims):
-        plt.plot(
-            all_r_sw_ws[i][:, 0], all_r_sw_ws[i][:, 1], color=palette[0], alpha=0.2
-        )
-    plt.grid()
-    plt.show()
+    data["times"] = all_ts
+    data["pusher_positions"] = all_r_pw_ws
+    data["slider_positions"] = all_r_sw_ws
+    data["successes"] = successes
+    data["path_positions"] = r_dw_ws
+
+    if args.save is not None:
+        with open(args.save, "wb") as f:
+            pickle.dump(data, f)
+        print(f"Saved processed data to {args.save}")
+
+    plot_results(data)
 
 
 if __name__ == "__main__":

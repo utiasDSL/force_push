@@ -20,9 +20,9 @@ def rectangle_r_tau(width, height):
     return (_alpha_rect(width, height) + _alpha_rect(height, width)) / area
 
 
-def uniform_cuboid_inertia(mass, half_lengths):
+def uniform_cuboid_inertia(mass, half_extents):
     """Inertia matrix of a cuboid with given half lengths."""
-    lx, ly, lz = 2 * np.array(half_lengths)
+    lx, ly, lz = 2 * np.array(half_extents)
     xx = ly**2 + lz**2
     yy = lx**2 + lz**2
     zz = lx**2 + ly**2

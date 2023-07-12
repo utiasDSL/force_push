@@ -32,6 +32,13 @@ class BulletBody:
         assert len(v) == 3
         pyb.resetBaseVelocity(self.uid, linearVelocity=list(v))
 
+    def set_inertia_diagonal(self, I):
+        # take the inertia diagonal
+        if len(I.shape) > 1:
+            I = np.diag(I)
+        assert len(I) == 3
+        pyb.changeDynamics(self.uid, -1, localInertiaDiagonal=list(I))
+
     def reset(self, position=None, orientation=None):
         """Reset the body to initial pose and zero velocity."""
         if position is not None:

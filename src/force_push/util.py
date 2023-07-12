@@ -46,3 +46,20 @@ def unit(x):
 def perp2d(x):
     """Return a vector perpendicular to 2D vector x."""
     return np.array([-x[1], x[0]])
+
+
+def cuboid_vertices(half_extents):
+    """Get the vertices of a cuboid with given half extents."""
+    x, y, z = half_extents
+    return np.array(
+        [
+            [x, y, z],
+            [x, y, -z],
+            [x, -y, z],
+            [x, -y, -z],
+            [-x, y, z],
+            [-x, y, -z],
+            [-x, -y, z],
+            [-x, -y, -z],
+        ]
+    )

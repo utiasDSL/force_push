@@ -99,6 +99,8 @@ class Controller:
         self.yc_int += dt * yc
         self.θd_int += dt * θd
 
+        speed = self.speed
+
         # pushing angle
         if f_norm < self.force_min:
             # if we've lost contact, try to recover by circling back
@@ -112,11 +114,16 @@ class Controller:
         else:
             θp = (
                 (1 + self.kθ) * θd
-                + self.ky * yc
+                + self.ky * yc  #* (1 + np.abs(yc))
                 + self.ki_θ * self.θd_int
                 + self.ki_y * self.yc_int
             )
+            # α = 1.0
+            # θp = (1 - α) * self.θp + α * θp
+            # if np.abs(yc) > 1.0:
+            #     speed = 0.5 * speed
             self.inc_sign = np.sign(θd)
+
         self.θp = util.wrap_to_pi(θp)
 
         # pushing velocity
@@ -133,4 +140,4 @@ class Controller:
             elif off < 0 and perp @ pushdir < 0:
                 pushdir = util.unit(pushdir - (perp @ pushdir) * perp)
 
-        return self.speed * pushdir
+        return speed * pushdir

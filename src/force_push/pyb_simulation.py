@@ -3,6 +3,7 @@ import numpy as np
 import pybullet as pyb
 
 
+# TODO this can soon be inherited from pyb_utils
 class BulletBody:
     """Generic rigid body in PyBullet."""
 
@@ -36,7 +37,7 @@ class BulletBody:
         # take the inertia diagonal
         if len(I.shape) > 1:
             I = np.diag(I)
-        assert len(I) == 3
+        assert I.shape == (3,)
         pyb.changeDynamics(self.uid, -1, localInertiaDiagonal=list(I))
 
     def reset(self, position=None, orientation=None):

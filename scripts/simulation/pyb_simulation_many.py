@@ -22,7 +22,7 @@ SIM_FREQ = 1000
 CTRL_FREQ = 100
 
 # seconds
-DURATION = 200
+DURATION = 400
 
 # friction
 CONTACT_MU = 0.2
@@ -56,6 +56,7 @@ def simulate(sim, pusher, slider, controller):
     success = True
     r_pw_ws = []
     r_sw_ws = []
+    forces = []
     ts = []
 
     t = 0
@@ -66,14 +67,14 @@ def simulate(sim, pusher, slider, controller):
         if i % CTRL_FREQ == 0:
             force = pusher.get_contact_force([slider.uid])
             r_pw_w = pusher.get_position()
-            v_cmd = controller.update(r_pw_w[:2], force[:2])
+            v_cmd = controller.update(r_pw_w[:2], force[:2])  #, 1. / CTRL_FREQ)
             pusher.command_velocity(np.append(v_cmd, 0))
 
             # record information
             r_pw_ws.append(r_pw_w)
             r_sw_ws.append(slider.get_position())
+            forces.append(force)
             ts.append(t)
-        # pusher.control_velocity(np.append(v_cmd, 0))
 
         sim.step()
 
@@ -89,7 +90,8 @@ def simulate(sim, pusher, slider, controller):
     ts = np.array(ts)
     r_pw_ws = np.array(r_pw_ws)
     r_sw_ws = np.array(r_sw_ws)
-    return ts, r_pw_ws, r_sw_ws, success
+    forces = np.array(forces)
+    return ts, r_pw_ws, r_sw_ws, success, forces
 
 
 def setup_box_slider(position):
@@ -121,6 +123,9 @@ def setup_circle_slider(position):
         SLIDER_MASS, CIRCLE_SLIDER_RADIUS, CIRCLE_SLIDER_HEIGHT
     )
     I_low = 0.1 * I_uni
+    # I_low2 = fp.uniform_cylinder_inertia(
+    #     SLIDER_MASS, 0.1 * CIRCLE_SLIDER_RADIUS, CIRCLE_SLIDER_HEIGHT
+    # )
     inertias = [I_low, I_uni, I_max]
 
     return slider, inertias
@@ -144,18 +149,34 @@ def setup_corner_path(corridor=False):
 
 def plot_results(data):
     all_r_sw_ws = data["slider_positions"]
+    all_forces = data["forces"]
+    ts = data["times"]
     r_dw_ws = data["path_positions"]
+
+    μs = np.array([p[1] for p in data["parameters"]])
+
+    n = len(all_r_sw_ws)
 
     # plotting
     palette = seaborn.color_palette("deep")
 
     plt.figure()
     plt.plot(r_dw_ws[:, 0], r_dw_ws[:, 1], "--", color="k")
-    for i in range(len(all_r_sw_ws)):
+    for i in range(n):
         plt.plot(
-            all_r_sw_ws[i][:, 0], all_r_sw_ws[i][:, 1], color=palette[0], alpha=0.1
+            all_r_sw_ws[i][:, 0], all_r_sw_ws[i][:, 1], color=palette[0], alpha=0.2
         )
     plt.grid()
+
+    plt.figure()
+    for i in range(n):
+        plt.plot(ts[i], all_forces[i][:, 0], color="r", alpha=0.5)
+        plt.plot(ts[i], all_forces[i][:, 1], color="b", alpha=0.5)
+    plt.grid()
+    plt.title("Forces vs. time")
+    plt.xlabel("Time [s]")
+    plt.ylabel("Force [N]")
+
     plt.show()
 
 
@@ -228,20 +249,14 @@ def main():
         corridor_radius=corridor_radius,
     )
 
+    # μ0s = [0, 0.5, 1.0]
     # y0s = [-0.4, 0, 0.4]
     # θ0s = [-np.pi / 8, 0, np.pi / 8]
     # s0s = [-0.4, 0, 0.4]
-    # μ0s = [0, 0.5, 1.0]
-
+    μ0s = [0.8]
     y0s = [-0.4]
     θ0s = [-np.pi / 8]
     s0s = [-0.4]
-    μ0s = [0]
-
-    # y0s = [-0.4, 0, 0.4]
-    # θ0s = [-np.pi / 8, 0, np.pi / 8]
-    # s0s = [-0.4, 0, 0.4]
-    # μ0s = [1.0]
 
     data = {
         "slider": args.slider,
@@ -266,6 +281,8 @@ def main():
     all_r_pw_ws = []
     all_r_sw_ws = []
     successes = []
+    all_forces = []
+    parameters = []
 
     count = 0
     with tqdm.tqdm(total=num_sims) as progress:
@@ -288,14 +305,19 @@ def main():
             # time.sleep(5.0)
 
             # run the sim
-            ts, r_pw_ws, r_sw_ws, success = simulate(sim, pusher, slider, controller)
+            ts, r_pw_ws, r_sw_ws, success, forces = simulate(sim, pusher, slider, controller)
             if not success:
                 print(f"Trial {count + 1} failed.")
                 print(f"I = {np.diag(I)}\nμ = {μ0}\ny0 = {y0}\nθ0 = {θ0}\ns0 = {s0}")
+                IPython.embed()
+
             all_ts.append(ts)
             all_r_pw_ws.append(r_pw_ws)
             all_r_sw_ws.append(r_sw_ws)
             successes.append(success)
+            all_forces.append(forces)
+            parameters.append([I, μ0, y0, θ0, s0])
+
             progress.update(1)
             count += 1
 
@@ -310,6 +332,8 @@ def main():
     data["slider_positions"] = all_r_sw_ws
     data["successes"] = successes
     data["path_positions"] = r_dw_ws
+    data["forces"] = all_forces
+    data["parameters"] = parameters
 
     if args.save is not None:
         with open(args.save, "wb") as f:

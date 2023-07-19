@@ -11,7 +11,10 @@ import force_push as fp
 
 TIMESTEP = 0.001
 TOOL_JOINT_NAME = "tool_gripper_joint"
-DURATION = 10
+DURATION = 100
+
+LOOKAHEAD = 2
+PUSH_SPEED = 0.1
 
 
 def main():
@@ -33,18 +36,28 @@ def main():
     q, _ = robot.joint_states()
     r_be_b = -(r_ew_w[:2] - q[:2])
 
-    # desired EE velocity
-    # x, y, θ
-    V_ee_d = np.array([0.1, 0, 0.1])
+    # desired EE path
+    vertices = np.array([[0, 0], [5, 0]])
+    path = fp.SegmentPath(vertices, final_direction=[0, 1])
+
+    # yaw gain
+    kθ = 1
 
     t = 0
     while t <= DURATION:
         q, _ = robot.joint_states()
-
+        p_ee = robot.link_pose()[0]
         v_ee = robot.link_velocity()[0]
-        # print(v_ee[:2])
+        θ = q[2]  # yaw
 
-        # Move the base so that the desired EE velocity is achieved
+        # desired linear velocity is along the path direction, with angular
+        # velocity computed to make the robot oriented in the direction of the
+        # path
+        pathdir, _ = path.compute_direction_and_offset(p_ee[:2], lookahead=LOOKAHEAD)
+        θd = np.arctan2(pathdir[1], pathdir[0])
+        V_ee_d = np.append(PUSH_SPEED * pathdir, kθ * (θd - θ))
+
+        # move the base so that the desired EE velocity is achieved
         C_wb = fp.rot2d(q[2])
         δ = np.append(fp.skew2d(V_ee_d[2]) @ C_wb @ r_be_b, 0)
         u_base = V_ee_d + δ
@@ -57,7 +70,7 @@ def main():
 
         # step the sim forward in time
         t = sim.step(t)
-        time.sleep(TIMESTEP)
+        # time.sleep(TIMESTEP)
 
 
 main()

@@ -22,15 +22,19 @@ RATE = 100  # Hz
 DIRECTION = fp.rot2d(np.deg2rad(125)) @ np.array([1, 0])
 
 # pushing speed
-SPEED = 0.1
+PUSH_SPEED = 0.1
 
 # control gains
-KF = 0.1
-KY = 0.3
+Kθ = 0.3
+KY = 0.1
+Kω = 1
+
+LOOKAHEAD = 2.0
 
 # only control based on force when it is high enough (i.e. in contact with
 # something)
-FORCE_THRESHOLD = 5
+FORCE_MIN_THRESHOLD = 5
+FORCE_MAX_THRESHOLD = 50
 
 # time constant for force filter
 FILTER_TIME_CONSTANT = 0.1
@@ -173,10 +177,29 @@ def main():
     model.forward(q)
     r_fw_w = model.link_pose(link_idx=ft_idx)[0]
     c = r_fw_w[:2]
-    path = fp.StraightPath(DIRECTION, origin=c)
-    cmd_vel = SPEED * np.append(DIRECTION, 0)
+
+    # get the fixed offset between base frame and the contact point
+    # TODO may require some tuning
+    C_wb = fp.rot2d(q[2])
+    r_bf_b = -C_wb.T @ (r_fw_w[:2] - q[:2])
+
+    # path = fp.StraightPath(DIRECTION, origin=c)
+    # TODO this needs to be worked out in the lab
+    vertices = np.array([c, c + [5, 0]])
+    path = fp.SegmentPath(vertices, final_direction=[0, 1])
 
     wrench_estimator = WrenchEstimator(bias=bias, τ=FILTER_TIME_CONSTANT)
+
+    # pushing controller
+    controller = fp.Controller(
+        speed=PUSH_SPEED,
+        kθ=Kθ,
+        ky=KY,
+        path=path,
+        lookahead=LOOKAHEAD,
+        force_min=FORCE_MIN_THRESHOLD,
+        force_max=FORCE_MAX_THRESHOLD,
+    )
 
     while not rospy.is_shutdown():
         q = np.concatenate((robot.q, q_arm))
@@ -186,26 +209,32 @@ def main():
 
         f_f = wrench_estimator.wrench_filtered[:3]
         f_w = C_wf @ f_f
-        f = f_w[:2]
 
-        # only control based on force when it is high enough (i.e. in contact
-        # with something)
-        if not open_loop and np.linalg.norm(f) > FORCE_THRESHOLD:
+        # force direction is negative to switch from sensed force to applied force
+        f = -f_w[:2]
 
-            # force direction is negative to switch from sensed force to applied force
-            direction = path.compute_travel_direction(c)
-            θf = fp.signed_angle(direction, -unit(f))
-            Δy = path.compute_lateral_offset(c)
+        # directino of the path
+        pathdir, _ = path.compute_direction_and_offset(c, lookahead=LOOKAHEAD)
+        θd = np.arctan2(pathdir[1], pathdir[0])
 
-            θp = (KF + 1) * θf + KY * Δy
-            vp = SPEED * rot2d(θp) @ direction
-            cmd_vel = np.append(vp, 0)
+        # in open-loop mode we just follow the path rather than controlling to
+        # push the slider
+        if open_loop:
+            v_ee_cmd = PUSH_SPEED * pathdir
+        else:
+            v_ee_cmd = controller.update(c, f)
+        V_ee_cmd = np.append(v_ee_cmd, Kω * (θd - θ))
 
-            print(f"direction = {direction}")
-            print(f"Δy = {Δy}")
-            print(f"θf = {θf}")
-            print(f"θp = {θp}")
-            print(f"vp = {vp}")
+        # move the base so that the desired EE velocity is achieved
+        C_wb = fp.rot2d(q[2])
+        δ = np.append(fp.skew2d(V_ee_cmd[2]) @ C_wb @ r_bf_b, 0)
+        cmd_vel = V_ee_d + δ
+
+        # print(f"direction = {direction}")
+        # print(f"Δy = {Δy}")
+        # print(f"θf = {θf}")
+        # print(f"θp = {θp}")
+        print(f"cmd_vel = {cmd_vel}")
 
         robot.publish_cmd_vel(cmd_vel, bodyframe=False)
 

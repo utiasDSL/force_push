@@ -140,6 +140,8 @@ class WrenchEstimator:
 
 
 def main():
+    np.set_printoptions(precision=6, suppress=True)
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--open-loop",
@@ -153,8 +155,7 @@ def main():
     rospy.init_node("push_control_node", disable_signals=True)
 
     home = mm.load_home_position(name="pushing_diag", path=fp.HOME_CONFIG_FILE)
-    model = mm.MobileManipulatorKinematics()
-    ft_idx = model.get_link_index("ft_sensor")
+    model = mm.MobileManipulatorKinematics(tool_link_name="gripper")
     q_arm = home[3:]
 
     # wait until robot feedback has been received
@@ -175,18 +176,18 @@ def main():
     # desired path
     q = np.concatenate((robot.q, q_arm))
     model.forward(q)
-    r_fw_w = model.link_pose(link_idx=ft_idx)[0]
-    c = r_fw_w[:2]
+    r_ew_w = model.link_pose()[0]
+    c = r_ew_w[:2]
 
     # get the fixed offset between base frame and the contact point
     # TODO may require some tuning
     C_wb = fp.rot2d(q[2])
-    r_bf_b = -C_wb.T @ (r_fw_w[:2] - q[:2])
+    r_be_b = -C_wb.T @ (c - q[:2])
 
-    # path = fp.StraightPath(DIRECTION, origin=c)
+    # path = fp.SegmentPath.line(DIRECTION, origin=c)
     # TODO this needs to be worked out in the lab
-    vertices = np.array([c, c + [5, 0]])
-    path = fp.SegmentPath(vertices, final_direction=[0, 1])
+    vertices = c + np.array([[0, 0], [0, 4]])
+    path = fp.SegmentPath(vertices, final_direction=[-1, 0])
 
     wrench_estimator = WrenchEstimator(bias=bias, τ=FILTER_TIME_CONSTANT)
 
@@ -204,16 +205,16 @@ def main():
     while not rospy.is_shutdown():
         q = np.concatenate((robot.q, q_arm))
         model.forward(q)
-        r_fw_w, C_wf = model.link_pose(link_idx=ft_idx, rotation_matrix=True)
-        c = r_fw_w[:2]  # contact point
+        r_ew_w, C_we = model.link_pose(rotation_matrix=True)
+        c = r_ew_w[:2]  # contact point
 
-        f_f = wrench_estimator.wrench_filtered[:3]
-        f_w = C_wf @ f_f
+        f_e = wrench_estimator.wrench_filtered[:3]
+        f_w = C_we @ f_e
 
         # force direction is negative to switch from sensed force to applied force
         f = -f_w[:2]
 
-        # directino of the path
+        # direction of the path
         pathdir, _ = path.compute_direction_and_offset(c, lookahead=LOOKAHEAD)
         θd = np.arctan2(pathdir[1], pathdir[0])
 
@@ -223,12 +224,14 @@ def main():
             v_ee_cmd = PUSH_SPEED * pathdir
         else:
             v_ee_cmd = controller.update(c, f)
-        V_ee_cmd = np.append(v_ee_cmd, Kω * (θd - θ))
+        # print(f"ωd = {Kω * (θd - q[2])}")
+        V_ee_cmd = np.append(v_ee_cmd, Kω * (θd - q[2]))
+        # V_ee_cmd = np.append(v_ee_cmd, 0)
 
         # move the base so that the desired EE velocity is achieved
         C_wb = fp.rot2d(q[2])
-        δ = np.append(fp.skew2d(V_ee_cmd[2]) @ C_wb @ r_bf_b, 0)
-        cmd_vel = V_ee_d + δ
+        δ = np.append(fp.skew2d(V_ee_cmd[2]) @ C_wb @ r_be_b, 0)
+        cmd_vel = V_ee_cmd + δ
 
         # print(f"direction = {direction}")
         # print(f"Δy = {Δy}")

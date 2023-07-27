@@ -8,6 +8,8 @@ import time
 import mobile_manipulation_central as mm
 import force_push as fp
 
+import IPython
+
 
 TIMESTEP = 0.001
 TOOL_JOINT_NAME = "tool_gripper_joint"
@@ -18,6 +20,8 @@ PUSH_SPEED = 0.1
 
 
 def main():
+    np.set_printoptions(precision=6, suppress=True)
+
     # find the URDF (this has to be compiled first using the script
     # mobile_manipulation_central/urdf/compile_xacro.sh)
     rospack = rospkg.RosPack()
@@ -25,7 +29,7 @@ def main():
     urdf_path = mm_path + "/urdf/compiled/thing_pyb.urdf"
 
     # load initial joint configuration
-    home = mm.load_home_position()
+    home = mm.load_home_position(name="pushing_corner", path=fp.HOME_CONFIG_FILE)
 
     # create the simulation
     sim = mm.BulletSimulation(TIMESTEP)
@@ -34,11 +38,12 @@ def main():
 
     r_ew_w = robot.link_pose()[0]  # initial position
     q, _ = robot.joint_states()
-    r_be_b = -(r_ew_w[:2] - q[:2])
+    c = r_ew_w[:2]
+    r_be_b = -(c - q[:2])
 
     # desired EE path
-    vertices = np.array([[0, 0], [5, 0]])
-    path = fp.SegmentPath(vertices, final_direction=[0, 1])
+    vertices = c + np.array([[0, 0], [0, 4]])
+    path = fp.SegmentPath(vertices, final_direction=[-1, 0])
 
     # yaw gain
     kθ = 1
@@ -57,11 +62,19 @@ def main():
         θd = np.arctan2(pathdir[1], pathdir[0])
         V_ee_d = np.append(PUSH_SPEED * pathdir, kθ * (θd - θ))
 
+        print(f"dir = {pathdir}")
+        print(f"θd  = {θd}")
+        print(f"θ   = {θ}")
+
         # move the base so that the desired EE velocity is achieved
         C_wb = fp.rot2d(q[2])
         δ = np.append(fp.skew2d(V_ee_d[2]) @ C_wb @ r_be_b, 0)
         u_base = V_ee_d + δ
         u = np.concatenate((u_base, np.zeros(6)))
+
+        if θd > 2.3:
+            IPython.embed()
+            return
 
         # note that in simulation the mobile base takes commands in the world
         # frame, but the real mobile base takes commands in the body frame

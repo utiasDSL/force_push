@@ -23,6 +23,14 @@ catkin build
 ## Experiments
 Experiments are done using utilities in mobile_manipulation_central.
 
+If it isn't already, connect to the arm and put it into the required home
+position. Then turn it off:
+```
+roslaunch mobile_manipulation_central thing.launch
+rosrun mobile_manipulation_central home.py --config (rospack find force_push)/config/home.yaml --arm-only pushing_diag
+```
+Grasp a tennis ball with the gripper in the "pinched" configuration.
+
 These experiments use only the mobile base; no need to turn on the arm. SSH
 into the robot and run:
 ```

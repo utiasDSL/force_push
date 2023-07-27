@@ -33,8 +33,13 @@ OBSTACLE_MU = 0.25
 PUSH_SPEED = 0.1
 # Kθ = 0.5
 # KY = 0.1
+
 Kθ = 0.3
 KY = 0.1
+
+# Kθ = 0.15
+# KY = 0.05
+
 LOOKAHEAD = 2.0
 CORRIDOR_RADIUS = 1.4
 
@@ -50,6 +55,19 @@ PUSHER_INIT_POS = np.array([-0.7, 0, 0.1])
 # if the closest distance between pusher and slider exceeds this amount, then
 # the trial is considered to have failed
 FAILURE_DIST = 0.5
+
+# NOTE low inertia is at 0.1
+μ0s = [0, 0.5]
+# μ0s = [0, 0.3, 0.6, 0.8]
+y0s = [-0.4, 0, 0.4]
+# θ0s = [-np.pi / 8, 0, np.pi / 8]
+θ0s = [0]
+s0s = [-0.4, 0, 0.4]
+
+# μ0s = [1.0]
+# y0s = [0.4]
+# θ0s = [np.pi / 8]
+# s0s = [0.4]
 
 
 def simulate(sim, pusher, slider, controller):
@@ -161,11 +179,18 @@ def plot_results(data):
     palette = seaborn.color_palette("deep")
 
     plt.figure()
-    plt.plot(r_dw_ws[:, 0], r_dw_ws[:, 1], "--", color="k")
-    for i in range(n):
+    for i in range(0, n):
+        if μs[i] > 0.7:
+            color = palette[1]
+            continue
+        else:
+            color = palette[0]
         plt.plot(
-            all_r_sw_ws[i][:, 0], all_r_sw_ws[i][:, 1], color=palette[0], alpha=0.2
+            all_r_sw_ws[i][:, 0], all_r_sw_ws[i][:, 1], color=color, alpha=0.2
         )
+    plt.plot(r_dw_ws[:, 0], r_dw_ws[:, 1], "--", color="k")
+    ax = plt.gca()
+    ax.set_aspect("equal")
     plt.grid()
 
     plt.figure()
@@ -248,15 +273,6 @@ def main():
         lookahead=LOOKAHEAD,
         corridor_radius=corridor_radius,
     )
-
-    # μ0s = [0, 0.5, 1.0]
-    # y0s = [-0.4, 0, 0.4]
-    # θ0s = [-np.pi / 8, 0, np.pi / 8]
-    # s0s = [-0.4, 0, 0.4]
-    μ0s = [0.8]
-    y0s = [-0.4]
-    θ0s = [-np.pi / 8]
-    s0s = [-0.4]
 
     data = {
         "slider": args.slider,

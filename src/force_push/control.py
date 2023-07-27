@@ -14,7 +14,6 @@ class Controller:
         path,
         ki_θ=0,
         ki_y=0,
-        lookahead=0,
         corridor_radius=np.inf,
         force_min=1,
         force_max=50,
@@ -30,8 +29,6 @@ class Controller:
             path: path to track
             ki_θ: integral gain for stable pushing
             ki_y: integral gain for path tracking
-            lookahead: distance to lookahead on the path when determining
-                direction and offset
             force_min: contact requires a force of at least this much
             force_max: diverge if force exceeds this much
             con_inc: increment to push angle to converge back to previous point
@@ -44,7 +41,6 @@ class Controller:
 
         self.ki_θ = ki_θ
         self.ki_y = ki_y
-        self.lookahead = lookahead
 
         # distance from center of corridor the edges
         # if infinite, then the corridor is just open space
@@ -82,9 +78,7 @@ class Controller:
         assert len(position) == 2
         assert len(force) == 2
 
-        pathdir, yc = self.path.compute_direction_and_offset(
-            position, lookahead=self.lookahead
-        )
+        pathdir, yc = self.path.compute_direction_and_offset(position)
         f_norm = np.linalg.norm(force)
 
         # bail if we haven't ever made contact yet
@@ -130,10 +124,9 @@ class Controller:
         pushdir = util.rot2d(self.θp) @ pathdir
 
         # avoid the walls of the corridor
-        tangent, off = self.path.compute_direction_and_offset(position, lookahead=0)
-        if np.abs(off) >= self.corridor_radius:
+        if np.abs(yc) >= self.corridor_radius:
             R = util.rot2d(np.pi / 2)
-            perp = R @ tangent
+            perp = R @ pathdir
             print("correction!")
             if off > 0 and perp @ pushdir > 0:
                 pushdir = util.unit(pushdir - (perp @ pushdir) * perp)

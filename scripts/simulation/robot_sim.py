@@ -4,6 +4,7 @@ desired EE linear and angular velocity (in the plane)."""
 import rospkg
 import numpy as np
 import time
+import matplotlib.pyplot as plt
 
 import mobile_manipulation_central as mm
 import force_push as fp
@@ -11,7 +12,7 @@ import force_push as fp
 import IPython
 
 
-TIMESTEP = 0.001
+TIMESTEP = 0.01
 TOOL_JOINT_NAME = "tool_gripper_joint"
 DURATION = 100
 
@@ -42,11 +43,26 @@ def main():
     r_be_b = -(c - q[:2])
 
     # desired EE path
-    vertices = c + np.array([[0, 0], [0, 4]])
-    path = fp.SegmentPath(vertices, final_direction=[-1, 0])
+    path = fp.SegmentPath(
+        [
+            fp.LineSegment([0., 0], [0., 1]),
+            fp.QuadBezierSegment([0., 1], [0., 3], [-2., 3]),
+            fp.LineSegment([-2., 3], [-3., 3], infinite=True),
+        ],
+        origin=c,
+    )
+    # xy = path.get_plotting_coords()
+    # plt.plot(xy[:, 0], xy[:, 1])
+    # plt.grid()
+    # plt.show()
 
     # yaw gain
     kθ = 1
+
+    ω_max = 0
+
+    ωu = 0.1
+    ωl = -ωu
 
     t = 0
     while t <= DURATION:
@@ -58,23 +74,24 @@ def main():
         # desired linear velocity is along the path direction, with angular
         # velocity computed to make the robot oriented in the direction of the
         # path
-        pathdir, _ = path.compute_direction_and_offset(p_ee[:2], lookahead=LOOKAHEAD)
+        pathdir, _ = path.compute_direction_and_offset(p_ee[:2])
         θd = np.arctan2(pathdir[1], pathdir[0])
-        V_ee_d = np.append(PUSH_SPEED * pathdir, kθ * (θd - θ))
+        ωd = kθ * fp.wrap_to_pi(θd - θ)
+        ωd = min(ωu, max(ωl, ωd))
+        V_ee_d = np.append(PUSH_SPEED * pathdir, ωd)
 
-        print(f"dir = {pathdir}")
-        print(f"θd  = {θd}")
-        print(f"θ   = {θ}")
+        if abs(ωd) > ω_max:
+            ω_max = ωd
+
+        # print(f"dir = {pathdir}")
+        # print(f"θd  = {θd}")
+        # print(f"θ   = {θ}")
 
         # move the base so that the desired EE velocity is achieved
         C_wb = fp.rot2d(q[2])
         δ = np.append(fp.skew2d(V_ee_d[2]) @ C_wb @ r_be_b, 0)
         u_base = V_ee_d + δ
         u = np.concatenate((u_base, np.zeros(6)))
-
-        if θd > 2.3:
-            IPython.embed()
-            return
 
         # note that in simulation the mobile base takes commands in the world
         # frame, but the real mobile base takes commands in the body frame
@@ -84,6 +101,8 @@ def main():
         # step the sim forward in time
         t = sim.step(t)
         # time.sleep(TIMESTEP)
+
+    print(f"ω_max = {ω_max}")
 
 
 main()

@@ -16,6 +16,9 @@ from force_push.inertia import *
 
 rospack = rospkg.RosPack()
 HOME_CONFIG_FILE = Path(rospack.get_path("force_push")) / "config/home.yaml"
+CONTACT_POINT_CALIBRATION_FILE = (
+    Path(rospack.get_path("force_push")) / "config/contact_point_calibration.yaml"
+)
 
 
 def pursuit(p, lookahead):

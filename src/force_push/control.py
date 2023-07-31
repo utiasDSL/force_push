@@ -1,10 +1,64 @@
 import numpy as np
+from qpsolvers import solve_qp
 
 from force_push import util
 
 
+class RobotController:
+    """Controller for the mobile base.
+
+    Designed to achieve commanded EE linear velocity while using base rotation
+    to avoid obstacles and otherwise align the robot with the path.
+    """
+
+    def __init__(self, r_cb_b, lb, ub, solver="proxqp"):
+        """Initialize the controller.
+
+        Parameters:
+            r_cb_b: 2D position of the contact point w.r.t. the base frame origin
+            lb: Lower bound on velocity (v_x, v_y, ω)
+            ub: Upper bound on velocity
+            solver: the QP solver to use (default: 'proxqp')
+        """
+        self.r_cb_b = r_cb_b
+        self.lb = lb
+        self.ub = ub
+        self.solver = solver
+
+    def update(self, C_wb, V_ee_d, normals=None, dists=None):
+        """Compute new controller input u.
+
+        Parameters:
+            C_wb: rotation matrix from base frame to world frame
+            V_ee_d: desired EE velocity (v_x, v_y, ω)
+            normals: Normals to nearby obstacles (optional)
+            dists: Distances to nearby obstacles (optional)
+        """
+        S = np.array([[0, -1], [1, 0]])
+        J = np.hstack((np.eye(2), (S @ C_wb @ self.r_cb_b)[:, None]))
+
+        P = np.diag([0.1, 0.1, 1])
+        q = np.array([0, 0, -V_ee_d[2]])
+
+        lb = np.array([-1, -1, -0.5])
+        ub = np.array([1, 1, 0.5])
+
+        if normals is None:
+            G = None
+            h = None
+        else:
+            h = dists
+            G = np.hstack((normals, np.zeros((normals.shape[0], 1))))
+
+        A = J
+        b = V_ee_d[:2]
+
+        u = solve_qp(P=P, q=q, A=A, b=b, G=G, h=h, lb=lb, ub=ub, solver=self.solver)
+        return u
+
+
 class Controller:
-    """Force angle-based pushing controller."""
+    """Task-space force angle-based pushing controller."""
 
     def __init__(
         self,
@@ -108,7 +162,7 @@ class Controller:
         else:
             θp = (
                 (1 + self.kθ) * θd
-                + self.ky * yc  #* (1 + np.abs(yc))
+                + self.ky * yc  # * (1 + np.abs(yc))
                 + self.ki_θ * self.θd_int
                 + self.ki_y * self.yc_int
             )

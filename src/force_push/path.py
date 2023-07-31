@@ -106,6 +106,7 @@ def line_segment_to_point_dist(v1, v2, p, tol=1e-8):
 
 class LineSegment:
     """Path segment that is a straight line."""
+
     def __init__(self, v1, v2, infinite=False):
         self.v1 = np.array(v1)
         self.v2 = np.array(v2)
@@ -117,17 +118,39 @@ class LineSegment:
         self.v2 += Δ
 
     def closest_point_and_direction(self, p):
+        return self.closest_point_and_distance(p)[0], self.direction
+
+    def closest_point_and_distance(self, p, tol=1e-8):
+        r = p - self.v1
+        proj = self.direction @ r  # project onto the line
+
         if self.infinite:
-            _, closest = half_line_segment_to_point_dist(
-                self.v1, self.direction, p, tol=1e-8
-            )
+            # closest point is beyond the end of the segment
+            if proj <= 0:
+                return  self.v1, np.linalg.norm(r)
+            c = self.v1 + proj * self.direction
+            return c, np.linalg.norm(p - c)
         else:
-            _, closest = line_segment_to_point_dist(self.v1, self.v2, p, tol=1e-8)
-        return closest, self.direction
+            v = self.v2 - self.v1
+            L = np.linalg.norm(v)
+
+            # degenerate case when the line segment has zero length (i.e., is a point)
+            if L < tol:
+                return self.v1, np.linalg.norm(r)
+
+            # closest point is beyond the end of the segment
+            if proj <= 0:
+                return self.v1, np.linalg.norm(r)
+            if proj >= L:
+                return self.v2, np.linalg.norm(p - self.v2)
+
+            c = self.v1 + proj * self.direction
+            return c, np.linalg.norm(p - c)
 
 
 class QuadBezierSegment:
     """Path segment that is a quadratic Bezier curve."""
+
     def __init__(self, v1, v2, v3):
         self.v1 = np.array(v1)
         self.v2 = np.array(v2)

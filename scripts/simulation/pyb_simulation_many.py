@@ -40,7 +40,6 @@ KY = 0.1
 # Kθ = 0.15
 # KY = 0.05
 
-LOOKAHEAD = 2.0
 CORRIDOR_RADIUS = 1.4
 
 # slider params
@@ -56,7 +55,6 @@ PUSHER_INIT_POS = np.array([-0.7, 0, 0.1])
 # the trial is considered to have failed
 FAILURE_DIST = 0.5
 
-# NOTE low inertia is at 0.1
 μ0s = [0, 0.5]
 # μ0s = [0, 0.3, 0.6, 0.8]
 y0s = [-0.4, 0, 0.4]
@@ -64,9 +62,9 @@ y0s = [-0.4, 0, 0.4]
 θ0s = [0]
 s0s = [-0.4, 0, 0.4]
 
-# μ0s = [1.0]
+# μ0s = [0.5]
 # y0s = [0.4]
-# θ0s = [np.pi / 8]
+# θ0s = [0]
 # s0s = [0.4]
 
 
@@ -125,7 +123,7 @@ def setup_box_slider(position):
     I_uni = fp.uniform_cuboid_inertia(
         mass=SLIDER_MASS, half_extents=BOX_SLIDER_HALF_EXTENTS
     )
-    I_low = 0.1 * I_uni
+    I_low = 0.5 * I_uni
     inertias = [I_low, I_uni, I_max]
 
     return slider, inertias
@@ -140,7 +138,7 @@ def setup_circle_slider(position):
     I_uni = fp.uniform_cylinder_inertia(
         SLIDER_MASS, CIRCLE_SLIDER_RADIUS, CIRCLE_SLIDER_HEIGHT
     )
-    I_low = 0.1 * I_uni
+    I_low = 0.5 * I_uni
     # I_low2 = fp.uniform_cylinder_inertia(
     #     SLIDER_MASS, 0.1 * CIRCLE_SLIDER_RADIUS, CIRCLE_SLIDER_HEIGHT
     # )
@@ -154,8 +152,13 @@ def setup_straight_path():
 
 
 def setup_corner_path(corridor=False):
-    vertices = np.array([[0, 0], [5, 0]])
-    path = fp.SegmentPath(vertices, final_direction=[0, 1])
+    path = fp.SegmentPath(
+        [
+            fp.LineSegment([0., 0], [3., 0]),
+            fp.QuadBezierSegment([3., 0], [5., 0], [5, 2]),
+            fp.LineSegment([5., 2], [5., 5], infinite=True),
+        ],
+    )
 
     if corridor:
         block1 = fp.BulletBlock([1, 6.5, 0.5], [2.5, 5, 0.5], mu=OBSTACLE_MU)
@@ -261,16 +264,20 @@ def main():
         path = setup_corner_path(corridor=True)
         corridor_radius = CORRIDOR_RADIUS
 
-    for vertex in path.vertices:
-        r = np.append(vertex, 0.1)
-        debug_frame_world(0.2, tuple(r), line_width=3)
+    # somewhat janky: for now, we show both vertices for lines and just the
+    # middle one for quadratic bezier segments
+    for segment in path.segments:
+        if type(segment) is fp.LineSegment:
+            v1 = np.append(segment.v1, 0.1)
+            debug_frame_world(0.2, tuple(v1), line_width=3)
+        v2 = np.append(segment.v2, 0.1)
+        debug_frame_world(0.2, tuple(v2), line_width=3)
 
     controller = fp.Controller(
         speed=PUSH_SPEED,
         kθ=Kθ,
         ky=KY,
         path=path,
-        lookahead=LOOKAHEAD,
         corridor_radius=corridor_radius,
     )
 
@@ -283,7 +290,6 @@ def main():
         "push_speed": PUSH_SPEED,
         "kθ": Kθ,
         "ky": KY,
-        "lookahead": LOOKAHEAD,
         "inertias": slider_inertias,
         "y0s": y0s,
         "θ0s": θ0s,
@@ -338,10 +344,12 @@ def main():
             count += 1
 
     # parse path points to plot
-    d = path.directions[-1, :]
-    v = path.vertices[-1, :]
+    d = path.segments[-1].direction
+    v = path.segments[-1].v2
     dist = np.max((np.vstack(all_r_sw_ws)[:, :2] - v) @ d)
-    r_dw_ws = path.get_coords(dist=dist)
+
+    # TODO this needs to be fixed
+    r_dw_ws = path.get_plotting_coords(dist=dist)
 
     data["times"] = all_ts
     data["pusher_positions"] = all_r_pw_ws

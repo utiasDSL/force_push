@@ -200,7 +200,7 @@ class SegmentPath:
         offset = perp @ (p - closest)
         return direction, offset
 
-    def get_plotting_coords(self, n_bez=25):
+    def get_plotting_coords(self, n_bez=25, dist=0):
         """Get (x, y) coordinates of the path for plotting.
 
         Parameters:
@@ -215,6 +215,13 @@ class SegmentPath:
                 vertices.extend([segment.v1, segment.v2])
             elif type(segment) is QuadBezierSegment:
                 vertices.extend([segment._evaluate(t) for t in ts])
+
+        # if the last segment is an infinite line, we append a final vertex a
+        # distance `dist` along the line from the last vertex
+        last_seg = self.segments[-1]
+        if type(last_seg) is LineSegment and last_seg.infinite:
+            vertices.append(last_seg.v2 + dist * last_seg.direction)
+
         return np.array(vertices)
 
 

@@ -5,6 +5,8 @@ import rospkg
 import numpy as np
 import time
 import matplotlib.pyplot as plt
+import pyb_utils
+from qpsolvers import solve_qp
 
 import mobile_manipulation_central as mm
 import force_push as fp
@@ -18,6 +20,34 @@ DURATION = 100
 
 LOOKAHEAD = 2
 PUSH_SPEED = 0.1
+
+
+class RobotController:
+    def __init__(self, r_cb_b):
+        self.r_cb_b = r_cb_b
+
+    def update(self, C_wb, V_ee_d, normal=None):
+        S = np.array([[0, -1], [1, 0]])
+        J = np.hstack((np.eye(2), (S @ C_wb @ self.r_cb_b)[:, None]))
+
+        P = np.diag([0.1, 0.1, 1])
+        q = np.array([0, 0, -V_ee_d[2]])
+
+        lb = np.array([-1, -1, -0.5])
+        ub = np.array([1, 1, 0.5])
+
+        if normal is None:
+            G = None
+            h = None
+        else:
+            G = np.append(normal, 0).reshape((1, 3))
+            h = np.zeros(1)
+
+        A = J
+        b = V_ee_d[:2]
+
+        u = solve_qp(P=P, q=q, A=A, b=b, G=G, h=h, lb=lb, ub=ub, solver="proxqp")
+        return u
 
 
 def main():
@@ -39,8 +69,11 @@ def main():
 
     r_ew_w = robot.link_pose()[0]  # initial position
     q, _ = robot.joint_states()
+    C_wb = fp.rot2d(q[2])
     c = r_ew_w[:2]
-    r_be_b = -(c - q[:2])
+    r_be_b = -C_wb.T @ (c - q[:2])
+
+    robot_controller = RobotController(-r_be_b)
 
     # desired EE path
     path = fp.SegmentPath(
@@ -51,6 +84,10 @@ def main():
         ],
         origin=c,
     )
+    obstacle = fp.LineSegment(c + [-3, 3], c + [3, 3])
+    pyb_utils.debug_frame_world(0.2, list(obstacle.v1) + [0.1], line_width=3)
+    pyb_utils.debug_frame_world(0.2, list(obstacle.v2) + [0.1], line_width=3)
+
     # xy = path.get_plotting_coords()
     # plt.plot(xy[:, 0], xy[:, 1])
     # plt.grid()
@@ -74,14 +111,16 @@ def main():
         # desired linear velocity is along the path direction, with angular
         # velocity computed to make the robot oriented in the direction of the
         # path
-        pathdir, _ = path.compute_direction_and_offset(p_ee[:2])
+        # TODO there is a lot of drift since we're not controlling the offset
+        pathdir, off = path.compute_direction_and_offset(p_ee[:2])
+        # print(f"off = {off}")
         θd = np.arctan2(pathdir[1], pathdir[0])
         ωd = kθ * fp.wrap_to_pi(θd - θ)
         ωd = min(ωu, max(ωl, ωd))
         V_ee_d = np.append(PUSH_SPEED * pathdir, ωd)
 
-        if abs(ωd) > ω_max:
-            ω_max = ωd
+        # if abs(ωd) > ω_max:
+        #     ω_max = ωd
 
         # print(f"dir = {pathdir}")
         # print(f"θd  = {θd}")
@@ -90,7 +129,14 @@ def main():
         # move the base so that the desired EE velocity is achieved
         C_wb = fp.rot2d(q[2])
         δ = np.append(fp.skew2d(V_ee_d[2]) @ C_wb @ r_be_b, 0)
-        u_base = V_ee_d + δ
+        # u_base = V_ee_d + δ
+        # u = np.concatenate((u_base, np.zeros(6)))
+
+        d, closest = fp.line_segment_to_point_dist(obstacle.v1, obstacle.v2, q[:2])
+        normal = None
+        if d <= 0.75:
+            normal = fp.unit(closest - q[:2])
+        u_base = robot_controller.update(C_wb, V_ee_d, normal)
         u = np.concatenate((u_base, np.zeros(6)))
 
         # note that in simulation the mobile base takes commands in the world

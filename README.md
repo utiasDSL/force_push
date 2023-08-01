@@ -71,6 +71,9 @@ If the flag `--open-loop` is provided, then the system will not respond to
 forces and instead just try to follow the desired path with the end effector in
 an open-loop manner.
 
+To save the results of the push from ROS, use the `record.sh` script to record
+a rosbag.
+
 ## License
 
 MIT - see the LICENSE file.

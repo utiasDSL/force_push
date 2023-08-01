@@ -62,46 +62,50 @@ class StraightPath:
         return self.perp @ (p - self.origin)
 
 
-def half_line_segment_to_point_dist(v1, direction, p, tol=1e-8):
-    """Get distance between "half" line segment which starts at vertex `v1` and
-    extends infinitely in `direction` and the point `p`.
+# def half_line_segment_to_point_dist(v1, direction, p, tol=1e-8):
+#     """Get distance between "half" line segment which starts at vertex `v1` and
+#     extends infinitely in `direction` and the point `p`.
+#
+#     Also returns the closest point on the line segment to `p`.
+#     """
+#     r = p - v1
+#     proj = direction @ r  # project onto the line
+#
+#     # closest point is beyond the end of the segment
+#     if proj <= 0:
+#         return np.linalg.norm(r), v1
+#     c = v1 + proj * direction
+#     return np.linalg.norm(p - c), c
+#
+#
+# def line_segment_to_point_dist(v1, v2, p, tol=1e-8):
+#     """Get distance between line segment defined by vertices v1 and v2 and a point p.
+#
+#     Also returns the closest point on the line segment to p.
+#     """
+#     v = v2 - v1
+#     r = p - v1
+#     L = np.linalg.norm(v)
+#
+#     # degenerate case when the line segment has zero length (i.e., is a point)
+#     if L < tol:
+#         return np.linalg.norm(r), v1
+#
+#     n = v / L  # unit vector along the line
+#     proj = n @ r  # project onto the line
+#
+#     # closest point is beyond the end of the segment
+#     if proj <= 0:
+#         return np.linalg.norm(r), v1
+#     if proj >= L:
+#         return np.linalg.norm(p - v2), v2
+#
+#     c = v1 + proj * n
+#     return np.linalg.norm(p - c), c
 
-    Also returns the closest point on the line segment to `p`.
-    """
-    r = p - v1
-    proj = direction @ r  # project onto the line
 
-    # closest point is beyond the end of the segment
-    if proj <= 0:
-        return np.linalg.norm(r), v1
-    c = v1 + proj * direction
-    return np.linalg.norm(p - c), c
-
-
-def line_segment_to_point_dist(v1, v2, p, tol=1e-8):
-    """Get distance between line segment defined by vertices v1 and v2 and a point p.
-
-    Also returns the closest point on the line segment to p.
-    """
-    v = v2 - v1
-    r = p - v1
-    L = np.linalg.norm(v)
-
-    # degenerate case when the line segment has zero length (i.e., is a point)
-    if L < tol:
-        return np.linalg.norm(r), v1
-
-    n = v / L  # unit vector along the line
-    proj = n @ r  # project onto the line
-
-    # closest point is beyond the end of the segment
-    if proj <= 0:
-        return np.linalg.norm(r), v1
-    if proj >= L:
-        return np.linalg.norm(p - v2), v2
-
-    c = v1 + proj * n
-    return np.linalg.norm(p - c), c
+def translate_segments(segments, offset):
+    return [segment.offset(offset) for segment in segments]
 
 
 class LineSegment:
@@ -114,8 +118,7 @@ class LineSegment:
         self.infinite = infinite
 
     def offset(self, Δ):
-        self.v1 += Δ
-        self.v2 += Δ
+        return LineSegment(v1=self.v1 + Δ, v2=self.v2 + Δ, infinite=self.infinite)
 
     def closest_point_and_direction(self, p):
         return self.closest_point_and_distance(p)[0], self.direction
@@ -157,9 +160,7 @@ class QuadBezierSegment:
         self.v3 = np.array(v3)
 
     def offset(self, Δ):
-        self.v1 += Δ
-        self.v2 += Δ
-        self.v3 += Δ
+        return QuadBezierSegment(v1=self.v1 + Δ, v2=self.v2 + Δ, v3=self.v3 + Δ)
 
     def _evaluate(self, t):
         assert 0 <= t <= 1
@@ -194,10 +195,10 @@ class SegmentPath:
         If `origin` is not `None`, then the vertices of each segment will be
         offset by `origin`.
         """
-        self.segments = segments
-        if origin is not None:
-            for segment in self.segments:
-                segment.offset(origin)
+        if origin is None:
+            self.segments = segments
+        else:
+            self.segments = translate_segments(segments, origin)
 
     @classmethod
     def line(cls, direction, origin=None):

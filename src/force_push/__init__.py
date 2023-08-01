@@ -12,6 +12,7 @@ from force_push.pyb_simulation import *
 from force_push.plotting import *
 from force_push.control import *
 from force_push.inertia import *
+from force_push.estimation import *
 
 
 rospack = rospkg.RosPack()
@@ -21,9 +22,10 @@ CONTACT_POINT_CALIBRATION_FILE = (
 )
 
 
-def pursuit(p, lookahead):
-    """Pure pursuit along the x-axis."""
-    if np.abs(p[1]) >= lookahead:
-        return np.array([0, -np.sign(p[1]) * lookahead])
-    x = lookahead**2 - p[1] ** 2
-    return np.array([x, -p[1]])
+# TODO remove
+# def pursuit(p, lookahead):
+#     """Pure pursuit along the x-axis."""
+#     if np.abs(p[1]) >= lookahead:
+#         return np.array([0, -np.sign(p[1]) * lookahead])
+#     x = lookahead**2 - p[1] ** 2
+#     return np.array([x, -p[1]])

@@ -11,53 +11,70 @@ class RobotController:
     to avoid obstacles and otherwise align the robot with the path.
     """
 
-    def __init__(self, r_cb_b, lb, ub, solver="proxqp"):
+    def __init__(self, r_cb_b, lb, ub, obstacles=None, min_dist=0.75, solver="proxqp"):
         """Initialize the controller.
 
         Parameters:
             r_cb_b: 2D position of the contact point w.r.t. the base frame origin
             lb: Lower bound on velocity (v_x, v_y, ω)
             ub: Upper bound on velocity
+            obstacles: list of LineSegments to be avoided (optional)
+            min_dist: Minimum distance to maintain from obstacles.
             solver: the QP solver to use (default: 'proxqp')
         """
         self.r_cb_b = r_cb_b
         self.lb = lb
         self.ub = ub
+        self.obstacles = obstacles if obstacles is not None else []
+        self.min_dist = min_dist
         self.solver = solver
 
-    def update(self, C_wb, V_ee_d, normals=None, dists=None):
+    def _compute_obstacle_constraint(self, r_bw_w):
+        # no obstacles, no constraint
+        n = len(self.obstacles)
+        if n == 0:
+            return None, None
+
+        # find nearby obstacles
+        normals = []
+        for obstacle in self.obstacles:
+            closest, dist = obstacle.closest_point_and_distance(r_bw_w)
+            if dist <= self.min_dist:
+                normals.append(util.unit(closest - r_bw_w))
+
+        # no nearby obstacles
+        if len(normals) == 0:
+            return None, None
+
+        G = np.atleast_2d(normals)
+        G = np.hstack((G, np.zeros((G.shape[0], 1))))
+        h = np.zeros(G.shape[0])
+        return G, h
+
+    def update(self, r_bw_w, C_wb, V_ee_d):
         """Compute new controller input u.
 
         Parameters:
+            r_bw_w: 2D position of base in the world frame
             C_wb: rotation matrix from base frame to world frame
             V_ee_d: desired EE velocity (v_x, v_y, ω)
-            normals: Normals to nearby obstacles (optional)
-            dists: Distances to nearby obstacles (optional)
         """
         S = np.array([[0, -1], [1, 0]])
         J = np.hstack((np.eye(2), (S @ C_wb @ self.r_cb_b)[:, None]))
 
         P = np.diag([0.1, 0.1, 1])
         q = np.array([0, 0, -V_ee_d[2]])
-
-        lb = np.array([-1, -1, -0.5])
-        ub = np.array([1, 1, 0.5])
-
-        if normals is None:
-            G = None
-            h = None
-        else:
-            h = dists
-            G = np.hstack((normals, np.zeros((normals.shape[0], 1))))
-
+        G, h = self._compute_obstacle_constraint(r_bw_w)
         A = J
         b = V_ee_d[:2]
 
-        u = solve_qp(P=P, q=q, A=A, b=b, G=G, h=h, lb=lb, ub=ub, solver=self.solver)
+        u = solve_qp(
+            P=P, q=q, A=A, b=b, G=G, h=h, lb=self.lb, ub=self.ub, solver=self.solver
+        )
         return u
 
 
-class Controller:
+class PushController:
     """Task-space force angle-based pushing controller."""
 
     def __init__(

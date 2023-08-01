@@ -24,7 +24,6 @@ SURFACE_MU = 1.0
 PUSH_SPEED = 0.1
 Kθ = 0.5
 KY = 0.1
-LOOKAHEAD = 2.0
 
 
 def main():
@@ -63,9 +62,7 @@ def main():
         r = np.append(vertex, 0.1)
         debug_frame_world(0.2, tuple(r), line_width=3)
 
-    controller = fp.Controller(
-        speed=PUSH_SPEED, kθ=Kθ, ky=KY, path=path, lookahead=LOOKAHEAD
-    )
+    controller = fp.PushController(speed=PUSH_SPEED, kθ=Kθ, ky=KY, path=path)
 
     r_pw_ws = []
     r_sw_ws = []

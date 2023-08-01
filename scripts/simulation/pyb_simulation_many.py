@@ -273,7 +273,7 @@ def main():
         v2 = np.append(segment.v2, 0.1)
         debug_frame_world(0.2, tuple(v2), line_width=3)
 
-    controller = fp.Controller(
+    controller = fp.PushController(
         speed=PUSH_SPEED,
         kθ=Kθ,
         ky=KY,

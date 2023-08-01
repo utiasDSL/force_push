@@ -235,9 +235,9 @@ class QPPusherSliderMotion2:
         # normalize ρ to obtain the contact force
         f = ρ / np.sqrt(ρ @ W.T @ self.M @ W @ ρ)
 
-        f_comp = β * self.gain * nc
-        print(f_comp)
-        print(f + f_comp)
+        # f_comp = β * self.gain * nc
+        # print(f_comp)
+        # print(f + f_comp)
 
         return Vo, f, α
 

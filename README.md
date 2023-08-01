@@ -61,6 +61,16 @@ looks for a marker near the expected location, calculates the offset, and
 outputs the results to a YAML file. To use this calibration subsequently, move
 the YAML file to the `config` directory.
 
+### Pushing control
+
+To run the pushing controller, do:
+```
+./push_control_node.py
+```
+If the flag `--open-loop` is provided, then the system will not respond to
+forces and instead just try to follow the desired path with the end effector in
+an open-loop manner.
+
 ## License
 
 MIT - see the LICENSE file.

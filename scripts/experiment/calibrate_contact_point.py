@@ -18,15 +18,16 @@ import IPython
 
 
 RATE = 100  # Hz
+SEARCH_RADIUS = 0.2
 
 CALIBRATION_FILE = "contact_point_calibration.yaml"
 
 
 class ContactPointCalibrator:
-    def __init__(self, c0, r=0.4):
-        """Set up the calibrator to look for a marker with r distance of point c0."""
+    def __init__(self, c0, radius=0.4):
+        """Set up the calibrator to look for a marker with radius distance of point c0."""
         self.c0 = c0
-        self.r = r
+        self.radius = radius
 
         # track the markers seen
         self.count = 0
@@ -39,7 +40,7 @@ class ContactPointCalibrator:
         for marker in msg.markers:
             p = marker.translation
             p = np.array([p.x, p.y, p.z]) / 1000  # convert to meters
-            if np.linalg.norm(self.c0 - p) < self.r:
+            if np.linalg.norm(self.c0 - p) < self.radius:
                 positions.append(p)
 
         if len(positions) == 0:
@@ -69,35 +70,41 @@ def main():
     # wait until robot feedback has been received
     robot = mm.RidgebackROSInterface()
     rate = rospy.Rate(RATE)
+    print("Waiting for feedback from robot...")
     while not rospy.is_shutdown() and not robot.ready():
         rate.sleep()
+    print("...feedback received.")
 
     # custom signal handler to brake the robot
     signal_handler = mm.RobotSignalHandler(robot)
 
     # get the nominal contact point based on the model
     q = np.concatenate((robot.q, q_arm))
+    C_wb = fp.rot2d(q[2])
     model.forward(q)
     r_ew_w = model.link_pose()[0]
 
     # look for a marker close to this point
-    calibrator = ContactPointCalibrator(r_ew_w)
+    # add an offset because we know it is slightly in front
+    calibrator = ContactPointCalibrator(
+        r_ew_w + np.append(C_wb @ [0.2, 0], 0), radius=SEARCH_RADIUS
+    )
     while not rospy.is_shutdown() and calibrator.count < 20:
         rate.sleep()
     calibrator.marker_sub.unregister()
 
     # compute offset from base
     r_cw_w = calibrator.average
-    C_wb = fp.rot2d(q[2])
     r_be_b = compute_base_to_contact_vector(C_wb, r_ew_w[:2], q[:2])
     r_bc_b = compute_base_to_contact_vector(C_wb, r_cw_w[:2], q[:2])
 
+    print("r_bc_b")
     print(f"nominal = {r_be_b}")
     print(f"actual  = {r_bc_b}")
 
     # save the results
     with open(CALIBRATION_FILE, "w") as f:
-        yaml.dump({"r_bc_b" : r_bc_b.tolist()}, stream=f)
+        yaml.dump({"r_bc_b": r_bc_b.tolist()}, stream=f)
     print(f"Saved to {CALIBRATION_FILE}")
 
 

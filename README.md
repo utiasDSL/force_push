@@ -21,7 +21,10 @@ catkin build
 ```
 
 ## Experiments
+
 Experiments are done using utilities in mobile_manipulation_central.
+
+### Arm
 
 If it isn't already, connect to the arm and put it into the required home
 position. Then turn it off:
@@ -31,8 +34,10 @@ rosrun mobile_manipulation_central home.py --config (rospack find force_push)/co
 ```
 Grasp a tennis ball with the gripper in the "pinched" configuration.
 
-These experiments use only the mobile base; no need to turn on the arm. SSH
-into the robot and run:
+### Base, gripper, F/T sensor, Vicon
+
+After the initial positioning of the arm, these experiments use only the mobile
+base; the arm can remain off. SSH into the robot and run:
 ```
 rosrun robotiq_ft_sensor rq_sensor
 ```
@@ -44,6 +49,17 @@ On the laptop, run
 rosrun mobile_manipulation_central ridgeback_vicon.launch
 ```
 for localization and control of the mobile base.
+
+### Calibration
+
+For best results, the offset between the origin of the base frame (i.e., the
+point about which the base rotates) and the contact point (i.e., roughly the
+front of the tennis ball) should be calibrated. This can be done by temporarily
+placing a marker on the tennis ball, ensuring Tracking is off in the Vicon UI,
+and running the script `calibrate_contact_point.py`. This script automatically
+looks for a marker near the expected location, calculates the offset, and
+outputs the results to a YAML file. To use this calibration subsequently, move
+the YAML file to the `config` directory.
 
 ## License
 

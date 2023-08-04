@@ -36,7 +36,7 @@ VEL_LB = -VEL_UB
 # only control based on force when it is high enough (i.e. in contact with
 # something)
 FORCE_MIN_THRESHOLD = 5
-FORCE_MAX_THRESHOLD = 50
+FORCE_MAX_THRESHOLD = 75
 
 # time constant for force filter
 FILTER_TIME_CONSTANT = 0.1
@@ -108,6 +108,7 @@ def main():
         kθ=Kθ,
         ky=KY,
         path=path,
+        con_inc=0.1,
         force_min=FORCE_MIN_THRESHOLD,
         force_max=FORCE_MAX_THRESHOLD,
     )
@@ -128,6 +129,7 @@ def main():
 
         # force direction is negative to switch from sensed force to applied force
         f = -f_w[:2]
+        # print(np.linalg.norm(f))
 
         # direction of the path
         pathdir, _ = path.compute_direction_and_offset(r_cw_w)

@@ -56,7 +56,7 @@ class BulletBody:
 
 
 class BulletPusher(BulletBody):
-    def __init__(self, position, mu, radius=0.05):
+    def __init__(self, position, mu=1, radius=0.05):
         collision_uid = pyb.createCollisionShape(
             shapeType=pyb.GEOM_SPHERE,
             radius=radius,

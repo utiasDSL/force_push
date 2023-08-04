@@ -90,6 +90,8 @@ class PushController:
         force_max=50,
         con_inc=0.3,
         div_inc=0.3,
+        obstacles=None,
+        min_dist=0.1,
     ):
         """Force-based pushing controller.
 
@@ -120,13 +122,16 @@ class PushController:
         self.corridor_radius = corridor_radius
 
         # force thresholds
-        # self.force_max = 10
         self.force_min = force_min
         self.force_max = force_max
 
         # convergence and divergence increment
         self.con_inc = con_inc
         self.div_inc = div_inc
+
+        # obstacles
+        self.obstacles = obstacles if obstacles is not None else []
+        self.min_dist = min_dist
 
         # variables
         self.first_contact = False
@@ -172,21 +177,15 @@ class PushController:
             θp = self.θp - self.inc_sign * self.con_inc
         elif f_norm > self.force_max:
             # diverge from the path if force is too high
-
-            # TODO
-            # θp = self.θp + self.inc_sign * self.inc
             θp = self.θp + np.sign(θd) * self.div_inc
+            speed /= 2
         else:
             θp = (
                 (1 + self.kθ) * θd
-                + self.ky * yc  # * (1 + np.abs(yc))
+                + self.ky * yc
                 + self.ki_θ * self.θd_int
                 + self.ki_y * self.yc_int
             )
-            # α = 1.0
-            # θp = (1 - α) * self.θp + α * θp
-            # if np.abs(yc) > 1.0:
-            #     speed = 0.5 * speed
             self.inc_sign = np.sign(θd)
 
         self.θp = util.wrap_to_pi(θp)
@@ -195,13 +194,23 @@ class PushController:
         pushdir = util.rot2d(self.θp) @ pathdir
 
         # avoid the walls of the corridor
-        if np.abs(yc) >= self.corridor_radius:
-            R = util.rot2d(np.pi / 2)
-            perp = R @ pathdir
-            print("correction!")
-            if off > 0 and perp @ pushdir > 0:
-                pushdir = util.unit(pushdir - (perp @ pushdir) * perp)
-            elif off < 0 and perp @ pushdir < 0:
-                pushdir = util.unit(pushdir - (perp @ pushdir) * perp)
+        # if np.abs(yc) >= self.corridor_radius:
+        #     R = util.rot2d(np.pi / 2)
+        #     perp = R @ pathdir
+        #     print("correction!")
+        #     if off > 0 and perp @ pushdir > 0:
+        #         pushdir = util.unit(pushdir - (perp @ pushdir) * perp)
+        #     elif off < 0 and perp @ pushdir < 0:
+        #         pushdir = util.unit(pushdir - (perp @ pushdir) * perp)
+
+        R = util.rot2d(np.pi / 2)
+        for obstacle in self.obstacles:
+            closest, dist = obstacle.closest_point_and_distance(position)
+            if dist <= self.min_dist:
+                print("correction!")
+                normal = util.unit(closest - position)
+                if pushdir @ normal > 0:
+                    perp = R @ normal
+                    pushdir = np.sign(pushdir @ perp) * perp
 
         return speed * pushdir

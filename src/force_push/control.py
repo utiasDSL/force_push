@@ -178,7 +178,6 @@ class PushController:
         elif f_norm > self.force_max:
             # diverge from the path if force is too high
             θp = self.θp + np.sign(θd) * self.div_inc
-            speed /= 2
         else:
             θp = (
                 (1 + self.kθ) * θd

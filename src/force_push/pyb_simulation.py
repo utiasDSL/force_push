@@ -56,7 +56,7 @@ class BulletBody:
 
 
 class BulletPusher(BulletBody):
-    def __init__(self, position, mu=1, radius=0.05):
+    def __init__(self, position, mass=100, mu=1, radius=0.1):
         collision_uid = pyb.createCollisionShape(
             shapeType=pyb.GEOM_SPHERE,
             radius=radius,
@@ -66,7 +66,7 @@ class BulletPusher(BulletBody):
             radius=radius,
             rgbaColor=[1, 0, 0, 1],
         )
-        super().__init__(position, collision_uid, visual_uid, mass=0, mu=mu)
+        super().__init__(position, collision_uid, visual_uid, mass=mass, mu=mu)
 
         self.v_last = np.zeros(3)
         self.v_err_int = np.zeros(3)

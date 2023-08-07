@@ -36,17 +36,20 @@ KY = 0.1
 CON_INC = np.pi / 64
 DIV_INC = np.pi / 8
 
-# TODO deprecated
-CORRIDOR_RADIUS = 1.4
-
 # slider params
 SLIDER_MASS = 1.0
-BOX_SLIDER_HALF_EXTENTS = (0.5, 0.5, 0.1)
+BOX_SLIDER_HALF_EXTENTS = (0.5, 0.5, 0.05)
 CIRCLE_SLIDER_RADIUS = 0.5
-CIRCLE_SLIDER_HEIGHT = 0.2
+CIRCLE_SLIDER_HEIGHT = 0.1
+SLIDER_CONTACT_DAMPING = 100
+SLIDER_CONTACT_STIFFNESS = 10000
 
-SLIDER_INIT_POS = np.array([0, 0, 0.1])
-PUSHER_INIT_POS = np.array([-0.7, 0, 0.1])
+# pusher params
+PUSHER_MASS = 100
+PUSHER_RADIUS = 0.05
+
+SLIDER_INIT_POS = np.array([0, 0, 0.05])
+PUSHER_INIT_POS = np.array([-0.7, 0, 0.05])
 
 # if the closest distance between pusher and slider exceeds this amount, then
 # the trial is considered to have failed
@@ -55,10 +58,12 @@ FAILURE_DIST = 0.5
 # trial fails if no force occurs for this many seconds
 FAILURE_TIME = 20.0
 
+# variable parameters
 I_mask = [True, True, True]
-μ0s = [0, 0.4, 0.8]
+μ0s = [0, 0.5, 1.0]
 y0s = [-0.4, 0, 0.4]
 θ0s = [-np.pi / 8, 0, np.pi / 8]
+# θ0s = [0]
 s0s = [-0.4, 0, 0.4]
 
 # I_mask = [False, False, True]
@@ -67,11 +72,7 @@ s0s = [-0.4, 0, 0.4]
 # θ0s = [-np.pi / 8]
 # s0s = [0.4]
 
-# I_mask = [True, False, False]
-# μ0s = [0]
-# y0s = [-0.4]
-# θ0s = [np.pi / 8]
-# s0s = [-0.4]
+START_AT_TRIAL = 0
 
 
 def simulate(sim, pusher, slider, controller):
@@ -112,6 +113,18 @@ def simulate(sim, pusher, slider, controller):
             if t - last_force_time > FAILURE_TIME:
                 success = False
                 break
+
+        # simple force control in the z-direction to keep the pusher at the
+        # correct position (force control allows us to use feedforward to
+        # cancel gravity)
+        # pz = pusher.get_position()[2]
+        # kp = 100
+        # fg = 9.81 * PUSHER_MASS
+        # fz = kp * (PUSHER_INIT_POS[2] - pz) + fg
+        # print(pz)
+        # pyb.applyExternalForce(
+        #     pusher.uid, -1, forceObj=[0, 0, fz], posObj=[0, 0, 0], flags=pyb.WORLD_FRAME
+        # )
 
         sim.step()
 
@@ -262,37 +275,27 @@ def main():
         cameraTargetPosition=[3.66, 0.42, 0.49],
     )
 
-    pusher = fp.BulletPusher(PUSHER_INIT_POS)
+    pusher = fp.BulletPusher(PUSHER_INIT_POS, mass=PUSHER_MASS, radius=PUSHER_RADIUS)
     if args.slider == "box":
         slider, slider_inertias = setup_box_slider(SLIDER_INIT_POS)
     elif args.slider == "circle":
         slider, slider_inertias = setup_circle_slider(SLIDER_INIT_POS)
     slider_inertias = [slider_inertias[i] for i in range(3) if I_mask[i]]
 
-    # NOTE: useful to figure out the parameters of some notable trial number
-    # count = 0
-    # target = 164
-    # for (I, μ0, y0, θ0, s0) in itertools.product(
-    #     slider_inertias, μ0s, y0s, θ0s, s0s
-    # ):
-    #     if count == target:
-    #         IPython.embed()
-    #         break
-    #     count += 1
-
     # see e.g. <https://github.com/bulletphysics/bullet3/issues/4428>
-    # TODO turns out this is important for the box!
-    pyb.changeDynamics(slider.uid, -1, contactDamping=100, contactStiffness=10000)
+    pyb.changeDynamics(
+        slider.uid,
+        -1,
+        contactDamping=SLIDER_CONTACT_DAMPING,
+        contactStiffness=SLIDER_CONTACT_STIFFNESS,
+    )
 
     if args.environment == "straight":
         path, obstacles = setup_straight_path()
-        corridor_radius = np.inf
     elif args.environment == "corner":
         path, obstacles = setup_corner_path(corridor=False)
-        corridor_radius = np.inf
     elif args.environment == "corridor":
         path, obstacles = setup_corner_path(corridor=True)
-        corridor_radius = CORRIDOR_RADIUS
 
     # somewhat janky: for now, we show both vertices for lines and just the
     # middle one for quadratic bezier segments
@@ -317,7 +320,6 @@ def main():
         path=path,
         con_inc=CON_INC,
         div_inc=DIV_INC,
-        corridor_radius=corridor_radius,
         obstacles=obstacles,
     )
 
@@ -347,10 +349,16 @@ def main():
     parameters = []
 
     count = 0
-    with tqdm.tqdm(total=num_sims) as progress:
+    with tqdm.tqdm(total=num_sims, initial=START_AT_TRIAL) as progress:
         for (I, μ0, y0, θ0, s0) in itertools.product(
             slider_inertias, μ0s, y0s, θ0s, s0s
         ):
+            # for debugging purposes, it may be useful to fast-forward to a
+            # particular trial number
+            if count < START_AT_TRIAL:
+                count += 1
+                continue
+
             # set the new parameters
             r_pw_w = PUSHER_INIT_POS + [0, s0 + y0, 0]
             r_sw_w = SLIDER_INIT_POS + [0, y0, 0]
@@ -371,7 +379,7 @@ def main():
                 sim, pusher, slider, controller
             )
             if not success:
-                print(f"Trial {count + 1} failed.")
+                print(f"Trial {count} failed.")
                 print(f"I = {np.diag(I)}\nμ = {μ0}\ny0 = {y0}\nθ0 = {θ0}\ns0 = {s0}")
                 IPython.embed()
 

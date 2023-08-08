@@ -134,11 +134,13 @@ class PushController:
         self.min_dist = min_dist
 
         # variables
-        self.first_contact = False
-        self.yc_int = 0
-        self.θd_int = 0
-        self.θp = 0
-        self.inc_sign = 1
+        self.reset()
+        # self.first_contact = False
+        # self.yc_int = 0
+        # self.θd_int = 0
+        # self.θp = 0
+        # self.inc_sign = 1
+        # self.diverge = False
 
     def reset(self):
         """Reset the controller to its initial state."""
@@ -147,6 +149,7 @@ class PushController:
         self.θd_int = 0
         self.θp = 0
         self.inc_sign = 1
+        self.diverge = False
 
     def update(self, position, force, dt=0):
         """Compute a new pushing velocity based on contact position and force
@@ -171,14 +174,44 @@ class PushController:
 
         speed = self.speed
 
+        print(f"f_norm = {f_norm}")
+
         # pushing angle
         if f_norm < self.force_min:
             # if we've lost contact, try to recover by circling back
+            print("converge!")
             θp = self.θp - self.inc_sign * self.con_inc
-        elif f_norm > self.force_max:
+            self.diverge = False
+        elif f_norm > self.force_max or self.diverge:
             # diverge from the path if force is too high
-            θp = self.θp + np.sign(θd) * self.div_inc
+            print("diverge!")
+            # θp = self.θp + self.inc_sign * self.div_inc
+            if not self.diverge:
+                # rev = self.θp + self.inc_sign * np.pi
+                self.div_init = self.θp
+                # self.div_min = min(self.θp, rev)
+                # self.div_max = max(self.θp, rev)
+            # # θp = self.θp + np.sign(θd) * self.div_inc
+            # # TODO may not play well with wrap to pi
+            # θp = self.θp + self.inc_sign * self.div_inc
+            # θp = min(max(self.div_min, θp), self.div_max)
+
+            θp = self.θp + self.inc_sign * self.div_inc
+
+            # limit divergence to no more than 180 degrees (i.e., going backward)
+            div_delta = util.wrap_to_pi(θp - self.div_init)
+            if div_delta > np.pi:
+                θp = self.div_init + np.pi
+
+            # if self.diverge:
+            #     # already diverging: keep doing what we're doing
+            #     θp = self.θp
+            # else:
+            #     # θp = self.θp + np.sign(θd) * self.div_inc
+            #     θp = self.θp + np.sign(θd) * 0.75 * np.pi
+            self.diverge = True
         else:
+            # self.diverge = False
             θp = (
                 (1 + self.kθ) * θd
                 + self.ky * yc
@@ -188,6 +221,7 @@ class PushController:
             self.inc_sign = np.sign(θd)
 
         self.θp = util.wrap_to_pi(θp)
+        print(f"θp = {θp}")
 
         # pushing velocity
         pushdir = util.rot2d(self.θp) @ pathdir

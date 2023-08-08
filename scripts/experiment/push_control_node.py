@@ -28,6 +28,8 @@ PUSH_SPEED = 0.1
 Kθ = 0.3
 KY = 0.3
 Kω = 1
+CON_INC = 0.1
+DIV_INC = 0.1
 
 # base velocity bounds
 VEL_UB = np.array([0.5, 0.5, 0.25])
@@ -36,15 +38,17 @@ VEL_LB = -VEL_UB
 # only control based on force when it is high enough (i.e. in contact with
 # something)
 FORCE_MIN_THRESHOLD = 5
-FORCE_MAX_THRESHOLD = 75
+FORCE_MAX_THRESHOLD = 50
 
 # time constant for force filter
-FILTER_TIME_CONSTANT = 0.1
+# FILTER_TIME_CONSTANT = 0.1
+FILTER_TIME_CONSTANT = 0.05
 
 # minimum obstacle distance
 OBS_MIN_DIST = 0.75
 
 
+# TODO do similar environment setup to the simulation
 def main():
     np.set_printoptions(precision=6, suppress=True)
 
@@ -100,7 +104,7 @@ def main():
         ],
         origin=r_cw_w,
     )
-    obstacles = fp.translate_segments([fp.LineSegment([-3., 3], [3., 3])], r_cw_w)
+    obstacles = fp.translate_segments([fp.LineSegment([-3., 3.5], [3., 3.5])], r_cw_w)
 
     # controllers
     push_controller = fp.PushController(
@@ -108,7 +112,8 @@ def main():
         kθ=Kθ,
         ky=KY,
         path=path,
-        con_inc=0.1,
+        con_inc=CON_INC,
+        div_inc=DIV_INC,
         force_min=FORCE_MIN_THRESHOLD,
         force_max=FORCE_MAX_THRESHOLD,
     )
@@ -129,7 +134,7 @@ def main():
 
         # force direction is negative to switch from sensed force to applied force
         f = -f_w[:2]
-        # print(np.linalg.norm(f))
+        print(np.linalg.norm(f))
 
         # direction of the path
         pathdir, _ = path.compute_direction_and_offset(r_cw_w)
@@ -152,7 +157,8 @@ def main():
         if cmd_vel is None:
             print("Failed to solve QP!")
             break
-        print(f"cmd_vel = {cmd_vel}")
+        # print(f"cmd_vel = {cmd_vel}")
+        print(f"cmd_vel_xy_dir = {fp.unit(cmd_vel[:2])}")
 
         robot.publish_cmd_vel(cmd_vel, bodyframe=False)
 

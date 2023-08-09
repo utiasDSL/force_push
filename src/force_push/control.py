@@ -23,8 +23,8 @@ class RobotController:
             solver: the QP solver to use (default: 'proxqp')
         """
         self.r_cb_b = r_cb_b
-        self.lb = lb
-        self.ub = ub
+        self.lb = np.append(lb, 0)
+        self.ub = np.append(ub, 1)
         self.obstacles = obstacles if obstacles is not None else []
         self.min_dist = min_dist
         self.solver = solver
@@ -47,11 +47,11 @@ class RobotController:
             return None, None
 
         G = np.atleast_2d(normals)
-        G = np.hstack((G, np.zeros((G.shape[0], 1))))
+        G = np.hstack((G, np.zeros((G.shape[0], 2))))
         h = np.zeros(G.shape[0])
         return G, h
 
-    def update(self, r_bw_w, C_wb, V_ee_d):
+    def update(self, r_bw_w, C_wb, V_ee_d, u_last=None):
         """Compute new controller input u.
 
         Parameters:
@@ -59,18 +59,30 @@ class RobotController:
             C_wb: rotation matrix from base frame to world frame
             V_ee_d: desired EE velocity (v_x, v_y, ω)
         """
+        if u_last is None:
+            u_last = np.zeros(3)
+
         S = np.array([[0, -1], [1, 0]])
         J = np.hstack((np.eye(2), (S @ C_wb @ self.r_cb_b)[:, None]))
 
-        P = np.diag([0.1, 0.1, 1])
-        q = np.array([0, 0, -V_ee_d[2]])
-        G, h = self._compute_obstacle_constraint(r_bw_w)
-        A = J
-        b = V_ee_d[:2]
+        # NOTE: when wa is too high, everything just gets slowed down
+        wa = 100
+        Pa = wa * np.diag([1, 1, 1, 0])
+        qa = wa * np.append(-u_last, 0)
 
-        u = solve_qp(
+        P = np.diag([1, 1, 1, 1]) + Pa
+        q = np.array([0, 0, -V_ee_d[2], -1]) + qa
+        G, h = self._compute_obstacle_constraint(r_bw_w)
+        # A = J
+        # b = V_ee_d[:2]
+        A = np.hstack((J, -V_ee_d[:2, None]))
+        b = np.zeros(2)
+
+        x = solve_qp(
             P=P, q=q, A=A, b=b, G=G, h=h, lb=self.lb, ub=self.ub, solver=self.solver
         )
+        u, α = x[:3], x[3]
+        print(α)
         return u
 
 

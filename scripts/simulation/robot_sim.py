@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Simulation demonstrating QP-based robot controller."""
+import argparse
 import time
 import yaml
 
 import rospkg
 import numpy as np
 import matplotlib.pyplot as plt
+import pybullet as pyb
 import pyb_utils
 
 import mobile_manipulation_central as mm
@@ -15,14 +17,38 @@ import IPython
 
 
 TIMESTEP = 0.01
-TOOL_JOINT_NAME = "tool_gripper_joint"  # corresponds to the gripper link
+TOOL_JOINT_NAME = "contact_ball_joint"  # corresponds to the gripper link
 DURATION = 100
 
+CONTACT_MU = 0.5
+SURFACE_MU = 0.25
+OBSTACLE_MU = 0.25
+
 PUSH_SPEED = 0.1
+
+# control gains
+Kθ = 0.3
+KY = 0.3
+Kω = 1
+CON_INC = 0.1
+DIV_INC = 0.1
+
+# only control based on force when it is high enough (i.e. in contact with
+# something)
+FORCE_MIN_THRESHOLD = 1
+FORCE_MAX_THRESHOLD = 50
 
 # base velocity bounds
 VEL_UB = np.array([0.5, 0.5, 0.25])
 VEL_LB = -VEL_UB
+
+# slider params
+SLIDER_MASS = 1.0
+BOX_SLIDER_HALF_EXTENTS = (0.5, 0.5, 0.2)
+CIRCLE_SLIDER_RADIUS = 0.5
+CIRCLE_SLIDER_HEIGHT = 0.4
+SLIDER_CONTACT_DAMPING = 100
+SLIDER_CONTACT_STIFFNESS = 10000
 
 # minimum obstacle distance
 OBS_MIN_DIST = 0.75
@@ -33,6 +59,16 @@ OBS_INFL_DIST = 1.5
 
 def main():
     np.set_printoptions(precision=6, suppress=True)
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--open-loop",
+        help="Use open-loop pushing rather than closed-loop control",
+        action="store_true",
+        default=False,
+    )
+    args = parser.parse_args()
+    open_loop = args.open_loop
 
     # find the URDF (this has to be compiled first using the script
     # mobile_manipulation_central/urdf/compile_xacro.sh)
@@ -52,9 +88,10 @@ def main():
     with open(fp.CONTACT_POINT_CALIBRATION_FILE) as f:
         r_bc_b = np.array(yaml.safe_load(f)["r_bc_b"])
 
-    # initial position
-    r_ew_w = robot.link_pose()[0]
-    r0 = r_ew_w[:2]
+    # initial contact position
+    r_bw_w = home[:2]
+    C_wb = fp.rot2d(home[2])
+    r_cw_w = r_bw_w - C_wb @ r_bc_b
 
     # desired EE path
     path = fp.SegmentPath(
@@ -63,12 +100,42 @@ def main():
             fp.QuadBezierSegment([0.0, 1], [0.0, 3], [-2.0, 3]),
             fp.LineSegment([-2.0, 3], [-3.0, 3], infinite=True),
         ],
-        origin=r0,
+        origin=r_cw_w,
     )
-    obstacles = fp.translate_segments([fp.LineSegment([-3, 3], [3, 3])], r0)
+    obstacles = fp.translate_segments([fp.LineSegment([-3.0, 3.5], [3.0, 3.5])], r_cw_w)
+    block1 = fp.BulletBlock(
+        np.append(r_cw_w, 0) + [0, 4, 0.5], [3, 0.5, 0.5], mu=OBSTACLE_MU
+    )
 
+    slider = fp.BulletSquareSlider(
+        np.append(r_cw_w, 0) + [0, 0.6, 0.2],
+        mass=SLIDER_MASS,
+        half_extents=BOX_SLIDER_HALF_EXTENTS,
+    )
+
+    # set friction and contact properties
+    pyb.changeDynamics(sim.ground_uid, -1, lateralFriction=SURFACE_MU)
+    pyb.changeDynamics(robot.uid, robot.tool_idx, lateralFriction=CONTACT_MU)
+    pyb.changeDynamics(
+        slider.uid,
+        -1,
+        contactDamping=SLIDER_CONTACT_DAMPING,
+        contactStiffness=SLIDER_CONTACT_STIFFNESS,
+    )
+
+    # controllers
     robot_controller = fp.RobotController(
         -r_bc_b, lb=VEL_LB, ub=VEL_UB, obstacles=obstacles, min_dist=OBS_MIN_DIST
+    )
+    push_controller = fp.PushController(
+        speed=PUSH_SPEED,
+        kθ=Kθ,
+        ky=KY,
+        path=path,
+        con_inc=CON_INC,
+        div_inc=DIV_INC,
+        force_min=FORCE_MIN_THRESHOLD,
+        force_max=FORCE_MAX_THRESHOLD,
     )
 
     for obstacle in obstacles:
@@ -80,31 +147,35 @@ def main():
     # plt.grid()
     # plt.show()
 
-    # yaw gain
-    kω = 1
+    cmd_vel = np.zeros(3)
 
     t = 0
     while t <= DURATION:
         q, _ = robot.joint_states()
-        p_ee = robot.link_pose()[0]
-        v_ee = robot.link_velocity()[0]
-        θ = q[2]  # yaw
+        r_bw_w = q[:2]
+        C_wb = fp.rot2d(q[2])
+        r_cw_w = r_bw_w - C_wb @ r_bc_b
 
-        # desired linear velocity is along the path direction, with angular
-        # velocity computed to make the robot oriented in the direction of the
-        # path
-        pathdir, _ = path.compute_direction_and_offset(p_ee[:2])
+        pathdir, _ = path.compute_direction_and_offset(r_cw_w)
+        f = fp.get_contact_force(robot.uid, slider.uid)[:2]
+
+        if open_loop:
+            v_ee_cmd = PUSH_SPEED * pathdir
+        else:
+            v_ee_cmd = push_controller.update(r_cw_w, f)
+
         θd = np.arctan2(pathdir[1], pathdir[0])
-        ωd = kω * fp.wrap_to_pi(θd - θ)
-        V_ee_d = np.append(PUSH_SPEED * pathdir, ωd)
+        ωd = Kω * fp.wrap_to_pi(θd - q[2])
+        V_ee_cmd = np.append(v_ee_cmd, ωd)
 
         # move the base so that the desired EE velocity is achieved
-        C_wb = fp.rot2d(q[2])
-        u_base = robot_controller.update(q[:2], C_wb, V_ee_d)
-        if u_base is None:
+        cmd_vel = robot_controller.update(r_bw_w, C_wb, V_ee_cmd, u_last=cmd_vel)
+        if cmd_vel is None:
             print("Failed to solve QP!")
             break
-        u = np.concatenate((u_base, np.zeros(6)))
+
+        # use P control on the arm joints to keep them in place
+        u = np.concatenate((cmd_vel, 10 * (home[3:] - q[3:])))
 
         # note that in simulation the mobile base takes commands in the world
         # frame, but the real mobile base takes commands in the body frame

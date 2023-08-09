@@ -18,8 +18,7 @@ RATE = 100  # Hz
 
 # Direction to push
 # Origin is taken as the EE's starting position
-# DIRECTION = np.array([0, 1])
-DIRECTION = fp.rot2d(np.deg2rad(125)) @ np.array([1, 0])
+STRAIGHT_DIRECTION = fp.rot2d(np.deg2rad(125)) @ np.array([1, 0])
 
 # pushing speed
 PUSH_SPEED = 0.1
@@ -59,6 +58,12 @@ def main():
         action="store_true",
         default=False,
     )
+    parser.add_argument(
+        "--environment",
+        choices=["straight", "corner", "corridor"],
+        help="Which environment to use",
+        required=True,
+    )
     args = parser.parse_args()
     open_loop = args.open_loop
 
@@ -96,15 +101,21 @@ def main():
     C_wb = fp.rot2d(q[2])
     r_cw_w = r_bw_w - C_wb @ r_bc_b
 
-    path = fp.SegmentPath(
-        [
-            fp.LineSegment([0.0, 0], [0.0, 1]),
-            fp.QuadBezierSegment([0.0, 1], [0.0, 3], [-2.0, 3]),
-            fp.LineSegment([-2.0, 3], [-3.0, 3], infinite=True),
-        ],
-        origin=r_cw_w,
-    )
-    obstacles = fp.translate_segments([fp.LineSegment([-3., 3.5], [3., 3.5])], r_cw_w)
+    if args.environment == "straight":
+        path = fp.SegmentPath.line(STRAIGHT_DIRECTION, origin=r_cw_w)
+    else:
+        path = fp.SegmentPath(
+            [
+                fp.LineSegment([0.0, 0], [0.0, 1]),
+                fp.QuadBezierSegment([0.0, 1], [0.0, 3], [-2.0, 3]),
+                fp.LineSegment([-2.0, 3], [-3.0, 3], infinite=True),
+            ],
+            origin=r_cw_w,
+        )
+    if args.environment == "corridor":
+        obstacles = fp.translate_segments([fp.LineSegment([-3., 3.5], [3., 3.5])], r_cw_w)
+    else:
+        obstacles = None
 
     # controllers
     push_controller = fp.PushController(
@@ -120,6 +131,8 @@ def main():
     robot_controller = fp.RobotController(
         -r_bc_b, lb=VEL_LB, ub=VEL_UB, obstacles=obstacles, min_dist=OBS_MIN_DIST
     )
+
+    cmd_vel = np.zeros(3)
 
     while not rospy.is_shutdown():
         q = np.concatenate((robot.q, q_arm))
@@ -153,7 +166,7 @@ def main():
         V_ee_cmd = np.append(v_ee_cmd, ωd)
 
         # generate base input commands
-        cmd_vel = robot_controller.update(r_bw_w, C_wb, V_ee_cmd)
+        cmd_vel = robot_controller.update(r_bw_w, C_wb, V_ee_cmd, u_last=cmd_vel)
         if cmd_vel is None:
             print("Failed to solve QP!")
             break

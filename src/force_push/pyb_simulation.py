@@ -1,6 +1,7 @@
 """PyBullet simulation code for the pusher-slider system."""
 import numpy as np
 import pybullet as pyb
+import pyb_utils
 
 
 # TODO this can soon be inherited from pyb_utils
@@ -53,6 +54,20 @@ class BulletBody:
         pyb.resetBasePositionAndOrientation(
             self.uid, posObj=list(self.pos_init), ornObj=list(self.orn_init)
         )
+
+
+def get_contact_force(uid1, uid2):
+    points = pyb_utils.getContactPoints(uid1, uid2)
+    assert len(points) <= 1, f"Found {len(points)} contact points."
+    if len(points) == 0:
+        return np.zeros(3)
+
+    point = points[0]
+    normal = -np.array(point.contactNormalOnB)
+    nf = point.normalForce * normal
+    ff1 = -point.lateralFriction1 * np.array(point.lateralFrictionDir1)
+    ff2 = -point.lateralFriction2 * np.array(point.lateralFrictionDir2)
+    return nf + ff1 + ff2
 
 
 class BulletPusher(BulletBody):

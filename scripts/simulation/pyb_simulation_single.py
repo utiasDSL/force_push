@@ -113,13 +113,13 @@ def main():
 
         if i % CTRL_FREQ == 0:
             force = pusher.get_contact_force([slider.uid])
-            r_pw_w = pusher.get_position()
+            r_pw_w = pusher.get_pose()[0]
             v_cmd = controller.update(r_pw_w[:2], force[:2])
             pusher.command_velocity(np.append(v_cmd, 0))
 
             # record information
             r_pw_ws.append(r_pw_w)
-            r_sw_ws.append(slider.get_position())
+            r_sw_ws.append(slider.get_pose()[0])
             ts.append(t)
 
         # v_s = pyb.getBaseVelocity(slider.uid)[0]

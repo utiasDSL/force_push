@@ -129,7 +129,7 @@ def main():
         lb=VEL_LB,
         ub=VEL_UB,
         vel_weight=1,
-        acc_weight=1e4,
+        acc_weight=0,
         obstacles=obstacles,
         min_dist=OBS_MIN_DIST,
     )
@@ -189,7 +189,7 @@ def main():
         ts.append(t)
         qs.append(q[:3])
         r_cw_ws.append(r_cw_w)
-        r_sw_ws.append(slider.get_position())
+        r_sw_ws.append(slider.get_pose()[0])
         forces.append(f)
         cmd_vels.append(cmd_vel)
 

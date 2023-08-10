@@ -1,5 +1,6 @@
 import numpy as np
 from qpsolvers import solve_qp
+from scipy.linalg import block_diag
 
 from force_push import util
 
@@ -83,16 +84,18 @@ class RobotController:
         Pv = self.wv * np.diag([1, 1, 1, 0])
         qv = self.wv * np.array([0, 0, -V_ee_d[2], 0])
 
+        # Pt = block_diag(J.T @ J, [[0]])
+        # qt = np.append(-V_ee_d[:2] @ J, 0)
+
         Pα = np.diag([0, 0, 0, 1])
         qα = np.array([0, 0, 0, -1])
 
         P = Pa + Pv + Pα
         q = qa + qv + qα
         G, h = self._compute_obstacle_constraint(r_bw_w)
-        # A = J
-        # b = V_ee_d[:2]
         A = np.hstack((J, -V_ee_d[:2, None]))
         b = np.zeros(2)
+        # A = b = None
 
         x = solve_qp(
             P=P, q=q, A=A, b=b, G=G, h=h, lb=self.lb, ub=self.ub, solver=self.solver

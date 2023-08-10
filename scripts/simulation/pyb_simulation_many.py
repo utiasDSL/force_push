@@ -33,8 +33,10 @@ OBSTACLE_MU = 0.25
 PUSH_SPEED = 0.1
 Kθ = 0.3
 KY = 0.1
-CON_INC = np.pi / 64
-DIV_INC = np.pi / 8
+# CON_INC = np.pi / 64
+# DIV_INC = np.pi / 8
+CON_INC = 0.1
+DIV_INC = 0.1
 
 # slider params
 SLIDER_MASS = 1.0
@@ -93,13 +95,13 @@ def simulate(sim, pusher, slider, controller):
             force = pusher.get_contact_force([slider.uid])
             if np.linalg.norm(force) > 0.1:  # TODO make param
                 last_force_time = t
-            r_pw_w = pusher.get_position()
+            r_pw_w = pusher.get_pose()[0]
             v_cmd = controller.update(r_pw_w[:2], force[:2])
             pusher.command_velocity(np.append(v_cmd, 0))
 
             # record information
             r_pw_ws.append(r_pw_w)
-            r_sw_ws.append(slider.get_position())
+            r_sw_ws.append(slider.get_pose()[0])
             forces.append(force)
             ts.append(t)
 
@@ -113,18 +115,6 @@ def simulate(sim, pusher, slider, controller):
             if t - last_force_time > FAILURE_TIME:
                 success = False
                 break
-
-        # simple force control in the z-direction to keep the pusher at the
-        # correct position (force control allows us to use feedforward to
-        # cancel gravity)
-        # pz = pusher.get_position()[2]
-        # kp = 100
-        # fg = 9.81 * PUSHER_MASS
-        # fz = kp * (PUSHER_INIT_POS[2] - pz) + fg
-        # print(pz)
-        # pyb.applyExternalForce(
-        #     pusher.uid, -1, forceObj=[0, 0, fz], posObj=[0, 0, 0], flags=pyb.WORLD_FRAME
-        # )
 
         sim.step()
 

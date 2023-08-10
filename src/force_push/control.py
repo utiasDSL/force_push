@@ -11,7 +11,17 @@ class RobotController:
     to avoid obstacles and otherwise align the robot with the path.
     """
 
-    def __init__(self, r_cb_b, lb, ub, obstacles=None, min_dist=0.75, solver="proxqp"):
+    def __init__(
+        self,
+        r_cb_b,
+        lb,
+        ub,
+        vel_weight=1,
+        acc_weight=0,
+        obstacles=None,
+        min_dist=0.75,
+        solver="proxqp",
+    ):
         """Initialize the controller.
 
         Parameters:
@@ -27,6 +37,8 @@ class RobotController:
         self.ub = np.append(ub, 1)
         self.obstacles = obstacles if obstacles is not None else []
         self.min_dist = min_dist
+        self.wv = vel_weight
+        self.wa = acc_weight
         self.solver = solver
 
     def _compute_obstacle_constraint(self, r_bw_w):
@@ -65,13 +77,17 @@ class RobotController:
         S = np.array([[0, -1], [1, 0]])
         J = np.hstack((np.eye(2), (S @ C_wb @ self.r_cb_b)[:, None]))
 
-        # NOTE: when wa is too high, everything just gets slowed down
-        wa = 100
-        Pa = wa * np.diag([1, 1, 1, 0])
-        qa = wa * np.append(-u_last, 0)
+        Pa = self.wa * np.diag([1, 1, 1, 0])
+        qa = self.wa * np.append(-u_last, 0)
 
-        P = np.diag([1, 1, 1, 1]) + Pa
-        q = np.array([0, 0, -V_ee_d[2], -1]) + qa
+        Pv = self.wv * np.diag([1, 1, 1, 0])
+        qv = self.wv * np.array([0, 0, -V_ee_d[2], 0])
+
+        Pα = np.diag([0, 0, 0, 1])
+        qα = np.array([0, 0, 0, -1])
+
+        P = Pa + Pv + Pα
+        q = qa + qv + qα
         G, h = self._compute_obstacle_constraint(r_bw_w)
         # A = J
         # b = V_ee_d[:2]
@@ -82,7 +98,7 @@ class RobotController:
             P=P, q=q, A=A, b=b, G=G, h=h, lb=self.lb, ub=self.ub, solver=self.solver
         )
         u, α = x[:3], x[3]
-        print(α)
+        print(f"α = {α}")
         return u
 
 
@@ -147,12 +163,6 @@ class PushController:
 
         # variables
         self.reset()
-        # self.first_contact = False
-        # self.yc_int = 0
-        # self.θd_int = 0
-        # self.θp = 0
-        # self.inc_sign = 1
-        # self.diverge = False
 
     def reset(self):
         """Reset the controller to its initial state."""
@@ -162,6 +172,7 @@ class PushController:
         self.θp = 0
         self.inc_sign = 1
         self.diverge = False
+        self.last_position = np.zeros(2)
 
     def update(self, position, force, dt=0):
         """Compute a new pushing velocity based on contact position and force
@@ -186,7 +197,7 @@ class PushController:
 
         speed = self.speed
 
-        print(f"f_norm = {f_norm}")
+        # print(f"f_norm = {f_norm}")
 
         # pushing angle
         if f_norm < self.force_min:
@@ -197,17 +208,8 @@ class PushController:
         elif f_norm > self.force_max or self.diverge:
             # diverge from the path if force is too high
             print("diverge!")
-            # θp = self.θp + self.inc_sign * self.div_inc
             if not self.diverge:
-                # rev = self.θp + self.inc_sign * np.pi
                 self.div_init = self.θp
-                # self.div_min = min(self.θp, rev)
-                # self.div_max = max(self.θp, rev)
-            # # θp = self.θp + np.sign(θd) * self.div_inc
-            # # TODO may not play well with wrap to pi
-            # θp = self.θp + self.inc_sign * self.div_inc
-            # θp = min(max(self.div_min, θp), self.div_max)
-
             θp = self.θp + self.inc_sign * self.div_inc
 
             # limit divergence to no more than 180 degrees (i.e., going backward)
@@ -220,7 +222,7 @@ class PushController:
             #     θp = self.θp
             # else:
             #     # θp = self.θp + np.sign(θd) * self.div_inc
-            #     θp = self.θp + np.sign(θd) * 0.75 * np.pi
+            #     θp = self.θp + self.inc_sign * 0.5 * np.pi
             self.diverge = True
         else:
             # self.diverge = False
@@ -230,10 +232,11 @@ class PushController:
                 + self.ki_θ * self.θd_int
                 + self.ki_y * self.yc_int
             )
+            self.last_position = position
             self.inc_sign = np.sign(θd)
 
         self.θp = util.wrap_to_pi(θp)
-        print(f"θp = {θp}")
+        # print(f"θp = {θp}")
 
         # pushing velocity
         pushdir = util.rot2d(self.θp) @ pathdir

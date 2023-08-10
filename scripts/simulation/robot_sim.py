@@ -125,7 +125,13 @@ def main():
 
     # controllers
     robot_controller = fp.RobotController(
-        -r_bc_b, lb=VEL_LB, ub=VEL_UB, obstacles=obstacles, min_dist=OBS_MIN_DIST
+        -r_bc_b,
+        lb=VEL_LB,
+        ub=VEL_UB,
+        vel_weight=1,
+        acc_weight=1e4,
+        obstacles=obstacles,
+        min_dist=OBS_MIN_DIST,
     )
     push_controller = fp.PushController(
         speed=PUSH_SPEED,
@@ -142,12 +148,14 @@ def main():
         pyb_utils.debug_frame_world(0.2, list(obstacle.v1) + [0.1], line_width=3)
         pyb_utils.debug_frame_world(0.2, list(obstacle.v2) + [0.1], line_width=3)
 
-    # xy = path.get_plotting_coords()
-    # plt.plot(xy[:, 0], xy[:, 1])
-    # plt.grid()
-    # plt.show()
-
     cmd_vel = np.zeros(3)
+
+    ts = []
+    qs = []
+    r_cw_ws = []
+    r_sw_ws = []
+    cmd_vels = []
+    forces = []
 
     t = 0
     while t <= DURATION:
@@ -177,6 +185,14 @@ def main():
         # use P control on the arm joints to keep them in place
         u = np.concatenate((cmd_vel, 10 * (home[3:] - q[3:])))
 
+        # record data
+        ts.append(t)
+        qs.append(q[:3])
+        r_cw_ws.append(r_cw_w)
+        r_sw_ws.append(slider.get_position())
+        forces.append(f)
+        cmd_vels.append(cmd_vel)
+
         # note that in simulation the mobile base takes commands in the world
         # frame, but the real mobile base takes commands in the body frame
         # (this is just an easy 2D rotation away)
@@ -185,6 +201,54 @@ def main():
         # step the sim forward in time
         t = sim.step(t)
         # time.sleep(TIMESTEP)
+
+    ts = np.array(ts)
+    qs = np.array(qs)
+    r_cw_ws = np.array(r_cw_ws)
+    r_sw_ws = np.array(r_sw_ws)
+    forces = np.array(forces)
+    cmd_vels = np.array(cmd_vels)
+    path_xy = path.get_plotting_coords()
+
+    plt.figure()
+    plt.plot(ts, qs[:, 0], label="x")
+    plt.plot(ts, qs[:, 1], label="y")
+    plt.plot(ts, qs[:, 2], label="θ")
+    plt.legend()
+    plt.grid()
+    plt.xlabel("Time [s]")
+    plt.title("Base position vs. time")
+
+    plt.figure()
+    plt.plot(path_xy[:, 0], path_xy[:, 1], "--", color="k", label="Desired")
+    plt.plot(qs[:, 0], qs[:, 1], label="Base")
+    plt.plot(r_cw_ws[:, 0], r_cw_ws[:, 1], label="Contact")
+    plt.plot(r_sw_ws[:, 0], r_sw_ws[:, 1], label="Slider")
+    plt.legend()
+    plt.grid()
+    plt.xlabel("x [m]")
+    plt.ylabel("y [m]")
+    plt.title("Paths")
+
+    plt.figure()
+    plt.plot(ts, forces[:, 0], label="x")
+    plt.plot(ts, forces[:, 1], label="y")
+    plt.plot(ts, np.linalg.norm(forces, axis=1), label="Magnitude")
+    plt.legend()
+    plt.grid()
+    plt.xlabel("Time [s]")
+    plt.title("Contact force vs. time")
+
+    plt.figure()
+    plt.plot(ts, cmd_vels[:, 0], label="x")
+    plt.plot(ts, cmd_vels[:, 1], label="y")
+    plt.plot(ts, cmd_vels[:, 2], label="θ")
+    plt.legend()
+    plt.grid()
+    plt.xlabel("Time [s]")
+    plt.title("Base velocity commands vs. time")
+
+    plt.show()
 
 
 main()

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Simulation demonstrating QP-based robot controller."""
 import argparse
+from pathlib import Path
 import time
 import yaml
 
@@ -17,7 +18,7 @@ import IPython
 
 
 TIMESTEP = 0.01
-TOOL_JOINT_NAME = "contact_ball_joint"  # corresponds to the gripper link
+TOOL_JOINT_NAME = "contact_ball_joint"
 DURATION = 100
 
 CONTACT_MU = 0.5
@@ -57,6 +58,20 @@ OBS_MIN_DIST = 0.75
 OBS_INFL_DIST = 1.5
 
 
+def make_urdf_file():
+    rospack = rospkg.RosPack()
+    path = Path(rospack.get_path("force_push")) / "urdf/urdf/thing_pyb_pusher.urdf"
+    if not path.parent.exists():
+        path.parent.mkdir()
+
+    includes = [
+        "$(find mobile_manipulation_central)/urdf/xacro/thing_pyb.urdf.xacro",
+        "$(find force_push)/urdf/xacro/contact_ball.urdf.xacro",
+    ]
+    mm.XacroDoc.from_includes(includes).to_urdf_file(path)
+    return path.as_posix()
+
+
 def main():
     np.set_printoptions(precision=6, suppress=True)
 
@@ -70,16 +85,11 @@ def main():
     args = parser.parse_args()
     open_loop = args.open_loop
 
-    # find the URDF (this has to be compiled first using the script
-    # mobile_manipulation_central/urdf/compile_xacro.sh)
-    rospack = rospkg.RosPack()
-    mm_path = rospack.get_path("mobile_manipulation_central")
-    urdf_path = mm_path + "/urdf/compiled/thing_pyb.urdf"
-
     # load initial joint configuration
     home = mm.load_home_position(name="pushing_corner", path=fp.HOME_CONFIG_FILE)
 
     # create the simulation
+    urdf_path = make_urdf_file()
     sim = mm.BulletSimulation(TIMESTEP)
     robot = mm.BulletSimulatedRobot(urdf_path, TOOL_JOINT_NAME)
     robot.reset_joint_configuration(home)

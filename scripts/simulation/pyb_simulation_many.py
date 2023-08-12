@@ -322,6 +322,8 @@ def main():
         "push_speed": PUSH_SPEED,
         "kθ": Kθ,
         "ky": KY,
+        "con_inc": CON_INC,
+        "div_inc": DIV_INC,
         "inertias": slider_inertias,
         "y0s": y0s,
         "θ0s": θ0s,

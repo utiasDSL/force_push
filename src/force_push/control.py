@@ -31,6 +31,8 @@ class RobotController:
             ub: Upper bound on velocity
             obstacles: list of LineSegments to be avoided (optional)
             min_dist: Minimum distance to maintain from obstacles.
+            vel_weight: weight on velocity norm in controller
+            acc_weight: weight on acceleration norm in the controller
             solver: the QP solver to use (default: 'proxqp')
         """
         self.r_cb_b = r_cb_b
@@ -78,15 +80,18 @@ class RobotController:
         S = np.array([[0, -1], [1, 0]])
         J = np.hstack((np.eye(2), (S @ C_wb @ self.r_cb_b)[:, None]))
 
+        # acceleration cost
         Pa = self.wa * np.diag([1, 1, 1, 0])
         qa = self.wa * np.append(-u_last, 0)
 
+        # velocity cost
         Pv = self.wv * np.diag([1, 1, 1, 0])
         qv = self.wv * np.array([0, 0, -V_ee_d[2], 0])
 
         # Pt = block_diag(J.T @ J, [[0]])
         # qt = np.append(-V_ee_d[:2] @ J, 0)
 
+        # speed scaling cost
         Pα = np.diag([0, 0, 0, 1])
         qα = np.array([0, 0, 0, -1])
 
@@ -159,6 +164,7 @@ class PushController:
         # convergence and divergence increment
         self.con_inc = con_inc
         self.div_inc = div_inc
+        self.div_max = np.pi
 
         # obstacles
         self.obstacles = obstacles if obstacles is not None else []
@@ -205,20 +211,20 @@ class PushController:
         # pushing angle
         if f_norm < self.force_min:
             # if we've lost contact, try to recover by circling back
-            print("converge!")
+            # print("converge!")
             θp = self.θp - self.inc_sign * self.con_inc
             self.diverge = False
         elif f_norm > self.force_max or self.diverge:
             # diverge from the path if force is too high
-            print("diverge!")
+            # print("diverge!")
             if not self.diverge:
                 self.div_init = self.θp
             θp = self.θp + self.inc_sign * self.div_inc
 
-            # limit divergence to no more than 180 degrees (i.e., going backward)
+            # limit divergence to no more than div_max
             div_delta = util.wrap_to_pi(θp - self.div_init)
-            if div_delta > np.pi:
-                θp = self.div_init + np.pi
+            if div_delta > self.div_max:
+                θp = self.div_init + self.div_max
 
             # if self.diverge:
             #     # already diverging: keep doing what we're doing
@@ -228,7 +234,6 @@ class PushController:
             #     θp = self.θp + self.inc_sign * 0.5 * np.pi
             self.diverge = True
         else:
-            # self.diverge = False
             θp = (
                 (1 + self.kθ) * θd
                 + self.ky * yc

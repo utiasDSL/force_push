@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot name="contact_ball" xmlns:xacro="http://wiki.ros.org/xacro">
+  <link name="contact_ball">
+    <visual>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <sphere radius="0.03"/>
+      </geometry>
+      <material name="red"/>
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <sphere radius="0.03"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="contact_ball_joint" type="fixed">
+    <origin rpy="0 0 0" xyz="0 0 0.290"/>
+    <parent link="gripper"/>
+    <child link="contact_ball"/>
+  </joint>
+
+</robot>

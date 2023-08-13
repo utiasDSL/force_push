@@ -16,7 +16,6 @@ import IPython
 # like ~62Hz
 RATE = 100  # Hz
 
-# Direction to push
 # Origin is taken as the EE's starting position
 STRAIGHT_DIRECTION = fp.rot2d(np.deg2rad(125)) @ np.array([1, 0])
 
@@ -28,7 +27,7 @@ Kθ = 0.3
 KY = 0.3
 Kω = 1
 CON_INC = 0.1
-DIV_INC = 0.1
+DIV_INC = 0.3  # NOTE
 
 # base velocity bounds
 VEL_UB = np.array([0.5, 0.5, 0.25])
@@ -37,7 +36,7 @@ VEL_LB = -VEL_UB
 # only control based on force when it is high enough (i.e. in contact with
 # something)
 FORCE_MIN_THRESHOLD = 5
-FORCE_MAX_THRESHOLD = 50
+FORCE_MAX_THRESHOLD = 70  # TODO
 
 # time constant for force filter
 # FILTER_TIME_CONSTANT = 0.1
@@ -113,7 +112,9 @@ def main():
             origin=r_cw_w,
         )
     if args.environment == "corridor":
-        obstacles = fp.translate_segments([fp.LineSegment([-3., 3.5], [3., 3.5])], r_cw_w)
+        obstacles = fp.translate_segments(
+            [fp.LineSegment([-3.0, 3.5], [3.0, 3.5])], r_cw_w
+        )
     else:
         obstacles = None
 
@@ -129,7 +130,13 @@ def main():
         force_max=FORCE_MAX_THRESHOLD,
     )
     robot_controller = fp.RobotController(
-        -r_bc_b, lb=VEL_LB, ub=VEL_UB, obstacles=obstacles, min_dist=OBS_MIN_DIST
+        -r_bc_b,
+        lb=VEL_LB,
+        ub=VEL_UB,
+        vel_weight=1,
+        acc_weight=0,
+        obstacles=obstacles,
+        min_dist=OBS_MIN_DIST,
     )
 
     cmd_vel = np.zeros(3)
@@ -171,7 +178,7 @@ def main():
             print("Failed to solve QP!")
             break
         # print(f"cmd_vel = {cmd_vel}")
-        print(f"cmd_vel_xy_dir = {fp.unit(cmd_vel[:2])}")
+        # print(f"cmd_vel_xy_dir = {fp.unit(cmd_vel[:2])}")
 
         robot.publish_cmd_vel(cmd_vel, bodyframe=False)
 

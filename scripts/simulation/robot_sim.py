@@ -151,7 +151,8 @@ def main():
         con_inc=CON_INC,
         div_inc=DIV_INC,
         force_min=FORCE_MIN_THRESHOLD,
-        force_max=FORCE_MAX_THRESHOLD,
+        # force_max=FORCE_MAX_THRESHOLD,
+        force_max=np.inf,
     )
 
     for obstacle in obstacles:
@@ -181,6 +182,10 @@ def main():
             v_ee_cmd = PUSH_SPEED * pathdir
         else:
             v_ee_cmd = push_controller.update(r_cw_w, f)
+            f_norm = np.linalg.norm(f)
+            if f_norm > FORCE_MAX_THRESHOLD:
+                kf = 0.01
+                v_ee_cmd = -kf * (f_norm - FORCE_MAX_THRESHOLD) * fp.unit(f) + v_ee_cmd
 
         θd = np.arctan2(pathdir[1], pathdir[0])
         ωd = Kω * fp.wrap_to_pi(θd - q[2])

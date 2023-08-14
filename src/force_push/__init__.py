@@ -1,6 +1,5 @@
 from pathlib import Path
 
-import numpy as np
 import rospkg
 
 from force_push.util import *
@@ -13,6 +12,7 @@ from force_push.plotting import *
 from force_push.control import *
 from force_push.inertia import *
 from force_push.estimation import *
+from force_push.logging import DataRecorder
 
 
 rospack = rospkg.RosPack()
@@ -20,12 +20,3 @@ HOME_CONFIG_FILE = Path(rospack.get_path("force_push")) / "config/home.yaml"
 CONTACT_POINT_CALIBRATION_FILE = (
     Path(rospack.get_path("force_push")) / "config/contact_point_calibration.yaml"
 )
-
-
-# TODO remove
-# def pursuit(p, lookahead):
-#     """Pure pursuit along the x-axis."""
-#     if np.abs(p[1]) >= lookahead:
-#         return np.array([0, -np.sign(p[1]) * lookahead])
-#     x = lookahead**2 - p[1] ** 2
-#     return np.array([x, -p[1]])

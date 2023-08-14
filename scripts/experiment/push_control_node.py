@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Push an object with mobile base + force-torque sensor."""
 import argparse
+import datetime
+import pickle
+import time
 import yaml
 
 import rospy
@@ -12,8 +15,8 @@ import force_push as fp
 import IPython
 
 
-# Datasheet claims the sensor output rate is 100Hz, though rostopic says more
-# like ~62Hz
+# Datasheet claims the F/T sensor output rate is 100Hz, though rostopic says
+# more like ~62Hz
 RATE = 100  # Hz
 
 # Origin is taken as the EE's starting position
@@ -26,6 +29,7 @@ PUSH_SPEED = 0.1
 Kθ = 0.3
 KY = 0.3
 Kω = 1
+Kf = 0.01
 CON_INC = 0.1
 DIV_INC = 0.3  # NOTE
 
@@ -33,20 +37,23 @@ DIV_INC = 0.3  # NOTE
 VEL_UB = np.array([0.5, 0.5, 0.25])
 VEL_LB = -VEL_UB
 
+VEL_WEIGHT = 1.0
+ACC_WEIGHT = 0.0
+
 # only control based on force when it is high enough (i.e. in contact with
 # something)
 FORCE_MIN_THRESHOLD = 5
-FORCE_MAX_THRESHOLD = 70  # TODO
+FORCE_MAX_THRESHOLD = 70  # NOTE
 
 # time constant for force filter
 # FILTER_TIME_CONSTANT = 0.1
 FILTER_TIME_CONSTANT = 0.05
 
 # minimum obstacle distance
-OBS_MIN_DIST = 0.75
+BASE_OBS_MIN_DIST = 0.75
+EE_OBS_MIN_DIST = 0.1
 
 
-# TODO do similar environment setup to the simulation
 def main():
     np.set_printoptions(precision=6, suppress=True)
 
@@ -63,6 +70,8 @@ def main():
         help="Which environment to use",
         required=True,
     )
+    parser.add_argument("--save", help="Save data to this file.")
+    parser.add_argument("--notes", help="Additional information written to notes.txt.")
     args = parser.parse_args()
     open_loop = args.open_loop
 
@@ -113,7 +122,7 @@ def main():
         )
     if args.environment == "corridor":
         obstacles = fp.translate_segments(
-            [fp.LineSegment([-3.0, 3.5], [3.0, 3.5])], r_cw_w
+            [fp.LineSegment([-3.0, 3.35], [3.0, 3.35])], r_cw_w
         )
     else:
         obstacles = None
@@ -126,22 +135,53 @@ def main():
         path=path,
         con_inc=CON_INC,
         div_inc=DIV_INC,
+        obstacles=obstacles,
         force_min=FORCE_MIN_THRESHOLD,
-        force_max=FORCE_MAX_THRESHOLD,
+        force_max=np.inf,  # NOTE
+        min_dist=EE_OBS_MIN_DIST,
     )
     robot_controller = fp.RobotController(
         -r_bc_b,
         lb=VEL_LB,
         ub=VEL_UB,
-        vel_weight=1,
-        acc_weight=0,
+        vel_weight=VEL_WEIGHT,
+        acc_weight=ACC_WEIGHT,
         obstacles=obstacles,
-        min_dist=OBS_MIN_DIST,
+        min_dist=BASE_OBS_MIN_DIST,
     )
+
+    # Save the controller parameters
+    params = {
+        "environment": args.environment,
+        "ctrl_rate": RATE,
+        "push_speed": PUSH_SPEED,
+        "kθ": Kθ,
+        "ky": KY,
+        "kω": Kω,
+        "con_inc": CON_INC,
+        "div_inc": DIV_INC,
+        "vel_ub": VEL_UB,
+        "vel_lb": VEL_LB,
+        "force_min": FORCE_MIN_THRESHOLD,
+        "force_max": FORCE_MAX_THRESHOLD,
+        "filter_time_constant": FILTER_TIME_CONSTANT,
+        "base_obs_min_dist": BASE_OBS_MIN_DIST,
+        "ee_obs_min_dist": EE_OBS_MIN_DIST,
+        "vel_weight": VEL_WEIGHT,
+        "acc_weight": ACC_WEIGHT,
+    }
+
+    # record data
+    if args.save is not None:
+        recorder = fp.DataRecorder(name=args.save, notes=args.notes, params=params)
+        recorder.record()
+        print(f"Recording data to {recorder.log_dir}")
 
     cmd_vel = np.zeros(3)
 
+    t = rospy.Time.now().to_sec()
     while not rospy.is_shutdown():
+
         q = np.concatenate((robot.q, q_arm))
         r_bw_w = q[:2]
         C_wb = fp.rot2d(q[2])
@@ -154,7 +194,6 @@ def main():
 
         # force direction is negative to switch from sensed force to applied force
         f = -f_w[:2]
-        print(np.linalg.norm(f))
 
         # direction of the path
         pathdir, _ = path.compute_direction_and_offset(r_cw_w)
@@ -165,6 +204,11 @@ def main():
             v_ee_cmd = PUSH_SPEED * pathdir
         else:
             v_ee_cmd = push_controller.update(r_cw_w, f)
+            f_norm = np.linalg.norm(f)
+            print(f"f_norm = {f_norm}")
+            if f_norm > FORCE_MAX_THRESHOLD:
+                vf = -Kf * (f_norm - FORCE_MAX_THRESHOLD) * fp.unit(f)
+                v_ee_cmd = vf + v_ee_cmd
 
         # desired angular velocity is calculated to align the robot with the
         # current path direction
@@ -177,14 +221,19 @@ def main():
         if cmd_vel is None:
             print("Failed to solve QP!")
             break
-        # print(f"cmd_vel = {cmd_vel}")
-        # print(f"cmd_vel_xy_dir = {fp.unit(cmd_vel[:2])}")
 
         robot.publish_cmd_vel(cmd_vel, bodyframe=False)
 
         rate.sleep()
 
+        # t_new = rospy.Time.now().to_sec()
+        # print(f"Δt = {t_new - t}")
+        # t = t_new
+
+
     robot.brake()
+    if args.save is not None:
+        recorder.close()
 
 
 if __name__ == "__main__":

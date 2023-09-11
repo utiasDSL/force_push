@@ -88,6 +88,7 @@ class RobotController:
         Pv = self.wv * np.diag([1, 1, 1, 0])
         qv = self.wv * np.array([0, 0, -V_ee_d[2], 0])
 
+        # tracking cost (if we want it to be a cost rather than constraint)
         # Pt = block_diag(J.T @ J, [[0]])
         # qt = np.append(-V_ee_d[:2] @ J, 0)
 
@@ -98,15 +99,20 @@ class RobotController:
         P = Pa + Pv + Pα
         q = qa + qv + qα
         G, h = self._compute_obstacle_constraint(r_bw_w)
-        A = np.hstack((J, -V_ee_d[:2, None]))
-        b = np.zeros(2)
-        # A = b = None
+
+        # with speed scaling
+        # A = np.hstack((J, -V_ee_d[:2, None]))
+        # b = np.zeros(2)
+
+        # without speed scaling
+        A = np.hstack((J, np.zeros((2, 1))))
+        b = V_ee_d[:2]
 
         x = solve_qp(
             P=P, q=q, A=A, b=b, G=G, h=h, lb=self.lb, ub=self.ub, solver=self.solver
         )
         u, α = x[:3], x[3]
-        print(f"α = {α}")
+        # print(f"α = {α}")
         return u
 
 

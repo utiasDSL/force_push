@@ -31,6 +31,7 @@ PUSH_SPEED = 0.1
 Kθ = 0.3
 KY = 0.3
 Kω = 1
+Kf = 0.01  # N / (m/s)
 CON_INC = 0.1
 DIV_INC = 0.1
 
@@ -182,10 +183,12 @@ def main():
             v_ee_cmd = PUSH_SPEED * pathdir
         else:
             v_ee_cmd = push_controller.update(r_cw_w, f)
+
+            # admittance control to comply with large forces
             f_norm = np.linalg.norm(f)
             if f_norm > FORCE_MAX_THRESHOLD:
-                kf = 0.01
-                v_ee_cmd = -kf * (f_norm - FORCE_MAX_THRESHOLD) * fp.unit(f) + v_ee_cmd
+                vf = -Kf * (f_norm - FORCE_MAX_THRESHOLD) * fp.unit(f)
+                v_ee_cmd = vf + v_ee_cmd
 
         θd = np.arctan2(pathdir[1], pathdir[0])
         ωd = Kω * fp.wrap_to_pi(θd - q[2])

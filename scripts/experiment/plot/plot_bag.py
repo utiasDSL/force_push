@@ -66,14 +66,15 @@ def main():
     # desired path
     path = fp.SegmentPath(
         [
-            fp.LineSegment([0.0, 0], [0.0, 1]),
-            fp.QuadBezierSegment([0.0, 1], [0.0, 3], [-2.0, 3]),
-            fp.LineSegment([-2.0, 3], [-3.0, 3], infinite=True),
-        ],
+            fp.LineSegment([0.0, 0.0], [0.0, 2.0]),
+            fp.QuadBezierSegment([0.0, 2.0], [0.0, 4.0], [-2.0, 4.0]),
+            fp.LineSegment([-2.0, 4.0], [-4.0, 4.0], infinite=True),
+        ]
     )
     r_dw_ws = path.get_plotting_coords()
 
-    obstacles = [fp.LineSegment([-3.0, 3.35], [3.0, 3.35])]
+    # obstacles = [fp.LineSegment([-3.0, 4.35], [3.0, 4.35])]
+    obstacles = []
 
     # contact point
     r_cw_ws = []

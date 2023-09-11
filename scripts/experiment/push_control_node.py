@@ -43,7 +43,7 @@ ACC_WEIGHT = 0.0
 # only control based on force when it is high enough (i.e. in contact with
 # something)
 FORCE_MIN_THRESHOLD = 5
-FORCE_MAX_THRESHOLD = 70  # NOTE
+FORCE_MAX_THRESHOLD = 50  # NOTE
 
 # time constant for force filter
 # FILTER_TIME_CONSTANT = 0.1
@@ -114,15 +114,15 @@ def main():
     else:
         path = fp.SegmentPath(
             [
-                fp.LineSegment([0.0, 0], [0.0, 1]),
-                fp.QuadBezierSegment([0.0, 1], [0.0, 3], [-2.0, 3]),
-                fp.LineSegment([-2.0, 3], [-3.0, 3], infinite=True),
+                fp.LineSegment([0.0, 0.0], [0.0, 2.0]),
+                fp.QuadBezierSegment([0.0, 2.0], [0.0, 4.0], [-2.0, 4.0]),
+                fp.LineSegment([-2.0, 4.0], [-4.0, 4.0], infinite=True),
             ],
             origin=r_cw_w,
         )
     if args.environment == "corridor":
         obstacles = fp.translate_segments(
-            [fp.LineSegment([-3.0, 3.35], [3.0, 3.35])], r_cw_w
+            [fp.LineSegment([-2.5, 4.35], [0.5, 4.35])], r_cw_w
         )
     else:
         obstacles = None
@@ -204,6 +204,8 @@ def main():
             v_ee_cmd = PUSH_SPEED * pathdir
         else:
             v_ee_cmd = push_controller.update(r_cw_w, f)
+
+            # admittance control to comply with large forces
             f_norm = np.linalg.norm(f)
             print(f"f_norm = {f_norm}")
             if f_norm > FORCE_MAX_THRESHOLD:
@@ -229,7 +231,6 @@ def main():
         # t_new = rospy.Time.now().to_sec()
         # print(f"Δt = {t_new - t}")
         # t = t_new
-
 
     robot.brake()
     if args.save is not None:

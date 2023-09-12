@@ -5,11 +5,67 @@ from scipy.linalg import block_diag
 from force_push import util
 
 
+class AdmittanceController:
+    """Admittance controller to modify velocity command when force is high.
+
+    Parameters
+    ----------
+    kf : float
+        Gain that maps force to velocity
+    force_max : float
+        Only modify the commands when the force is above this magnitude.
+    """
+
+    def __init__(self, kf, force_max):
+        self.kf = kf
+        self.force_max = force_max
+
+    def update(self, force, v_cmd):
+        """Compute a new control command.
+
+        Parameters
+        ----------
+        force :
+            The sensed contact force.
+        v_cmd :
+            The nominal velocity command.
+
+        Returns
+        -------
+        :
+            The velocity command modified to comply with the sensed force.
+        """
+        f_norm = np.linalg.norm(force)
+        if f_norm > self.force_max:
+            vf = -self.kf * (f_norm - self.force_max) * util.unit(force)
+            v_cmd = v_cmd + vf
+        return v_cmd
+
+
 class RobotController:
     """Controller for the mobile base.
 
     Designed to achieve commanded EE linear velocity while using base rotation
     to avoid obstacles and otherwise align the robot with the path.
+
+    Parameters
+    ----------
+    r_cb_b :
+        2D position of the contact point w.r.t. the base frame origin.
+    lb :
+        Lower bound on velocity (v_x, v_y, ω).
+    ub :
+        Upper bound on velocity.
+    obstacles :
+        List of LineSegments to be avoided.
+    min_dist : float
+        Minimum distance to maintain from obstacles.
+    vel_weight : float
+        Weight on velocity norm in controller.
+    acc_weight : float
+        Weight on acceleration norm in the controller.
+    solver : str
+        The QP solver to use.
     """
 
     def __init__(
@@ -23,18 +79,6 @@ class RobotController:
         min_dist=0.75,
         solver="proxqp",
     ):
-        """Initialize the controller.
-
-        Parameters:
-            r_cb_b: 2D position of the contact point w.r.t. the base frame origin
-            lb: Lower bound on velocity (v_x, v_y, ω)
-            ub: Upper bound on velocity
-            obstacles: list of LineSegments to be avoided (optional)
-            min_dist: Minimum distance to maintain from obstacles.
-            vel_weight: weight on velocity norm in controller
-            acc_weight: weight on acceleration norm in the controller
-            solver: the QP solver to use (default: 'proxqp')
-        """
         self.r_cb_b = r_cb_b
         self.lb = np.append(lb, 0)
         self.ub = np.append(ub, 1)
@@ -45,6 +89,7 @@ class RobotController:
         self.solver = solver
 
     def _compute_obstacle_constraint(self, r_bw_w):
+        """Build the matrices requires to enforce obstacle avoidance."""
         # no obstacles, no constraint
         n = len(self.obstacles)
         if n == 0:
@@ -67,12 +112,21 @@ class RobotController:
         return G, h
 
     def update(self, r_bw_w, C_wb, V_ee_d, u_last=None):
-        """Compute new controller input u.
+        """Compute new controller input.
 
-        Parameters:
-            r_bw_w: 2D position of base in the world frame
-            C_wb: rotation matrix from base frame to world frame
-            V_ee_d: desired EE velocity (v_x, v_y, ω)
+        Parameters
+        ----------
+        r_bw_w :
+            2D position of base in the world frame.
+        C_wb :
+            2x2 rotation matrix from base frame to world frame.
+        V_ee_d :
+            Desired EE velocity (v_x, v_y, ω).
+
+        Returns
+        -------
+        :
+            Joint velocity command.
         """
         if u_last is None:
             u_last = np.zeros(3)
@@ -117,7 +171,35 @@ class RobotController:
 
 
 class PushController:
-    """Task-space force angle-based pushing controller."""
+    """Task-space force angle-based pushing controller.
+
+    Parameters
+    ----------
+    speed : float
+        Linear pushing speed.
+    kθ : float
+        Gain for stable pushing.
+    ky : float
+        Gain for path tracking.
+    path :
+        Path to track.
+    ki_θ : float
+        Integral gain for stable pushing.
+    ki_y : float
+        Integral gain for path tracking.
+    force_min : float
+        Contact requires a force of at least this much.
+    force_max : float
+        DEPRECATED. Diverge if force exceeds this much.
+    con_inc : float
+        Increment to push angle to converge back to previous point.
+    div_inc : float
+        DEPRECATED. Increment to push angle to diverge when force is too high.
+    obstacles :
+        List of obstacles to avoid with the EE.
+    min_dist :
+        Minimum distance to maintain from the obstacles.
+    """
 
     def __init__(
         self,
@@ -135,20 +217,6 @@ class PushController:
         obstacles=None,
         min_dist=0.1,
     ):
-        """Force-based pushing controller.
-
-        Parameters:
-            speed: linear pushing speed
-            kθ: gain for stable pushing
-            ky: gain for path tracking
-            path: path to track
-            ki_θ: integral gain for stable pushing
-            ki_y: integral gain for path tracking
-            force_min: contact requires a force of at least this much
-            force_max: diverge if force exceeds this much
-            con_inc: increment to push angle to converge back to previous point
-            div_inc: increment to push angle to diverge when force is too high
-        """
         self.speed = speed
         self.kθ = kθ
         self.ky = ky
@@ -211,8 +279,6 @@ class PushController:
         self.θd_int += dt * θd
 
         speed = self.speed
-
-        # print(f"f_norm = {f_norm}")
 
         # pushing angle
         if f_norm < self.force_min:
@@ -277,21 +343,11 @@ class PushController:
             self.converge = False
 
         self.θp = util.wrap_to_pi(θp)
-        print(f"θp = {θp}")
 
         # pushing velocity
         pushdir = util.rot2d(self.θp) @ pathdir
 
-        # avoid the walls of the corridor
-        # if np.abs(yc) >= self.corridor_radius:
-        #     R = util.rot2d(np.pi / 2)
-        #     perp = R @ pathdir
-        #     print("correction!")
-        #     if off > 0 and perp @ pushdir > 0:
-        #         pushdir = util.unit(pushdir - (perp @ pushdir) * perp)
-        #     elif off < 0 and perp @ pushdir < 0:
-        #         pushdir = util.unit(pushdir - (perp @ pushdir) * perp)
-
+        # avoid the obstacles
         R = util.rot2d(np.pi / 2)
         for obstacle in self.obstacles:
             closest, dist = obstacle.closest_point_and_distance(position)

@@ -62,7 +62,7 @@ def main():
     rospy.init_node("calibrate_wall_position_node", disable_signals=True)
     rate = rospy.Rate(RATE)
 
-    box_vertices = np.array([[2.2, 2.0], [2.2, 2.5], [-2.2, 2.5], [-2.2, 2.0]])
+    box_vertices = np.array([[2.2, 2.0], [2.2, 2.5], [-3.7, 2.5], [-3.7, 2.0]])
 
     # load calibrated offset between contact point and base frame origin
     with open(fp.CONTACT_POINT_CALIBRATION_FILE) as f:

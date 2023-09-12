@@ -29,7 +29,7 @@ PUSH_SPEED = 0.1
 Kθ = 0.3
 KY = 0.3
 Kω = 1
-Kf = 0.01
+Kf = 0.005
 CON_INC = 0.1
 DIV_INC = 0.3  # NOTE
 
@@ -122,12 +122,12 @@ def main():
         )
     if args.environment == "corridor":
         obstacles = fp.translate_segments(
-            [fp.LineSegment([-2.5, 4.35], [0.5, 4.35])], r_cw_w
+            [fp.LineSegment([-3.5, 4.25], [1.0, 4.25])], r_cw_w
         )
     else:
         obstacles = None
 
-    # controllers
+    # push controller generates EE velocity commands to realize stable pushing
     push_controller = fp.PushController(
         speed=PUSH_SPEED,
         kθ=Kθ,
@@ -140,6 +140,11 @@ def main():
         force_max=np.inf,  # NOTE
         min_dist=EE_OBS_MIN_DIST,
     )
+
+    # admittance control to comply with large forces
+    force_controller = fp.AdmittanceController(kf=Kf, force_max=FORCE_MAX_THRESHOLD)
+
+    # generate joint commands to realize desired EE velocity
     robot_controller = fp.RobotController(
         -r_bc_b,
         lb=VEL_LB,
@@ -204,13 +209,7 @@ def main():
             v_ee_cmd = PUSH_SPEED * pathdir
         else:
             v_ee_cmd = push_controller.update(r_cw_w, f)
-
-            # admittance control to comply with large forces
-            f_norm = np.linalg.norm(f)
-            print(f"f_norm = {f_norm}")
-            if f_norm > FORCE_MAX_THRESHOLD:
-                vf = -Kf * (f_norm - FORCE_MAX_THRESHOLD) * fp.unit(f)
-                v_ee_cmd = vf + v_ee_cmd
+            v_ee_cmd = force_controller.update(force=f, v_cmd=v_ee_cmd)
 
         # desired angular velocity is calculated to align the robot with the
         # current path direction

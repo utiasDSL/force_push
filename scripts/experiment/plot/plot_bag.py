@@ -27,6 +27,12 @@ def main():
     parser.add_argument(
         "--slider", help="Name of slider Vicon object.", default="ThingBox"
     )
+    parser.add_argument(
+        "--environment",
+        choices=["straight", "corner", "corridor"],
+        help="Which environment to use",
+        required=True,
+    )
     args = parser.parse_args()
     bag = rosbag.Bag(args.bagfile)
 
@@ -73,8 +79,10 @@ def main():
     )
     r_dw_ws = path.get_plotting_coords()
 
-    # obstacles = [fp.LineSegment([-3.0, 4.35], [3.0, 4.35])]
-    obstacles = []
+    if args.environment == "corridor":
+        obstacles = [fp.LineSegment([-3.5, 4.25], [1.0, 4.25])]
+    else:
+        obstacles = []
 
     # contact point
     r_cw_ws = []

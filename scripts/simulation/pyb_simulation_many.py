@@ -33,10 +33,14 @@ OBSTACLE_MU = 0.25
 PUSH_SPEED = 0.1
 Kθ = 0.3
 KY = 0.1
+Kf = 0.005
 # CON_INC = np.pi / 64
 # DIV_INC = np.pi / 8
 CON_INC = 0.1
 DIV_INC = 0.1
+
+FORCE_MIN_THRESHOLD = 1
+FORCE_MAX_THRESHOLD = 50
 
 # slider params
 SLIDER_MASS = 1.0
@@ -77,7 +81,7 @@ s0s = [-0.4, 0, 0.4]
 START_AT_TRIAL = 0
 
 
-def simulate(sim, pusher, slider, controller):
+def simulate(sim, pusher, slider, push_controller, force_controller):
     success = True
     r_pw_ws = []
     r_sw_ws = []
@@ -92,12 +96,19 @@ def simulate(sim, pusher, slider, controller):
         t = sim.timestep * i
 
         if i % CTRL_FREQ == 0:
+            # get contact force and pusher position
             force = pusher.get_contact_force([slider.uid])
-            if np.linalg.norm(force) > 0.1:  # TODO make param
+            if np.linalg.norm(force) >= FORCE_MIN_THRESHOLD:
                 last_force_time = t
             r_pw_w = pusher.get_pose()[0]
-            v_cmd = controller.update(r_pw_w[:2], force[:2])
-            pusher.command_velocity(np.append(v_cmd, 0))
+            f = force[:2]
+
+            # generate command
+            v_cmd = push_controller.update(position=r_pw_w[:2], force=f)
+            v_cmd = force_controller.update(force=f, v_cmd=v_cmd)
+            V_cmd = np.append(v_cmd, 0)
+
+            pusher.command_velocity(V_cmd)
 
             # record information
             r_pw_ws.append(r_pw_w)
@@ -303,7 +314,7 @@ def main():
             pyb_utils.debug_frame_world(0.2, tuple(v1), line_width=3)
             pyb_utils.debug_frame_world(0.2, tuple(v2), line_width=3)
 
-    controller = fp.PushController(
+    push_controller = fp.PushController(
         speed=PUSH_SPEED,
         kθ=Kθ,
         ky=KY,
@@ -311,7 +322,10 @@ def main():
         con_inc=CON_INC,
         div_inc=DIV_INC,
         obstacles=obstacles,
+        force_min=FORCE_MIN_THRESHOLD,
+        force_max=np.inf,
     )
+    force_controller = fp.AdmittanceController(kf=Kf, force_max=FORCE_MAX_THRESHOLD)
 
     data = {
         "slider": args.slider,
@@ -324,6 +338,8 @@ def main():
         "ky": KY,
         "con_inc": CON_INC,
         "div_inc": DIV_INC,
+        "force_min": FORCE_MIN_THRESHOLD,
+        "force_max": FORCE_MAX_THRESHOLD,
         "inertias": slider_inertias,
         "y0s": y0s,
         "θ0s": θ0s,
@@ -361,14 +377,13 @@ def main():
             # reset everything to initial states
             pusher.reset(position=r_pw_w)
             slider.reset(position=r_sw_w, orientation=Q_ws)
-            controller.reset()
+            push_controller.reset()
+            # force controller has no state, so nothing to reset
             sim.step()
-
-            # time.sleep(5.0)
 
             # run the sim
             ts, r_pw_ws, r_sw_ws, success, forces = simulate(
-                sim, pusher, slider, controller
+                sim, pusher, slider, push_controller, force_controller
             )
             if not success:
                 print(f"Trial {count} failed.")

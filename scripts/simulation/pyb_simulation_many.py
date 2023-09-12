@@ -59,14 +59,16 @@ PUSHER_INIT_POS = np.array([-0.7, 0, 0.05])
 
 # if the closest distance between pusher and slider exceeds this amount, then
 # the trial is considered to have failed
-FAILURE_DIST = 0.5
+FAILURE_DIST = 1.0
 
 # trial fails if no force occurs for this many seconds
 FAILURE_TIME = 20.0
 
 # variable parameters
-I_mask = [True, True, True]
-μ0s = [0, 0.5, 1.0]
+# I_mask = [True, True, True]
+# μ0s = [0, 0.5, 1.0]
+I_mask = [True, False, False]
+μ0s = [1]
 y0s = [-0.4, 0, 0.4]
 θ0s = [-np.pi / 8, 0, np.pi / 8]
 # θ0s = [0]
@@ -120,11 +122,13 @@ def simulate(sim, pusher, slider, push_controller, force_controller):
             pts = pyb_utils.getClosestPoints(pusher.uid, slider.uid, distance=10)
             if pts[0].contactDistance > FAILURE_DIST:
                 success = False
+                print("Pusher and slider too far apart!")
                 break
 
             # check if we've lost contact for too long
             if t - last_force_time > FAILURE_TIME:
                 success = False
+                print("Loss of contact for too long!")
                 break
 
         sim.step()

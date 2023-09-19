@@ -99,6 +99,7 @@ def main():
         wrench_msgs, normalize_time=False
     )
     wrench_idx = np.argmax(np.linalg.norm(wrenches[:, :2], axis=1) > FORCE_THRESHOLD)
+    wrench_times -= t0
 
     # slider
     slider_topic = ros_utils.vicon_topic_name(args.slider)
@@ -172,6 +173,16 @@ def main():
     plt.xlabel("Time [s]")
     plt.ylabel("Command")
     plt.title("Base commands vs. time")
+    plt.legend()
+    plt.grid()
+
+    plt.figure()
+    plt.plot(wrench_times, wrenches[:, 0], label="fx")
+    plt.plot(wrench_times, wrenches[:, 1], label="fy")
+    plt.plot(wrench_times, wrenches[:, 2], label="fz")
+    plt.xlabel("Time [s]")
+    plt.ylabel("Contact force [N]")
+    plt.title("Contact forces vs. time")
     plt.legend()
     plt.grid()
 

@@ -1,6 +1,7 @@
 import time
 import numpy as np
 from scipy.optimize import minimize_scalar
+from scipy.integrate import quad
 
 from force_push import util
 
@@ -52,6 +53,7 @@ class LineSegment:
         self.v2 = np.array(v2)
         self.direction = util.unit(self.v2 - self.v1)
         self.infinite = infinite
+        self.length = np.inf if infinite else np.linalg.norm(self.v2 - self.v1)
 
     def offset(self, Δ):
         return LineSegment(v1=self.v1 + Δ, v2=self.v2 + Δ, infinite=self.infinite)
@@ -66,25 +68,31 @@ class LineSegment:
         if self.infinite:
             # closest point is beyond the end of the segment
             if proj <= 0:
-                return  self.v1, np.linalg.norm(r)
+                return self.v1, np.linalg.norm(r)
             c = self.v1 + proj * self.direction
             return c, np.linalg.norm(p - c)
         else:
             v = self.v2 - self.v1
-            L = np.linalg.norm(v)
 
             # degenerate case when the line segment has zero length (i.e., is a point)
-            if L < tol:
+            if self.length < tol:
                 return self.v1, np.linalg.norm(r)
 
             # closest point is beyond the end of the segment
             if proj <= 0:
                 return self.v1, np.linalg.norm(r)
-            if proj >= L:
+            if proj >= self.length:
                 return self.v2, np.linalg.norm(p - self.v2)
 
             c = self.v1 + proj * self.direction
             return c, np.linalg.norm(p - c)
+
+    def point_at_distance(self, d):
+        """Compute the point that is distance ``d`` from the start of the segment."""
+        assert d >= 0
+        if d > self.length:
+            raise ValueError(f"Segment is shorter than distance {d}")
+        return self.v1 + d * self.direction
 
 
 class QuadBezierSegment:
@@ -94,6 +102,8 @@ class QuadBezierSegment:
         self.v1 = np.array(v1)
         self.v2 = np.array(v2)
         self.v3 = np.array(v3)
+
+        self.length = quad(lambda t: np.linalg.norm(self._time_derivative(t)), 0, 1)[0]
 
     def offset(self, Δ):
         return QuadBezierSegment(v1=self.v1 + Δ, v2=self.v2 + Δ, v3=self.v3 + Δ)
@@ -119,6 +129,19 @@ class QuadBezierSegment:
         closest = self._evaluate(t)
         direction = util.unit(self._time_derivative(t))
         return closest, direction
+
+    def point_at_distance(self, d):
+        """Compute the point that is distance ``d`` from the start of the segment."""
+        assert d >= 0
+        if d > self.length:
+            raise ValueError(f"Segment is shorter than distance {d}")
+
+        def fun(s):
+            L = quad(lambda t: np.linalg.norm(self._time_derivative(t)), 0, s)[0]
+            return (d - L)**2
+
+        res = minimize_scalar(fun, bounds=(0, 1), method="bounded")
+        return self._evaluate(res.x)
 
 
 class SegmentPath:
@@ -183,3 +206,14 @@ class SegmentPath:
             vertices.append(last_seg.v2 + dist * last_seg.direction)
 
         return np.array(vertices)
+
+    def point_at_distance(self, d):
+        """Compute the point that is distance ``d`` from the start of the path."""
+        assert d >= 0
+
+        L = 0
+        for segment in self.segments:
+            if L + segment.length > d:
+                return segment.point_at_distance(d - L)
+            L += segment.length
+        raise ValueError(f"Path is shorter than distance {d}")

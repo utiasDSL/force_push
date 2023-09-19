@@ -16,9 +16,10 @@ class AdmittanceController:
         Only modify the commands when the force is above this magnitude.
     """
 
-    def __init__(self, kf, force_max):
+    def __init__(self, kf, force_max, vel_max=np.inf):
         self.kf = kf
         self.force_max = force_max
+        self.vel_max = vel_max
 
     def update(self, force, v_cmd):
         """Compute a new control command.
@@ -39,6 +40,8 @@ class AdmittanceController:
         if f_norm > self.force_max:
             vf = -self.kf * (f_norm - self.force_max) * util.unit(force)
             v_cmd = v_cmd + vf
+        if np.linalg.norm(v_cmd) > self.vel_max:
+            v_cmd = self.vel_max * util.unit(v_cmd)
         return v_cmd
 
 

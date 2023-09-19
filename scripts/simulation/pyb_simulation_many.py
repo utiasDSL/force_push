@@ -1,6 +1,8 @@
+#!/usr/bin/env python3
 import argparse
 import itertools
 import pickle
+from pathlib import Path
 import time
 
 import matplotlib.pyplot as plt
@@ -10,6 +12,7 @@ import pybullet as pyb
 import seaborn
 from spatialmath.base import rotz, r2q
 import tqdm
+import rospkg
 
 import mobile_manipulation_central as mm
 import force_push as fp
@@ -22,7 +25,7 @@ SIM_FREQ = 1000
 CTRL_FREQ = 100
 
 # seconds
-DURATION = 200
+DURATION = 180
 
 # friction
 # slider μ is set to 1
@@ -34,9 +37,7 @@ PUSH_SPEED = 0.1
 Kθ = 0.3
 KY = 0.1
 Kf = 0.005
-# CON_INC = np.pi / 64
-# DIV_INC = np.pi / 8
-CON_INC = 0.1
+CON_INC = 0.05  # NOTE
 DIV_INC = 0.1
 
 FORCE_MIN_THRESHOLD = 1
@@ -44,18 +45,19 @@ FORCE_MAX_THRESHOLD = 50
 
 # slider params
 SLIDER_MASS = 1.0
-BOX_SLIDER_HALF_EXTENTS = (0.5, 0.5, 0.05)
+BOX_SLIDER_HALF_EXTENTS = (0.5, 0.5, 0.06)
 CIRCLE_SLIDER_RADIUS = 0.5
-CIRCLE_SLIDER_HEIGHT = 0.1
+CIRCLE_SLIDER_HEIGHT = 0.12
 SLIDER_CONTACT_DAMPING = 100
 SLIDER_CONTACT_STIFFNESS = 10000
+SLIDER_LOW_INERTIA_MULT = 1.0 / 2.0
 
 # pusher params
 PUSHER_MASS = 100
 PUSHER_RADIUS = 0.05
 
-SLIDER_INIT_POS = np.array([0, 0, 0.05])
-PUSHER_INIT_POS = np.array([-0.7, 0, 0.05])
+SLIDER_INIT_POS = np.array([0, 0, 0.06])
+PUSHER_INIT_POS = np.array([-0.7, 0, 0.06])
 
 # if the closest distance between pusher and slider exceeds this amount, then
 # the trial is considered to have failed
@@ -64,18 +66,17 @@ FAILURE_DIST = 1.0
 # trial fails if no force occurs for this many seconds
 FAILURE_TIME = 20.0
 
+FILTER_TIME_CONSTANT = 0.05
+
 # variable parameters
-# I_mask = [True, True, True]
-# μ0s = [0, 0.5, 1.0]
-I_mask = [True, False, False]
-μ0s = [1]
+I_mask = [True, True, True]
+μ0s = [0, 0.5, 1.0]
 y0s = [-0.4, 0, 0.4]
 θ0s = [-np.pi / 8, 0, np.pi / 8]
-# θ0s = [0]
 s0s = [-0.4, 0, 0.4]
 
 # I_mask = [False, False, True]
-# μ0s = [0]
+# μ0s = [1]
 # y0s = [-0.4]
 # θ0s = [-np.pi / 8]
 # s0s = [0.4]
@@ -92,6 +93,8 @@ def simulate(sim, pusher, slider, push_controller, force_controller):
 
     last_force_time = 0
 
+    # smoother = mm.ExponentialSmoother(τ=FILTER_TIME_CONSTANT, x0=np.zeros(3))
+
     t = 0
     steps = DURATION * SIM_FREQ
     for i in range(DURATION * SIM_FREQ):
@@ -100,9 +103,13 @@ def simulate(sim, pusher, slider, push_controller, force_controller):
         if i % CTRL_FREQ == 0:
             # get contact force and pusher position
             force = pusher.get_contact_force([slider.uid])
+
+            # NOTE this does not work well
+            # force = smoother.update(force, sim.timestep)
+
             if np.linalg.norm(force) >= FORCE_MIN_THRESHOLD:
                 last_force_time = t
-            r_pw_w = pusher.get_pose()[0]
+            r_pw_w = pusher.get_position()
             f = force[:2]
 
             # generate command
@@ -132,6 +139,7 @@ def simulate(sim, pusher, slider, push_controller, force_controller):
                 break
 
         sim.step()
+        # time.sleep(0.1 / SIM_FREQ)
 
     ts = np.array(ts)
     r_pw_ws = np.array(r_pw_ws)
@@ -153,14 +161,16 @@ def setup_box_slider(position):
     I_uni = fp.uniform_cuboid_inertia(
         mass=SLIDER_MASS, half_extents=BOX_SLIDER_HALF_EXTENTS
     )
-    I_low = 0.1 * I_uni
+    I_low = SLIDER_LOW_INERTIA_MULT * I_uni
     inertias = [I_low, I_uni, I_max]
 
     return slider, inertias
 
 
 def setup_circle_slider(position):
-    slider = fp.BulletCircleSlider(position)
+    slider = fp.BulletCircleSlider(
+        position, radius=CIRCLE_SLIDER_RADIUS, height=CIRCLE_SLIDER_HEIGHT
+    )
 
     I_max = fp.thin_walled_cylinder_inertia(
         SLIDER_MASS, CIRCLE_SLIDER_RADIUS, CIRCLE_SLIDER_HEIGHT
@@ -168,7 +178,7 @@ def setup_circle_slider(position):
     I_uni = fp.uniform_cylinder_inertia(
         SLIDER_MASS, CIRCLE_SLIDER_RADIUS, CIRCLE_SLIDER_HEIGHT
     )
-    I_low = 0.1 * I_uni
+    I_low = SLIDER_LOW_INERTIA_MULT * I_uni
     inertias = [I_low, I_uni, I_max]
 
     return slider, inertias
@@ -205,42 +215,15 @@ def setup_corner_path(corridor=False):
     return path, obstacles
 
 
-def plot_results(data):
-    all_r_sw_ws = data["slider_positions"]
-    all_forces = data["forces"]
-    ts = data["times"]
-    r_dw_ws = data["path_positions"]
+def make_urdf_file():
+    rospack = rospkg.RosPack()
+    path = Path(rospack.get_path("force_push")) / "urdf/urdf/sim_pusher.urdf"
+    if not path.parent.exists():
+        path.parent.mkdir()
 
-    μs = np.array([p[1] for p in data["parameters"]])
-
-    n = len(all_r_sw_ws)
-
-    # plotting
-    palette = seaborn.color_palette("deep")
-
-    plt.figure()
-    for i in range(0, n):
-        # if μs[i] > 0.7:
-        #     color = palette[1]
-        #     continue
-        # else:
-        color = palette[0]
-        plt.plot(all_r_sw_ws[i][:, 0], all_r_sw_ws[i][:, 1], color=color, alpha=0.2)
-    plt.plot(r_dw_ws[:, 0], r_dw_ws[:, 1], "--", color="k")
-    ax = plt.gca()
-    ax.set_aspect("equal")
-    plt.grid()
-
-    plt.figure()
-    for i in range(n):
-        plt.plot(ts[i], all_forces[i][:, 0], color="r", alpha=0.5)
-        plt.plot(ts[i], all_forces[i][:, 1], color="b", alpha=0.5)
-    plt.grid()
-    plt.title("Forces vs. time")
-    plt.xlabel("Time [s]")
-    plt.ylabel("Force [N]")
-
-    plt.show()
+    includes = ["$(find force_push)/urdf/xacro/sim_pusher.urdf.xacro"]
+    mm.XacroDoc.from_includes(includes).to_urdf_file(path)
+    return path.as_posix()
 
 
 def main():
@@ -268,7 +251,7 @@ def main():
         with open(args.load, "rb") as f:
             data = pickle.load(f)
         print(f"Loaded processed data from {args.load}")
-        plot_results(data)
+        fp.plot_simulation_results(data)
         return
 
     sim = mm.BulletSimulation(1.0 / SIM_FREQ, gui=not args.no_gui)
@@ -280,20 +263,27 @@ def main():
         cameraTargetPosition=[3.66, 0.42, 0.49],
     )
 
-    pusher = fp.BulletPusher(PUSHER_INIT_POS, mass=PUSHER_MASS, radius=PUSHER_RADIUS)
+    urdf_path = make_urdf_file()
+    # pusher = fp.BulletPusher(PUSHER_INIT_POS, mass=PUSHER_MASS, radius=PUSHER_RADIUS)
+    pusher = fp.BulletPusher2(urdf_path, PUSHER_INIT_POS)
     if args.slider == "box":
         slider, slider_inertias = setup_box_slider(SLIDER_INIT_POS)
     elif args.slider == "circle":
         slider, slider_inertias = setup_circle_slider(SLIDER_INIT_POS)
     slider_inertias = [slider_inertias[i] for i in range(3) if I_mask[i]]
 
-    # see e.g. <https://github.com/bulletphysics/bullet3/issues/4428>
-    pyb.changeDynamics(
-        slider.uid,
-        -1,
-        contactDamping=SLIDER_CONTACT_DAMPING,
-        contactStiffness=SLIDER_CONTACT_STIFFNESS,
+    # disable collisions between pusher base and the slider
+    # pyb.setCollisionFilterPair(pusher.uid, slider.uid, -1, -1, enableCollision=0)
+
+    slider.set_contact_parameters(
+        stiffness=SLIDER_CONTACT_STIFFNESS, damping=SLIDER_CONTACT_DAMPING
     )
+    # pyb.changeDynamics(
+    #     pusher.uid,
+    #     pusher.contact_joint_idx,
+    #     contactDamping=SLIDER_CONTACT_DAMPING,
+    #     contactStiffness=SLIDER_CONTACT_STIFFNESS,
+    # )
 
     if args.environment == "straight":
         path, obstacles = setup_straight_path()
@@ -329,10 +319,12 @@ def main():
         force_min=FORCE_MIN_THRESHOLD,
         force_max=np.inf,
     )
-    force_controller = fp.AdmittanceController(kf=Kf, force_max=FORCE_MAX_THRESHOLD)
+    force_controller = fp.AdmittanceController(
+        kf=Kf, force_max=FORCE_MAX_THRESHOLD, vel_max=PUSH_SPEED
+    )
 
     data = {
-        "slider": args.slider,
+        "slider_type": args.slider,
         "environment": args.environment,
         "duration": DURATION,
         "sim_freq": SIM_FREQ,
@@ -345,10 +337,16 @@ def main():
         "force_min": FORCE_MIN_THRESHOLD,
         "force_max": FORCE_MAX_THRESHOLD,
         "inertias": slider_inertias,
+        "I_mask": I_mask,
         "y0s": y0s,
         "θ0s": θ0s,
         "s0s": s0s,
         "μ0s": μ0s,
+        "path": path,
+        "obstacles": obstacles,
+        "slider": slider,
+        "slider_stiffness": SLIDER_CONTACT_STIFFNESS,
+        "slider_damping": SLIDER_CONTACT_DAMPING,
     }
 
     num_sims = len(slider_inertias) * len(y0s) * len(θ0s) * len(s0s) * len(μ0s)
@@ -375,7 +373,7 @@ def main():
             r_pw_w = PUSHER_INIT_POS + [0, s0 + y0, 0]
             r_sw_w = SLIDER_INIT_POS + [0, y0, 0]
             Q_ws = r2q(rotz(θ0), order="xyzs")
-            pyb.changeDynamics(pusher.uid, -1, lateralFriction=μ0)
+            pusher.set_contact_friction(μ0)
             slider.set_inertia_diagonal(I)
 
             # reset everything to initial states
@@ -425,7 +423,7 @@ def main():
             pickle.dump(data, f)
         print(f"Saved processed data to {args.save}")
 
-    plot_results(data)
+    fp.plot_simulation_results(data)
 
 
 if __name__ == "__main__":

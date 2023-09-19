@@ -14,30 +14,6 @@
      <origin rpy="0 0 0" xyz="0 0 0"/>
     </inertial>
   </link>
-  <!--   &#60;&#33;&#45;&#45; TODO &#45;&#45;&#62; -->
-  <!--   <inertial> -->
-  <!--     <origin rpy="0 0 0" xyz="0 0 0.03"/> -->
-  <!--     <mass value="100"/> -->
-  <!--     <inertia ixx="100"  ixy="0"  ixz="0" iyy="100" iyz="0" izz="100" /> -->
-  <!--   </inertial> -->
-  <!--  -->
-  <!--   <visual> -->
-  <!--     <origin rpy="0 0 0" xyz="0 0 0"/> -->
-  <!--     <geometry> -->
-  <!--       &#60;&#33;&#45;&#45; <cylinder radius="0.4" length="0.06"/> &#45;&#45;&#62; -->
-  <!--       <box size="0.8 0.8 0.06"/> -->
-  <!--     </geometry> -->
-  <!--     <material name="black"/> -->
-  <!--   </visual> -->
-  <!--  -->
-  <!--   <collision> -->
-  <!--     <origin rpy="0 0 0" xyz="0 0 0"/> -->
-  <!--     <geometry> -->
-  <!--       &#60;&#33;&#45;&#45; <cylinder radius="0.4" length="0.06"/> &#45;&#45;&#62; -->
-  <!--       <box size="0.8 0.8 0.06"/> -->
-  <!--     </geometry> -->
-  <!--   </collision> -->
-  <!-- </link> -->
 
 	<joint name="pusher_joint_x" type="prismatic">
     <parent link="base_link"/>
@@ -45,7 +21,6 @@
     <axis xyz="1 0 0"/>
     <origin rpy="0 0 0" xyz="0 0 0.06"/>
     <limit effort="0" velocity="1000.0"/>
-    <!-- <dynamics damping="1.0" friction="1.0"/> -->
   </joint>
 
 	<link name="dummy_link">
@@ -62,18 +37,9 @@
     <axis xyz="0 1 0"/>
     <origin rpy="0 0 0" xyz="0 0 0"/>
     <limit effort="0" velocity="1000.0"/>
-    <!-- <dynamics damping="1.0" friction="1.0"/> -->
   </joint>
 
-  <!-- <joint name="pusher_joint" type="fixed"> -->
-  <!--   <origin rpy="0 0 0" xyz="0 0 0.03"/> -->
-  <!--   <axis xyz="0 0 1"/> -->
-  <!--   <parent link="base_link"/> -->
-  <!--   <child link="pusher_link"/> -->
-  <!-- </joint> -->
-
   <link name="pusher_link">
-    <!-- TODO -->
     <inertial>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <mass value="1"/>

@@ -168,6 +168,15 @@ class SegmentPath:
         v2 = origin + direction
         return cls([LineSegment(v1, v2, infinite=True)])
 
+    def compute_closest_point(self, p):
+        minimum = (np.inf, None, None)
+        for segment in self.segments:
+            closest, direction = segment.closest_point_and_direction(p)
+            dist = np.linalg.norm(p - closest)
+            if dist < minimum[0]:
+                minimum = (dist, closest, direction)
+        return minimum[1]
+
     def compute_direction_and_offset(self, p):
         """Compute travel direction and lateral offset for a point p."""
         minimum = (np.inf, None, None)

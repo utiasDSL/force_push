@@ -68,13 +68,11 @@ def plot_simulation_results(data):
     ax.set_aspect("equal")
     plt.grid()
 
-    plt.figure()
-    for i in range(n):
-        plt.plot(ts[i], all_forces[i][:, 0], color="r", alpha=0.5)
-        plt.plot(ts[i], all_forces[i][:, 1], color="b", alpha=0.5)
-    plt.grid()
-    plt.title("Forces vs. time")
-    plt.xlabel("Time [s]")
-    plt.ylabel("Force [N]")
-
-    plt.show()
+    # plt.figure()
+    # for i in range(n):
+    #     plt.plot(ts[i], all_forces[i][:, 0], color="r", alpha=0.5)
+    #     plt.plot(ts[i], all_forces[i][:, 1], color="b", alpha=0.5)
+    # plt.grid()
+    # plt.title("Forces vs. time")
+    # plt.xlabel("Time [s]")
+    # plt.ylabel("Force [N]")

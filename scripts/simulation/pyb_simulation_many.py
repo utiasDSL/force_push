@@ -52,10 +52,6 @@ SLIDER_CONTACT_DAMPING = 100
 SLIDER_CONTACT_STIFFNESS = 10000
 SLIDER_LOW_INERTIA_MULT = 1.0 / 2.0
 
-# pusher params
-PUSHER_MASS = 100
-PUSHER_RADIUS = 0.05
-
 SLIDER_INIT_POS = np.array([0, 0, 0.06])
 PUSHER_INIT_POS = np.array([-0.7, 0, 0.06])
 
@@ -75,11 +71,11 @@ y0s = [-0.4, 0, 0.4]
 θ0s = [-np.pi / 8, 0, np.pi / 8]
 s0s = [-0.4, 0, 0.4]
 
-# I_mask = [False, False, True]
-# μ0s = [1]
-# y0s = [-0.4]
-# θ0s = [-np.pi / 8]
-# s0s = [0.4]
+I_mask = [False, False, True]
+μ0s = [1]
+y0s = [-0.4]
+θ0s = [-np.pi / 8]
+s0s = [0.4]
 
 START_AT_TRIAL = 0
 
@@ -109,15 +105,15 @@ def simulate(sim, pusher, slider, push_controller, force_controller):
 
             if np.linalg.norm(force) >= FORCE_MIN_THRESHOLD:
                 last_force_time = t
-            r_pw_w = pusher.get_position()
+            r_pw_w = pusher.get_joint_states()[0]
             f = force[:2]
 
             # generate command
             v_cmd = push_controller.update(position=r_pw_w[:2], force=f)
             v_cmd = force_controller.update(force=f, v_cmd=v_cmd)
-            V_cmd = np.append(v_cmd, 0)
+            # V_cmd = np.append(v_cmd, 0)
 
-            pusher.command_velocity(V_cmd)
+            pusher.command_velocity(v_cmd)
 
             # record information
             r_pw_ws.append(r_pw_w)
@@ -252,6 +248,7 @@ def main():
             data = pickle.load(f)
         print(f"Loaded processed data from {args.load}")
         fp.plot_simulation_results(data)
+        plt.show()
         return
 
     sim = mm.BulletSimulation(1.0 / SIM_FREQ, gui=not args.no_gui)
@@ -264,8 +261,7 @@ def main():
     )
 
     urdf_path = make_urdf_file()
-    # pusher = fp.BulletPusher(PUSHER_INIT_POS, mass=PUSHER_MASS, radius=PUSHER_RADIUS)
-    pusher = fp.BulletPusher2(urdf_path, PUSHER_INIT_POS)
+    pusher = fp.BulletPusher(urdf_path, PUSHER_INIT_POS)
     if args.slider == "box":
         slider, slider_inertias = setup_box_slider(SLIDER_INIT_POS)
     elif args.slider == "circle":
@@ -424,6 +420,7 @@ def main():
         print(f"Saved processed data to {args.save}")
 
     fp.plot_simulation_results(data)
+    plt.show()
 
 
 if __name__ == "__main__":

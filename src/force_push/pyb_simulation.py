@@ -71,42 +71,40 @@ class BulletBody(pyb_utils.BulletBody):
         )
 
 
-class BulletPusher(BulletBody):
-    """Spherical pusher"""
+# class BulletPusher(BulletBody):
+#     """Spherical pusher"""
+#
+#     def __init__(self, position, mass=100, mu=1, radius=0.1):
+#         collision_uid = pyb.createCollisionShape(
+#             shapeType=pyb.GEOM_SPHERE,
+#             radius=radius,
+#         )
+#         visual_uid = pyb.createVisualShape(
+#             shapeType=pyb.GEOM_SPHERE,
+#             radius=radius,
+#             rgbaColor=[1, 0, 0, 1],
+#         )
+#         super().__init__(position, collision_uid, visual_uid, mass=mass, mu=mu)
+#
+#     def command_velocity(self, v):
+#         """Send a linear velocity command."""
+#         self.set_velocity(linear=v)
+#
+#     def get_contact_force(self, uids):
+#         """Return contact force, expressed in the world frame."""
+#         return sum([get_contact_force(self.uid, uid) for uid in uids])
 
-    def __init__(self, position, mass=100, mu=1, radius=0.1):
-        collision_uid = pyb.createCollisionShape(
-            shapeType=pyb.GEOM_SPHERE,
-            radius=radius,
-        )
-        visual_uid = pyb.createVisualShape(
-            shapeType=pyb.GEOM_SPHERE,
-            radius=radius,
-            rgbaColor=[1, 0, 0, 1],
-        )
-        super().__init__(position, collision_uid, visual_uid, mass=mass, mu=mu)
 
-    def command_velocity(self, v):
-        """Send a linear velocity command."""
-        self.set_velocity(linear=v)
-
-    def get_contact_force(self, uids):
-        """Return contact force, expressed in the world frame."""
-        return sum([get_contact_force(self.uid, uid) for uid in uids])
-
-
-# TODO extend pyb_utils.Robot
-class BulletPusher2:
+class BulletPusher(pyb_utils.Robot):
     """Pusher based on a URDF."""
 
     def __init__(self, urdf_path, position, mu=1):
         # here we use a fixed base so that the "base" just stays at the world
         # frame origin while the link moves via two prismatic joints
-        self.uid = pyb.loadURDF(urdf_path, [0, 0, 0], [0, 0, 0, 1], useFixedBase=True)
-        self.contact_joint_idx = 1
-
-        self.num_joints = pyb.getNumJoints(self.uid)
+        uid = pyb.loadURDF(urdf_path, [0, 0, 0], [0, 0, 0, 1], useFixedBase=True)
+        super().__init__(uid)
         assert self.num_joints == 2
+        assert self.tool_idx == 1
 
         # zero friction on the floor, variable contact friction
         pyb.changeDynamics(self.uid, -1, lateralFriction=0)
@@ -114,32 +112,14 @@ class BulletPusher2:
         self.reset(position=position, orientation=[0, 0, 0, 1])
 
     def set_contact_friction(self, μ):
-        pyb.changeDynamics(self.uid, self.contact_joint_idx, lateralFriction=μ)
-
-    def command_velocity(self, v):
-        pyb.setJointMotorControlArray(
-            self.uid,
-            [0, 1],
-            controlMode=pyb.VELOCITY_CONTROL,
-            targetVelocities=list(v[:2]),
-        )
+        """Set the friction for the link in contact with the slider."""
+        pyb.changeDynamics(self.uid, self.tool_idx, lateralFriction=μ)
 
     def get_contact_force(self, uids):
         """Return contact force, expressed in the world frame."""
         return sum(
-            [
-                get_contact_force(self.uid, uid, self.contact_joint_idx, -1)
-                for uid in uids
-            ]
+            [get_contact_force(self.uid, uid, self.tool_idx, -1) for uid in uids]
         )
-
-    def get_position(self):
-        states = pyb.getJointStates(self.uid, [0, 1])
-        return np.array([state[0] for state in states])
-
-    def get_velocity(self):
-        states = pyb.getJointStates(self.uid, [0, 1])
-        return np.array([state[1] for state in states])
 
     def reset(self, position=None, orientation=None):
         """Reset the body to initial pose and zero velocity."""
@@ -148,12 +128,8 @@ class BulletPusher2:
         if orientation is not None:
             self.orn_init = orientation
 
-        # reset velocity
         self.command_velocity([0, 0])
-
-        # reset position
-        for i in range(self.num_joints):
-            pyb.resetJointState(self.uid, i, self.pos_init[i])
+        self.reset_joint_configuration(self.pos_init)
 
 
 class BulletSquareSlider(BulletBody):

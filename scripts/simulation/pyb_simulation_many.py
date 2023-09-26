@@ -71,11 +71,11 @@ y0s = [-0.4, 0, 0.4]
 θ0s = [-np.pi / 8, 0, np.pi / 8]
 s0s = [-0.4, 0, 0.4]
 
-I_mask = [False, False, True]
-μ0s = [1]
-y0s = [-0.4]
-θ0s = [-np.pi / 8]
-s0s = [0.4]
+# I_mask = [False, False, True]
+# μ0s = [1]
+# y0s = [-0.4]
+# θ0s = [-np.pi / 8]
+# s0s = [0.4]
 
 START_AT_TRIAL = 0
 

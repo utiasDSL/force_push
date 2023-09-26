@@ -307,34 +307,34 @@ class PushController:
             # if abs(con_delta) > self.div_max:
             #     θp = self.con_init - self.div_max
 
-            self.diverge = False
+            # self.diverge = False
             self.converge = True
-        elif f_norm > self.force_max or self.diverge:
-            # diverge from the path if force is too high
-            print("diverge!")
-            if not self.diverge:
-                self.div_init = self.θp
-                self.div = 0
-            self.div += self.div_inc
-            if self.div > self.div_max:
-                self.div = self.div_max
-            θp = self.div_init + self.inc_sign * self.div
-
-            # θp = self.θp + self.inc_sign * self.div_inc
-            #
-            # # limit divergence to no more than div_max
-            # div_delta = util.wrap_to_pi(θp - self.div_init)
-            # if abs(div_delta) > self.div_max:
-            #     θp = self.div_init + self.div_max
-
-            # if self.diverge:
-            #     # already diverging: keep doing what we're doing
-            #     θp = self.θp
-            # else:
-            #     # θp = self.θp + np.sign(θd) * self.div_inc
-            #     θp = self.θp + self.inc_sign * 0.5 * np.pi
-            self.diverge = True
-            self.converge = False
+        # elif f_norm > self.force_max or self.diverge:
+        #     # diverge from the path if force is too high
+        #     print("diverge!")
+        #     if not self.diverge:
+        #         self.div_init = self.θp
+        #         self.div = 0
+        #     self.div += self.div_inc
+        #     if self.div > self.div_max:
+        #         self.div = self.div_max
+        #     θp = self.div_init + self.inc_sign * self.div
+        #
+        #     # θp = self.θp + self.inc_sign * self.div_inc
+        #     #
+        #     # # limit divergence to no more than div_max
+        #     # div_delta = util.wrap_to_pi(θp - self.div_init)
+        #     # if abs(div_delta) > self.div_max:
+        #     #     θp = self.div_init + self.div_max
+        #
+        #     # if self.diverge:
+        #     #     # already diverging: keep doing what we're doing
+        #     #     θp = self.θp
+        #     # else:
+        #     #     # θp = self.θp + np.sign(θd) * self.div_inc
+        #     #     θp = self.θp + self.inc_sign * 0.5 * np.pi
+        #     self.diverge = True
+        #     self.converge = False
         else:
             θp = (
                 (1 + self.kθ) * θd

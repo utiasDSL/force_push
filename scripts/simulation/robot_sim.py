@@ -178,16 +178,18 @@ def main():
         C_wb = fp.rot2d(q[2])
         r_cw_w = r_bw_w - C_wb @ r_bc_b
 
-        pathdir, _ = path.compute_direction_and_offset(r_cw_w)
+        pathdir, offset = path.compute_direction_and_offset(r_cw_w)
         f = fp.get_contact_force(robot.uid, slider.uid)[:2]
+        θd = np.arctan2(pathdir[1], pathdir[0])
 
         if open_loop:
-            v_ee_cmd = PUSH_SPEED * pathdir
+            θp = θd - KY * offset
+            v_ee_cmd = PUSH_SPEED * fp.rot2d(θp) @ [1, 0]
+            # v_ee_cmd = PUSH_SPEED * pathdir
         else:
             v_ee_cmd = push_controller.update(r_cw_w, f)
             v_ee_cmd = force_controller.update(force=f, v_cmd=v_ee_cmd)
 
-        θd = np.arctan2(pathdir[1], pathdir[0])
         ωd = Kω * fp.wrap_to_pi(θd - q[2])
         V_ee_cmd = np.append(v_ee_cmd, ωd)
 

@@ -59,6 +59,10 @@ def main():
     r_cw_w = r_bw_w - C_wb @ r_bc_b
     r_bw_ws = qs_rb[:, :2] - r_cw_w
 
+    print(f"r_bw_w act = {r_bw_w}")
+    print(f"r_bw_w des = {home[:2]}")
+    return
+
     # base velocity commands
     cmd_msgs = [msg for _, msg, _ in bag.read_messages("/ridgeback/cmd_vel")]
     cmd_times = [t.to_sec() for _, _, t in bag.read_messages("/ridgeback/cmd_vel")]
@@ -100,6 +104,9 @@ def main():
     )
     wrench_idx = np.argmax(np.linalg.norm(wrenches[:, :2], axis=1) > FORCE_THRESHOLD)
     wrench_times -= t0
+
+    print(wrench_idx)
+    return
 
     # slider
     slider_topic = ros_utils.vicon_topic_name(args.slider)

@@ -31,7 +31,7 @@ KY = 0.3
 Kω = 1
 Kf = 0.005
 CON_INC = 0.1
-DIV_INC = 0.3  # NOTE
+DIV_INC = 0.3
 
 # base velocity bounds
 VEL_UB = np.array([0.5, 0.5, 0.25])
@@ -43,7 +43,7 @@ ACC_WEIGHT = 0.0
 # only control based on force when it is high enough (i.e. in contact with
 # something)
 FORCE_MIN_THRESHOLD = 5
-FORCE_MAX_THRESHOLD = 50  # NOTE
+FORCE_MAX_THRESHOLD = 50
 
 # time constant for force filter
 # FILTER_TIME_CONSTANT = 0.1
@@ -94,14 +94,6 @@ def main():
 
     # custom signal handler to brake the robot
     signal_handler = mm.RobotSignalHandler(robot)
-
-    # zero the F-T sensor
-    print("Estimating F-T sensor bias...")
-    bias_estimator = fp.WrenchBiasEstimator()
-    bias = bias_estimator.estimate(RATE)
-    print(f"Done. Bias = {bias}")
-
-    wrench_estimator = fp.WrenchEstimator(bias=bias, τ=FILTER_TIME_CONSTANT)
 
     # desired path
     q = robot.q
@@ -181,6 +173,15 @@ def main():
         recorder = fp.DataRecorder(name=args.save, notes=args.notes, params=params)
         recorder.record()
         print(f"Recording data to {recorder.log_dir}")
+        time.sleep(3.0)
+
+    # zero the F-T sensor
+    print("Estimating F-T sensor bias...")
+    bias_estimator = fp.WrenchBiasEstimator()
+    bias = bias_estimator.estimate(RATE)
+    print(f"Done. Bias = {bias}")
+
+    wrench_estimator = fp.WrenchEstimator(bias=bias, τ=FILTER_TIME_CONSTANT)
 
     cmd_vel = np.zeros(3)
 
@@ -201,19 +202,21 @@ def main():
         f = -f_w[:2]
 
         # direction of the path
-        pathdir, _ = path.compute_direction_and_offset(r_cw_w)
+        pathdir, offset = path.compute_direction_and_offset(r_cw_w)
+        θd = np.arctan2(pathdir[1], pathdir[0])
 
         # in open-loop mode we just follow the path rather than controlling to
         # push the slider
         if open_loop:
-            v_ee_cmd = PUSH_SPEED * pathdir
+            θp = θd - KY * offset
+            v_ee_cmd = PUSH_SPEED * fp.rot2d(θp) @ [1, 0]
+            # v_ee_cmd = PUSH_SPEED * pathdir
         else:
             v_ee_cmd = push_controller.update(r_cw_w, f)
             v_ee_cmd = force_controller.update(force=f, v_cmd=v_ee_cmd)
 
         # desired angular velocity is calculated to align the robot with the
         # current path direction
-        θd = np.arctan2(pathdir[1], pathdir[0])
         ωd = Kω * fp.wrap_to_pi(θd - q[2])
         V_ee_cmd = np.append(v_ee_cmd, ωd)
 

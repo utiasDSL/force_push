@@ -18,6 +18,7 @@ import IPython
 # Datasheet claims the F/T sensor output rate is 100Hz, though rostopic says
 # more like ~62Hz
 RATE = 100  # Hz
+TIMESTEP = 1. / RATE
 
 # Origin is taken as the EE's starting position
 STRAIGHT_DIRECTION = fp.rot2d(np.deg2rad(125)) @ np.array([1, 0])
@@ -173,6 +174,9 @@ def main():
         recorder = fp.DataRecorder(name=args.save, notes=args.notes, params=params)
         recorder.record()
         print(f"Recording data to {recorder.log_dir}")
+
+        # wait a bit to ensure bag is setup before we actually do anything
+        # interesting
         time.sleep(3.0)
 
     # zero the F-T sensor
@@ -230,9 +234,10 @@ def main():
 
         rate.sleep()
 
-        # t_new = rospy.Time.now().to_sec()
-        # print(f"Δt = {t_new - t}")
-        # t = t_new
+        t_new = rospy.Time.now().to_sec()
+        if t - t_new > TIMESTEP:
+            print(f"Loop took {t - t_new} seconds")
+        t = t_new
 
     robot.brake()
     if args.save is not None:

@@ -4,6 +4,8 @@ from scipy.linalg import block_diag
 
 from force_push import util
 
+import time
+
 
 class AdmittanceController:
     """Admittance controller to modify velocity command when force is high.
@@ -307,34 +309,18 @@ class PushController:
             # if abs(con_delta) > self.div_max:
             #     θp = self.con_init - self.div_max
 
-            # self.diverge = False
+            # TODO we want to converge to the open loop angle; i.e., back
+            # toward the path
+            # but want to do this over time, not immediately
+            θ_target = -self.ky * yc
+            Δθ = util.wrap_to_pi(θ_target - self.θp)
+            if np.abs(Δθ) > self.con_inc:
+                Δθ = np.sign(Δθ) * self.con_inc
+            θp = self.θp + Δθ
+            print(θp)
+            # time.sleep(1)
+
             self.converge = True
-        # elif f_norm > self.force_max or self.diverge:
-        #     # diverge from the path if force is too high
-        #     print("diverge!")
-        #     if not self.diverge:
-        #         self.div_init = self.θp
-        #         self.div = 0
-        #     self.div += self.div_inc
-        #     if self.div > self.div_max:
-        #         self.div = self.div_max
-        #     θp = self.div_init + self.inc_sign * self.div
-        #
-        #     # θp = self.θp + self.inc_sign * self.div_inc
-        #     #
-        #     # # limit divergence to no more than div_max
-        #     # div_delta = util.wrap_to_pi(θp - self.div_init)
-        #     # if abs(div_delta) > self.div_max:
-        #     #     θp = self.div_init + self.div_max
-        #
-        #     # if self.diverge:
-        #     #     # already diverging: keep doing what we're doing
-        #     #     θp = self.θp
-        #     # else:
-        #     #     # θp = self.θp + np.sign(θd) * self.div_inc
-        #     #     θp = self.θp + self.inc_sign * 0.5 * np.pi
-        #     self.diverge = True
-        #     self.converge = False
         else:
             θp = (
                 (1 + self.kθ) * θd
@@ -342,7 +328,7 @@ class PushController:
                 + self.ki_θ * self.θd_int
                 + self.ki_y * self.yc_int
             )
-            self.inc_sign = np.sign(θp)  # NOTE
+            self.inc_sign = np.sign(θp)
             self.converge = False
 
         self.θp = util.wrap_to_pi(θp)
@@ -355,10 +341,12 @@ class PushController:
         for obstacle in self.obstacles:
             closest, dist = obstacle.closest_point_and_distance(position)
             if dist <= self.min_dist:
-                print("correction!")
                 normal = util.unit(closest - position)
                 if pushdir @ normal > 0:
+                    print("correction!")
                     perp = R @ normal
+                    pushdir0 = pushdir
                     pushdir = np.sign(pushdir @ perp) * perp
+                    print(f"original = {pushdir0}, corrected = {pushdir}")
 
         return speed * pushdir

@@ -36,7 +36,7 @@ OBSTACLE_MU = 0.25
 PUSH_SPEED = 0.1
 Kθ = 0.3
 KY = 0.1
-Kf = 0.005
+KF = 0.005
 CON_INC = 0.05  # NOTE
 DIV_INC = 0.1
 
@@ -317,7 +317,7 @@ def main():
         force_max=np.inf,
     )
     force_controller = fp.AdmittanceController(
-        kf=Kf, force_max=FORCE_MAX_THRESHOLD, vel_max=PUSH_SPEED
+        kf=KF, force_max=FORCE_MAX_THRESHOLD, vel_max=PUSH_SPEED
     )
 
     data = {
@@ -329,6 +329,7 @@ def main():
         "push_speed": PUSH_SPEED,
         "kθ": Kθ,
         "ky": KY,
+        "kf": KF,
         "con_inc": CON_INC,
         "div_inc": DIV_INC,
         "force_min": FORCE_MIN_THRESHOLD,

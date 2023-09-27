@@ -30,7 +30,7 @@ PUSH_SPEED = 0.1
 Kθ = 0.3
 KY = 0.3
 Kω = 1
-Kf = 0.005
+KF = 0.005
 CON_INC = 0.1
 DIV_INC = 0.3
 
@@ -138,7 +138,7 @@ def main():
     )
 
     # admittance control to comply with large forces
-    force_controller = fp.AdmittanceController(kf=Kf, force_max=FORCE_MAX_THRESHOLD)
+    force_controller = fp.AdmittanceController(kf=KF, force_max=FORCE_MAX_THRESHOLD)
 
     # generate joint commands to realize desired EE velocity
     robot_controller = fp.RobotController(
@@ -154,11 +154,12 @@ def main():
     # Save the controller parameters
     params = {
         "environment": args.environment,
-        "ctrl_rate": RATE,
+        "ctrl_freq": RATE,
         "push_speed": PUSH_SPEED,
         "kθ": Kθ,
         "ky": KY,
         "kω": Kω,
+        "kf": KF,
         "con_inc": CON_INC,
         "div_inc": DIV_INC,
         "vel_ub": VEL_UB,
@@ -170,6 +171,8 @@ def main():
         "ee_obs_min_dist": EE_OBS_MIN_DIST,
         "vel_weight": VEL_WEIGHT,
         "acc_weight": ACC_WEIGHT,
+        "path": path,
+        "obstacles": obstacles,
     }
 
     # record data

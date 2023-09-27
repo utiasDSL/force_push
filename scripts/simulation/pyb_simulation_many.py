@@ -48,8 +48,8 @@ SLIDER_MASS = 1.0
 BOX_SLIDER_HALF_EXTENTS = (0.5, 0.5, 0.06)
 CIRCLE_SLIDER_RADIUS = 0.5
 CIRCLE_SLIDER_HEIGHT = 0.12
-SLIDER_CONTACT_DAMPING = 100
-SLIDER_CONTACT_STIFFNESS = 10000
+DEFAULT_SLIDER_CONTACT_DAMPING = 100
+DEFAULT_SLIDER_CONTACT_STIFFNESS = 10000
 SLIDER_LOW_INERTIA_MULT = 1.0 / 2.0
 
 SLIDER_INIT_POS = np.array([0, 0, 0.06])
@@ -238,6 +238,16 @@ def main():
         help="Which environment to use",
         default="straight",
     )
+    parser.add_argument(
+        "--stiffness",
+        help="Slider contact stiffness.",
+        default=DEFAULT_SLIDER_CONTACT_STIFFNESS,
+    )
+    parser.add_argument(
+        "--damping",
+        help="Slider contact damping.",
+        default=DEFAULT_SLIDER_CONTACT_DAMPING,
+    )
     parser.add_argument("--save", help="Save data to this file.")
     parser.add_argument("--load", help="Load data from this file.")
     parser.add_argument("--no-gui", action="store_true", help="Disable simulation GUI.")
@@ -268,18 +278,9 @@ def main():
         slider, slider_inertias = setup_circle_slider(SLIDER_INIT_POS)
     slider_inertias = [slider_inertias[i] for i in range(3) if I_mask[i]]
 
-    # disable collisions between pusher base and the slider
-    # pyb.setCollisionFilterPair(pusher.uid, slider.uid, -1, -1, enableCollision=0)
-
     slider.set_contact_parameters(
-        stiffness=SLIDER_CONTACT_STIFFNESS, damping=SLIDER_CONTACT_DAMPING
+        stiffness=float(args.stiffness), damping=float(args.damping)
     )
-    # pyb.changeDynamics(
-    #     pusher.uid,
-    #     pusher.contact_joint_idx,
-    #     contactDamping=SLIDER_CONTACT_DAMPING,
-    #     contactStiffness=SLIDER_CONTACT_STIFFNESS,
-    # )
 
     if args.environment == "straight":
         path, obstacles = setup_straight_path()
@@ -341,8 +342,8 @@ def main():
         "path": path,
         "obstacles": obstacles,
         "slider": slider,
-        "slider_stiffness": SLIDER_CONTACT_STIFFNESS,
-        "slider_damping": SLIDER_CONTACT_DAMPING,
+        "slider_stiffness": float(args.stiffness),
+        "slider_damping": float(args.damping),
     }
 
     num_sims = len(slider_inertias) * len(y0s) * len(θ0s) * len(s0s) * len(μ0s)

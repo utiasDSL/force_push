@@ -132,6 +132,8 @@ def test_line_segment_point_at_distance():
 
 
 def test_segment_path_point_at_distance():
+    d = 10
+
     path = fp.SegmentPath(
         [
             fp.LineSegment([0.0, 0], [3.0, 0]),
@@ -140,13 +142,69 @@ def test_segment_path_point_at_distance():
         ],
     )
 
-    d = 10
-    p = path.point_at_distance(d)
-
     # compute the path knowing the point is somewhere on the last segment
+    p = path.point_at_distance(d)
     L = path.segments[0].length + path.segments[1].length
     r = path.segments[-1].point_at_distance(d - L)
     assert np.allclose(p, r)
 
     with pytest.raises(AssertionError):
         path.point_at_distance(-0.1)
+
+    # again with a circle arc path
+    path = fp.SegmentPath(
+        [
+            fp.LineSegment([0.0, 0], [3.0, 0]),
+            fp.CircularArcSegment(center=[3.0, 3.0], point=[3.0, 0], angle=np.pi / 2),
+            fp.LineSegment([5.0, 2], [5.0, 5], infinite=True),
+        ],
+    )
+    p = path.point_at_distance(d)
+    L = path.segments[0].length + path.segments[1].length
+    r = path.segments[-1].point_at_distance(d - L)
+    assert np.allclose(p, r)
+
+
+def test_circular_arc():
+    center = [1, 1]
+    v1 = [1, 0]
+    angle = np.pi / 2
+    segment = fp.CircularArcSegment(center=center, point=v1, angle=angle)
+    assert np.allclose(segment.v2, [2, 1])
+    assert np.isclose(segment.length, angle)
+
+
+def test_circular_arc_closest_point_and_direction():
+    center = np.array([1, 1])
+    v1 = center + [0, -1]
+    angle = np.pi
+    segment = fp.CircularArcSegment(center=center, point=v1, angle=angle)
+
+    # outside the circle
+    p = center + [2, 0]
+    c, d = segment.closest_point_and_direction(p)
+    assert np.allclose(c, center + [1, 0])
+    assert np.allclose(d, [0, 1])
+
+    # inside the circle
+    p = center + [0.5, 0]
+    c, d = segment.closest_point_and_direction(p)
+    assert np.allclose(c, center + [1, 0])
+    assert np.allclose(d, [0, 1])
+
+    # in the part of the circle not surrounded by the arc
+    p = center + [-0.1, 0.001]
+    c, d = segment.closest_point_and_direction(p)
+    assert np.allclose(c, center + [0, 1])
+    assert np.allclose(d, [-1, 0])
+
+
+def test_circular_arc_point_at_distance():
+    center = [0, 0]
+    v1 = [0, -1]
+    angle = np.pi
+    segment = fp.CircularArcSegment(center=center, point=v1, angle=angle)
+
+    d = np.pi / 2
+    p = segment.point_at_distance(d)
+    assert np.allclose(p, [1, 0])

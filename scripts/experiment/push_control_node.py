@@ -18,7 +18,7 @@ import IPython
 # Datasheet claims the F/T sensor output rate is 100Hz, though rostopic says
 # more like ~62Hz
 RATE = 100  # Hz
-TIMESTEP = 1. / RATE
+TIMESTEP = 1.0 / RATE
 
 # Origin is taken as the EE's starting position
 STRAIGHT_DIRECTION = fp.rot2d(np.deg2rad(125)) @ np.array([1, 0])
@@ -108,7 +108,10 @@ def main():
         path = fp.SegmentPath(
             [
                 fp.LineSegment([0.0, 0.0], [0.0, 2.0]),
-                fp.QuadBezierSegment([0.0, 2.0], [0.0, 4.0], [-2.0, 4.0]),
+                # fp.QuadBezierSegment([0.0, 2.0], [0.0, 4.0], [-2.0, 4.0]),
+                fp.CircularArcSegment(
+                    center=[-2.0, 2.0], point=[0.0, 2.0], angle=np.pi / 2
+                ),
                 fp.LineSegment([-2.0, 4.0], [-4.0, 4.0], infinite=True),
             ],
             origin=r_cw_w,

@@ -71,11 +71,11 @@ y0s = [-0.4, 0, 0.4]
 θ0s = [-np.pi / 8, 0, np.pi / 8]
 s0s = [-0.4, 0, 0.4]
 
-# I_mask = [False, False, True]
-# μ0s = [1]
-# y0s = [-0.4]
-# θ0s = [-np.pi / 8]
-# s0s = [0.4]
+I_mask = [True, False, False]
+μ0s = [0]
+y0s = [-0.4]
+θ0s = [-np.pi / 8]
+s0s = [-0.4]
 
 START_AT_TRIAL = 0
 
@@ -189,7 +189,7 @@ def setup_corner_path(corridor=False):
     path = fp.SegmentPath(
         [
             fp.LineSegment([0.0, 0], [3.0, 0]),
-            fp.QuadBezierSegment([3.0, 0], [5.0, 0], [5, 2]),
+            fp.CircularArcSegment(center=[3.0, 2.0], point=[3.0, 0], angle=np.pi / 2),
             fp.LineSegment([5.0, 2], [5.0, 5], infinite=True),
         ],
     )

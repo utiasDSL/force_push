@@ -8,38 +8,6 @@ from force_push import util
 import IPython
 
 
-class CirclePath:
-    """Circle path to track."""
-
-    def __init__(self, radius):
-        # TODO generalize to centers not at the origin
-        self.radius = radius
-
-    def compute_closest_point(self, p):
-        return self.radius * self.compute_normal(p)
-
-    def compute_normal(self, p):
-        """Outward-facing normal."""
-        return util.unit(p)
-
-    def compute_lateral_offset(self, p):
-        c = self.compute_closest_point(p)
-        n = self.compute_normal(p)
-        return -n @ (p - c)
-
-    def compute_travel_direction(self, p, d=0):
-        c = self.compute_point_ahead(p, d)
-        return util.rot2d(np.pi / 2) @ self.compute_normal(c)
-        # return util.rot2d(np.pi / 2) @ self.compute_normal(p)
-
-    def compute_point_ahead(self, p, d):
-        """Compute point distance d ahead of closest point on path to p."""
-        c1 = self.compute_closest_point(p)
-        φ = d / self.radius
-        c2 = util.rot2d(φ) @ c1
-        return c2
-
-
 def translate_segments(segments, offset):
     """Translate all segments by a specified offset."""
     return [segment.offset(offset) for segment in segments]
@@ -53,7 +21,10 @@ class LineSegment:
         self.v2 = np.array(v2)
         self.direction = util.unit(self.v2 - self.v1)
         self.infinite = infinite
-        self.length = np.inf if infinite else np.linalg.norm(self.v2 - self.v1)
+
+    @property
+    def length(self):
+        return np.inf if self.infinite else np.linalg.norm(self.v2 - self.v1)
 
     def offset(self, Δ):
         return LineSegment(v1=self.v1 + Δ, v2=self.v2 + Δ, infinite=self.infinite)
@@ -96,7 +67,7 @@ class LineSegment:
 
 
 class QuadBezierSegment:
-    """Path segment that is a quadratic Bezier curve."""
+    """Path segment defined by a quadratic Bezier curve."""
 
     def __init__(self, v1, v2, v3):
         self.v1 = np.array(v1)
@@ -138,10 +109,70 @@ class QuadBezierSegment:
 
         def fun(s):
             L = quad(lambda t: np.linalg.norm(self._time_derivative(t)), 0, s)[0]
-            return (d - L)**2
+            return (d - L) ** 2
 
         res = minimize_scalar(fun, bounds=(0, 1), method="bounded")
         return self._evaluate(res.x)
+
+
+class CircularArcSegment:
+    """Path segment defined by a circular arc."""
+
+    def __init__(self, center, point, angle):
+        assert 0 <= angle <= 2 * np.pi
+
+        self.center = np.array(center)
+        self.v1 = np.array(point)
+        self.angle = angle
+        self.radius = np.linalg.norm(self._arm)
+
+        self.v2 = self.center + util.rot2d(angle) @ self._arm
+
+    @property
+    def length(self):
+        return self.radius * self.angle
+
+    @property
+    def _arm(self):
+        """Vector from the center to the start of the arc."""
+        return self.v1 - self.center
+
+    def offset(self, Δ):
+        return CircularArcSegment(
+            center=self.center + Δ, point=self.v1 + Δ, angle=self.angle
+        )
+
+    def closest_point_and_direction(self, p):
+        # TODO should I do more intelligent tie-breaking?
+        if np.allclose(p, self.center):
+            return self.v2
+
+        # compute closest point on the full circle
+        c0 = self.radius * util.unit(p - self.center)
+        angle = util.signed_angle(self._arm, c0)
+        if angle < 0:
+            angle += 2 * np.pi
+
+        # check if that point is inside the arc
+        # if not, then one of the end points is the closest point
+        if angle <= self.angle:
+            closest = self.center + c0
+        else:
+            endpoints = np.vstack((self.v1, self.v2))
+            idx = np.argmin(np.linalg.norm(endpoints - p, axis=1))
+            closest = endpoints[idx, :]
+
+        direction = util.rot2d(np.pi / 2) @ util.unit(closest - self.center)
+        return closest, direction
+
+    def point_at_distance(self, d):
+        """Compute the point that is distance ``d`` from the start of the segment."""
+        assert d >= 0
+        if d > self.length:
+            raise ValueError(f"Segment is shorter than distance {d}")
+
+        angle = d / self.radius
+        return self.center + util.rot2d(angle) @ self._arm
 
 
 class SegmentPath:
@@ -201,12 +232,17 @@ class SegmentPath:
         Returns a shape (n, 2) array of (x, y) coordinates.
         """
         vertices = []
-        ts = np.linspace(0, 1, n_bez)
         for segment in self.segments:
             if type(segment) is LineSegment:
                 vertices.extend([segment.v1, segment.v2])
             elif type(segment) is QuadBezierSegment:
+                ts = np.linspace(0, 1, n_bez)
                 vertices.extend([segment._evaluate(t) for t in ts])
+            elif type(segment) is CircularArcSegment:
+                ds = np.linspace(0, segment.length, n_bez)
+                vertices.extend([segment.point_at_distance(d) for d in ds])
+            else:
+                raise TypeError(f"Don't know how to plot {segment}")
 
         # if the last segment is an infinite line, we append a final vertex a
         # distance `dist` along the line from the last vertex

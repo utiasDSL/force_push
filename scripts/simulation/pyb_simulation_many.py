@@ -29,8 +29,10 @@ DURATION = 180
 
 # friction
 # slider μ is set to 1
-SURFACE_MU = 0.25
+# SURFACE_MU = 0.25
+SURFACE_MU = 0.5
 OBSTACLE_MU = 0.25
+# OBSTACLE_MU = 0.5
 
 # controller params
 PUSH_SPEED = 0.1
@@ -48,8 +50,8 @@ SLIDER_MASS = 1.0
 BOX_SLIDER_HALF_EXTENTS = (0.5, 0.5, 0.06)
 CIRCLE_SLIDER_RADIUS = 0.5
 CIRCLE_SLIDER_HEIGHT = 0.12
-DEFAULT_SLIDER_CONTACT_DAMPING = 100
-DEFAULT_SLIDER_CONTACT_STIFFNESS = 10000
+DEFAULT_SLIDER_CONTACT_DAMPING = 1e2
+DEFAULT_SLIDER_CONTACT_STIFFNESS = 1e4
 SLIDER_LOW_INERTIA_MULT = 1.0 / 2.0
 
 SLIDER_INIT_POS = np.array([0, 0, 0.06])
@@ -71,11 +73,11 @@ y0s = [-0.4, 0, 0.4]
 θ0s = [-np.pi / 8, 0, np.pi / 8]
 s0s = [-0.4, 0, 0.4]
 
-I_mask = [True, False, False]
-μ0s = [0]
-y0s = [-0.4]
-θ0s = [-np.pi / 8]
-s0s = [-0.4]
+# I_mask = [True, False, False]
+# μ0s = [0]
+# y0s = [-0.4]
+# θ0s = [-np.pi / 8]
+# s0s = [-0.4]
 
 START_AT_TRIAL = 0
 

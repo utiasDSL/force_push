@@ -104,6 +104,12 @@ def main():
     C_wb = fp.rot2d(home[2])
     r_cw_w = r_bw_w - C_wb @ r_bc_b
 
+    # NOTE for visualizing the circular approximation to the base for obstacle
+    # avoidance
+    # pyb_utils.BulletBody.cylinder([home[0], home[1], 0], radius=0.55, height=0.2)
+    # IPython.embed()
+    # return
+
     # desired EE path
     path = fp.SegmentPath(
         [

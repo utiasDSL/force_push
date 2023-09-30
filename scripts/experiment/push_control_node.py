@@ -51,7 +51,7 @@ FORCE_MAX_THRESHOLD = 50
 FILTER_TIME_CONSTANT = 0.05
 
 # minimum obstacle distance
-BASE_OBS_MIN_DIST = 0.75
+BASE_OBS_MIN_DIST = 0.65  # 0.55 radius circle + 0.1 obstacle dist
 EE_OBS_MIN_DIST = 0.1
 
 

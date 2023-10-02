@@ -29,17 +29,17 @@ DURATION = 180
 
 # friction
 # slider μ is set to 1
-# SURFACE_MU = 0.25
-SURFACE_MU = 0.5
+SURFACE_MU = 0.25
 OBSTACLE_MU = 0.25
+# SURFACE_MU = 0.5
 # OBSTACLE_MU = 0.5
 
 # controller params
 PUSH_SPEED = 0.1
 Kθ = 0.3
 KY = 0.1
-KF = 0.005
-CON_INC = 0.05  # NOTE
+KF = 0.003
+CON_INC = 0.1
 DIV_INC = 0.1
 
 FORCE_MIN_THRESHOLD = 1
@@ -56,6 +56,8 @@ SLIDER_LOW_INERTIA_MULT = 1.0 / 2.0
 
 SLIDER_INIT_POS = np.array([0, 0, 0.06])
 PUSHER_INIT_POS = np.array([-0.7, 0, 0.06])
+
+EE_OBS_MIN_DIST = 0.1
 
 # if the closest distance between pusher and slider exceeds this amount, then
 # the trial is considered to have failed
@@ -317,6 +319,7 @@ def main():
         obstacles=obstacles,
         force_min=FORCE_MIN_THRESHOLD,
         force_max=np.inf,
+        min_dist=EE_OBS_MIN_DIST,
     )
     force_controller = fp.AdmittanceController(
         kf=KF, force_max=FORCE_MAX_THRESHOLD, vel_max=PUSH_SPEED
@@ -336,6 +339,7 @@ def main():
         "div_inc": DIV_INC,
         "force_min": FORCE_MIN_THRESHOLD,
         "force_max": FORCE_MAX_THRESHOLD,
+        "ee_obs_min_dist": EE_OBS_MIN_DIST,
         "inertias": slider_inertias,
         "I_mask": I_mask,
         "y0s": y0s,

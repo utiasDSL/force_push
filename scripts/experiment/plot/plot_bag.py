@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Plot slider position from a ROS bag."""
 import argparse
-import yaml
+import glob
+from pathlib import Path
+import pickle
 
 import numpy as np
 import rosbag
@@ -14,36 +16,62 @@ import force_push as fp
 
 import IPython
 
-
-FORCE_THRESHOLD = 5
-
 # TODO
 BARREL_OFFSET = np.array([-0.00273432, -0.01013547, -0.00000609])
 
 
+def parse_bag_dir(directory):
+    """Parse params pickle path and bag path from a data directory.
+
+    Returns (param_path, bag_path), as strings."""
+    dir_path = Path(directory)
+
+    param_files = glob.glob(dir_path.as_posix() + "/*.pkl")
+    if len(param_files) == 0:
+        raise FileNotFoundError(
+            "Error: could not find a pickle in the specified directory."
+        )
+    if len(param_files) > 1:
+        raise FileNotFoundError(
+            "Error: multiple pickles in the specified directory. Please specify the name using the `--config_name` option."
+        )
+    param_path = param_files[0]
+
+    bag_files = glob.glob(dir_path.as_posix() + "/*.bag")
+    if len(bag_files) == 0:
+        raise FileNotFoundError(
+            "Error: could not find a bag file in the specified directory."
+        )
+    if len(bag_files) > 1:
+        raise FileNotFoundError(
+            "Error: multiple bag files in the specified directory. Please specify the name using the `--bag_name` option."
+        )
+    bag_path = bag_files[0]
+    return param_path, bag_path
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("bagfile", help="Bag file to plot.")
+    parser.add_argument(
+        "bagdir", help="Directory containing bag file and pickled parameters."
+    )
     parser.add_argument(
         "--slider", help="Name of slider Vicon object.", default="ThingBox"
     )
-    parser.add_argument(
-        "--environment",
-        choices=["straight", "corner", "corridor"],
-        help="Which environment to use",
-        required=True,
-    )
     args = parser.parse_args()
-    bag = rosbag.Bag(args.bagfile)
+
+    param_path, bag_path = parse_bag_dir(args.bagdir)
+
+    bag = rosbag.Bag(bag_path)
+    with open(param_path, "rb") as f:
+        params = pickle.load(f)
 
     home = mm.load_home_position(name="pushing_diag", path=fp.HOME_CONFIG_FILE)
     model = mm.MobileManipulatorKinematics()
     ft_idx = model.get_link_index("ft_sensor")
     q_arm = home[3:]
 
-    # load calibrated offset between contact point and base frame origin
-    with open(fp.CONTACT_POINT_CALIBRATION_FILE) as f:
-        r_bc_b = np.array(yaml.safe_load(f)["r_bc_b"])
+    r_bc_b = params["r_bc_b"]
 
     # Ridgeback
     rb_msgs = [msg for _, msg, _ in bag.read_messages("/ridgeback/joint_states")]
@@ -59,9 +87,9 @@ def main():
     r_cw_w = r_bw_w - C_wb @ r_bc_b
     r_bw_ws = qs_rb[:, :2] - r_cw_w
 
-    print(f"r_bw_w act = {r_bw_w}")
-    print(f"r_bw_w des = {home[:2]}")
-    return
+    # print(f"r_bw_w act = {r_bw_w}")
+    # print(f"r_bw_w des = {home[:2]}")
+    # return
 
     # base velocity commands
     cmd_msgs = [msg for _, msg, _ in bag.read_messages("/ridgeback/cmd_vel")]
@@ -73,21 +101,6 @@ def main():
     cmd_vels = np.array(cmd_vels)
     cmd_times -= t0
 
-    # desired path
-    path = fp.SegmentPath(
-        [
-            fp.LineSegment([0.0, 0.0], [0.0, 2.0]),
-            fp.QuadBezierSegment([0.0, 2.0], [0.0, 4.0], [-2.0, 4.0]),
-            fp.LineSegment([-2.0, 4.0], [-4.0, 4.0], infinite=True),
-        ]
-    )
-    r_dw_ws = path.get_plotting_coords()
-
-    if args.environment == "corridor":
-        obstacles = [fp.LineSegment([-3.5, 4.25], [1.0, 4.25])]
-    else:
-        obstacles = []
-
     # contact point
     r_cw_ws = []
     for i in range(len(rb_msgs)):
@@ -97,16 +110,18 @@ def main():
     r_cw_ws = np.array(r_cw_ws) - r_cw_w
 
     # parse wrenches to find the first time when contact force is above
-    # FORCE_THRESHOLD, indicating contact has started
+    # minimum force threshold, indicating contact has started
     wrench_msgs = [msg for _, msg, _ in bag.read_messages("/wrench/filtered")]
     wrench_times, wrenches = ros_utils.parse_wrench_stamped_msgs(
         wrench_msgs, normalize_time=False
     )
-    wrench_idx = np.argmax(np.linalg.norm(wrenches[:, :2], axis=1) > FORCE_THRESHOLD)
+    wrench_idx = np.argmax(
+        np.linalg.norm(wrenches[:, :2], axis=1) >= params["force_min"]
+    )
     wrench_times -= t0
 
-    print(wrench_idx)
-    return
+    # print(wrench_idx)
+    # return
 
     # slider
     slider_topic = ros_utils.vicon_topic_name(args.slider)
@@ -116,6 +131,21 @@ def main():
     )
     slider_times -= t0
     r_sw_ws = slider_poses[:, :2] - r_cw_w
+
+    # path
+    # need to normalize to r_cw_w origin like everything else here
+    path = fp.SegmentPath(params["path"].segments, origin=-r_cw_w)
+    d = path.segments[-1].direction
+    v = path.segments[-1].v2
+    points = np.vstack((r_sw_ws, r_cw_ws, r_bw_ws))
+    dist = np.max((points[:, :2] - v) @ d)
+    dist = max(0, dist)
+    r_dw_ws = path.get_plotting_coords(dist=dist)
+
+    # obstacles
+    obstacles = params["obstacles"]
+    if obstacles is None:
+        obstacles = []
 
     plt.figure()
     plt.plot(slider_times, r_sw_ws[:, 0], label="x")
@@ -187,6 +217,7 @@ def main():
     plt.plot(wrench_times, wrenches[:, 0], label="fx")
     plt.plot(wrench_times, wrenches[:, 1], label="fy")
     plt.plot(wrench_times, wrenches[:, 2], label="fz")
+    plt.plot(wrench_times, np.linalg.norm(wrenches[:, :2], axis=1), label="fxy")
     plt.xlabel("Time [s]")
     plt.ylabel("Contact force [N]")
     plt.title("Contact forces vs. time")

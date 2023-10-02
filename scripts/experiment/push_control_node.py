@@ -30,7 +30,7 @@ PUSH_SPEED = 0.1
 Kθ = 0.3
 KY = 0.3
 Kω = 1
-KF = 0.005
+KF = 0.003
 CON_INC = 0.1
 DIV_INC = 0.3
 
@@ -156,6 +156,7 @@ def main():
         "environment": args.environment,
         "ctrl_freq": RATE,
         "push_speed": PUSH_SPEED,
+        "open_loop": open_loop,
         "kθ": Kθ,
         "ky": KY,
         "kω": Kω,
@@ -173,6 +174,7 @@ def main():
         "acc_weight": ACC_WEIGHT,
         "path": path,
         "obstacles": obstacles,
+        "r_bc_b": r_bc_b,
     }
 
     # record data
@@ -181,10 +183,6 @@ def main():
         recorder.record()
         print(f"Recording data to {recorder.log_dir}")
 
-        # wait a bit to ensure bag is setup before we actually do anything
-        # interesting
-        time.sleep(3.0)
-
     # zero the F-T sensor
     print("Estimating F-T sensor bias...")
     bias_estimator = fp.WrenchBiasEstimator()
@@ -192,6 +190,11 @@ def main():
     print(f"Done. Bias = {bias}")
 
     wrench_estimator = fp.WrenchEstimator(bias=bias, τ=FILTER_TIME_CONSTANT)
+
+    if args.save is not None:
+        # wait a bit to ensure bag is setup before we actually do anything
+        # interesting
+        time.sleep(3.0)
 
     cmd_vel = np.zeros(3)
 

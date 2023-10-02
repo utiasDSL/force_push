@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Fit offset from barrel reference to centroid using Vicon measurements."""
 import argparse
+from pathlib import Path
+import yaml
 
 import numpy as np
 import rosbag
@@ -13,6 +15,8 @@ from mobile_manipulation_central import ros_utils
 
 VICON_OBJECT_NAME = "ThingBarrel"
 VICON_OBJECT_TOPIC = ros_utils.vicon_topic_name(VICON_OBJECT_NAME)
+
+CALIBRATION_FILE = "barrel_offset_calibration.yaml"
 
 
 def average_quaternion(Qs):
@@ -53,7 +57,7 @@ def fit_barrel_circle(bag):
     x = np.linalg.lstsq(A, b, rcond=None)[0]
 
     r_cw_w = np.append(0.5 * x[:2], r_ow_w[2])
-    radius = 0.5 * np.sqrt(4 * x[2] + x[0]**2 + x[1]**2)
+    radius = 0.5 * np.sqrt(4 * x[2] + x[0] ** 2 + x[1] ** 2)
     r_co_o = C_wo.T @ (r_cw_w - r_ow_w)
     return r_co_o
 
@@ -68,6 +72,13 @@ def main():
 
     r_co_o = fit_barrel_circle(bag)
     print(f"r_co_o = {r_co_o}")
+
+    bag_path = Path(args.bagfile).resolve().as_posix()
+
+    # save the results
+    with open(CALIBRATION_FILE, "w") as f:
+        yaml.dump({"bag_path": bag_path, "r_co_o": r_co_o.tolist()}, stream=f)
+    print(f"Saved to {CALIBRATION_FILE}")
 
 
 if __name__ == "__main__":

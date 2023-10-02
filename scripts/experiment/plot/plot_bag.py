@@ -4,6 +4,7 @@ import argparse
 import glob
 from pathlib import Path
 import pickle
+import yaml
 
 import numpy as np
 import rosbag
@@ -56,7 +57,10 @@ def main():
         "bagdir", help="Directory containing bag file and pickled parameters."
     )
     parser.add_argument(
-        "--slider", help="Name of slider Vicon object.", default="ThingBox"
+        "--slider",
+        help="Name of slider Vicon object.",
+        choices=["ThingBox", "ThingBarrel"],
+        required=True,
     )
     args = parser.parse_args()
 
@@ -66,7 +70,15 @@ def main():
     with open(param_path, "rb") as f:
         params = pickle.load(f)
 
-    home = mm.load_home_position(name="pushing_diag", path=fp.HOME_CONFIG_FILE)
+    if args.slider == "ThingBarrel":
+        with open(fp.CONFIG_DIR_PATH / "barrel_offset_calibration.yaml") as f:
+            r_co_o = yaml.safe_load(f)["r_co_o"]
+
+    if params["environment"] == "straight":
+        home = mm.load_home_position(name="pushing_diag", path=fp.HOME_CONFIG_FILE)
+    else:
+        home = mm.load_home_position(name="pushing_corner", path=fp.HOME_CONFIG_FILE)
+
     model = mm.MobileManipulatorKinematics()
     ft_idx = model.get_link_index("ft_sensor")
     q_arm = home[3:]
@@ -84,8 +96,8 @@ def main():
     model.forward(q)
     r_bw_w = q[:2]
     C_wb = fp.rot2d(q[2])
-    r_cw_w = r_bw_w - C_wb @ r_bc_b
-    r_bw_ws = qs_rb[:, :2] - r_cw_w
+    r_cw_w0 = r_bw_w - C_wb @ r_bc_b
+    r_bw_ws = qs_rb[:, :2] - r_cw_w0
 
     # print(f"r_bw_w act = {r_bw_w}")
     # print(f"r_bw_w des = {home[:2]}")
@@ -107,7 +119,7 @@ def main():
         r_bw_w = qs_rb[i, :2]
         C_wb = fp.rot2d(qs_rb[i, 2])
         r_cw_ws.append(r_bw_w - C_wb @ r_bc_b)
-    r_cw_ws = np.array(r_cw_ws) - r_cw_w
+    r_cw_ws = np.array(r_cw_ws) - r_cw_w0
 
     # parse wrenches to find the first time when contact force is above
     # minimum force threshold, indicating contact has started
@@ -120,8 +132,7 @@ def main():
     )
     wrench_times -= t0
 
-    # print(wrench_idx)
-    # return
+    print(f"First contact wrench index = {wrench_idx}")
 
     # slider
     slider_topic = ros_utils.vicon_topic_name(args.slider)
@@ -130,11 +141,21 @@ def main():
         slider_msgs, normalize_time=False
     )
     slider_times -= t0
-    r_sw_ws = slider_poses[:, :2] - r_cw_w
+    slider_positions = slider_poses[:, :3]
+
+    # for the barrel we have to take the offset into account (the offset is
+    # from the Vicon object centroid to the fitted center of the barrel)
+    r_sw_ws = slider_positions
+    if args.slider == "ThingBarrel":
+        slider_orns = slider_poses[:, 3:]
+        for i in range(slider_poses.shape[0]):
+            C_wo = q2r(slider_orns[i, :], order="xyzs")
+            r_sw_ws[i, :] = slider_positions[i, :] + C_wo @ r_co_o
+    r_sw_ws = slider_poses[:, :2] - r_cw_w0
 
     # path
-    # need to normalize to r_cw_w origin like everything else here
-    path = fp.SegmentPath(params["path"].segments, origin=-r_cw_w)
+    # need to normalize to r_cw_w0 origin like everything else here
+    path = fp.SegmentPath(params["path"].segments, origin=-r_cw_w0)
     d = path.segments[-1].direction
     v = path.segments[-1].v2
     points = np.vstack((r_sw_ws, r_cw_ws, r_bw_ws))
@@ -146,6 +167,8 @@ def main():
     obstacles = params["obstacles"]
     if obstacles is None:
         obstacles = []
+    for i in range(len(obstacles)):
+        obstacles[i] = obstacles[i].offset(-r_cw_w0)
 
     plt.figure()
     plt.plot(slider_times, r_sw_ws[:, 0], label="x")

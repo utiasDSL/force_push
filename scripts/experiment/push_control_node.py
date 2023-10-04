@@ -108,7 +108,6 @@ def main():
         path = fp.SegmentPath(
             [
                 fp.LineSegment([0.0, 0.0], [0.0, 2.0]),
-                # fp.QuadBezierSegment([0.0, 2.0], [0.0, 4.0], [-2.0, 4.0]),
                 fp.CircularArcSegment(
                     center=[-2.0, 2.0], point=[0.0, 2.0], angle=np.pi / 2
                 ),

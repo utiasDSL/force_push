@@ -95,6 +95,12 @@ def main():
     robot = mm.BulletSimulatedRobot(urdf_path, TOOL_JOINT_NAME)
     robot.reset_joint_configuration(home)
 
+    # home2 = home.copy()
+    # home2[3] = 0
+    # robot.reset_joint_configuration(home2)
+
+    # IPython.embed()
+
     # load calibrated offset between contact point and base frame origin
     with open(fp.CONTACT_POINT_CALIBRATION_FILE) as f:
         r_bc_b = np.array(yaml.safe_load(f)["r_bc_b"])

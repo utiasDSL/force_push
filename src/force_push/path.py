@@ -1,4 +1,5 @@
-import time
+from collections import namedtuple
+
 import numpy as np
 from scipy.optimize import minimize_scalar
 from scipy.integrate import quad
@@ -11,6 +12,11 @@ import IPython
 def translate_segments(segments, offset):
     """Translate all segments by a specified offset."""
     return [segment.offset(offset) for segment in segments]
+
+
+ClosestPointInfo = namedtuple(
+    "ClosestPointInfo", ["point", "deviation", "distance_from_start", "direction"]
+)
 
 
 class LineSegment:
@@ -29,34 +35,30 @@ class LineSegment:
     def offset(self, Δ):
         return LineSegment(v1=self.v1 + Δ, v2=self.v2 + Δ, infinite=self.infinite)
 
-    def closest_point_and_direction(self, p):
-        return self.closest_point_and_distance(p)[0], self.direction
-
-    def closest_point_and_distance(self, p, tol=1e-8):
+    def closest_point_info(self, p, tol=1e-8):
         r = p - self.v1
         proj = self.direction @ r  # project onto the line
 
-        if self.infinite:
-            # closest point is beyond the end of the segment
-            if proj <= 0:
-                return self.v1, np.linalg.norm(r)
-            c = self.v1 + proj * self.direction
-            return c, np.linalg.norm(p - c)
+        # compute closest point (and its distance from the start of the path)
+        if self.length < tol or proj <= 0:
+            closest = self.v1
+            dist_from_start = 0
+        elif not self.infinite and proj >= self.length:
+            closest = self.v2
+            dist_from_start = self.length
         else:
-            v = self.v2 - self.v1
+            closest = self.v1 + proj * self.direction
+            dist_from_start = proj
 
-            # degenerate case when the line segment has zero length (i.e., is a point)
-            if self.length < tol:
-                return self.v1, np.linalg.norm(r)
+        # deviation from the path
+        deviation = np.linalg.norm(p - closest)
 
-            # closest point is beyond the end of the segment
-            if proj <= 0:
-                return self.v1, np.linalg.norm(r)
-            if proj >= self.length:
-                return self.v2, np.linalg.norm(p - self.v2)
-
-            c = self.v1 + proj * self.direction
-            return c, np.linalg.norm(p - c)
+        return ClosestPointInfo(
+            point=closest,
+            deviation=deviation,
+            distance_from_start=dist_from_start,
+            direction=self.direction,
+        )
 
     def point_at_distance(self, d):
         """Compute the point that is distance ``d`` from the start of the segment."""
@@ -66,53 +68,53 @@ class LineSegment:
         return self.v1 + d * self.direction
 
 
-class QuadBezierSegment:
-    """Path segment defined by a quadratic Bezier curve."""
-
-    def __init__(self, v1, v2, v3):
-        self.v1 = np.array(v1)
-        self.v2 = np.array(v2)
-        self.v3 = np.array(v3)
-
-        self.length = quad(lambda t: np.linalg.norm(self._time_derivative(t)), 0, 1)[0]
-
-    def offset(self, Δ):
-        return QuadBezierSegment(v1=self.v1 + Δ, v2=self.v2 + Δ, v3=self.v3 + Δ)
-
-    def _evaluate(self, t):
-        assert 0 <= t <= 1
-        return (1 - t) ** 2 * self.v1 + 2 * (1 - t) * t * self.v2 + t**2 * self.v3
-
-    def _time_derivative(self, t):
-        assert 0 <= t <= 1
-        return 2 * (1 - t) * (self.v2 - self.v1) + 2 * t * (self.v3 - self.v2)
-
-    def closest_point_and_direction(self, p):
-
-        # minimize distance between curve and point p
-        def fun(t):
-            b = self._evaluate(t)
-            return (p - b) @ (p - b)
-
-        res = minimize_scalar(fun, bounds=(0, 1), method="bounded")
-        t = res.x
-
-        closest = self._evaluate(t)
-        direction = util.unit(self._time_derivative(t))
-        return closest, direction
-
-    def point_at_distance(self, d):
-        """Compute the point that is distance ``d`` from the start of the segment."""
-        assert d >= 0
-        if d > self.length:
-            raise ValueError(f"Segment is shorter than distance {d}")
-
-        def fun(s):
-            L = quad(lambda t: np.linalg.norm(self._time_derivative(t)), 0, s)[0]
-            return (d - L) ** 2
-
-        res = minimize_scalar(fun, bounds=(0, 1), method="bounded")
-        return self._evaluate(res.x)
+# class QuadBezierSegment:
+#     """Path segment defined by a quadratic Bezier curve."""
+#
+#     def __init__(self, v1, v2, v3):
+#         self.v1 = np.array(v1)
+#         self.v2 = np.array(v2)
+#         self.v3 = np.array(v3)
+#
+#         self.length = quad(lambda t: np.linalg.norm(self._time_derivative(t)), 0, 1)[0]
+#
+#     def offset(self, Δ):
+#         return QuadBezierSegment(v1=self.v1 + Δ, v2=self.v2 + Δ, v3=self.v3 + Δ)
+#
+#     def _evaluate(self, t):
+#         assert 0 <= t <= 1
+#         return (1 - t) ** 2 * self.v1 + 2 * (1 - t) * t * self.v2 + t**2 * self.v3
+#
+#     def _time_derivative(self, t):
+#         assert 0 <= t <= 1
+#         return 2 * (1 - t) * (self.v2 - self.v1) + 2 * t * (self.v3 - self.v2)
+#
+#     def closest_point_and_direction(self, p):
+#
+#         # minimize distance between curve and point p
+#         def fun(t):
+#             b = self._evaluate(t)
+#             return (p - b) @ (p - b)
+#
+#         res = minimize_scalar(fun, bounds=(0, 1), method="bounded")
+#         t = res.x
+#
+#         closest = self._evaluate(t)
+#         direction = util.unit(self._time_derivative(t))
+#         return closest, direction
+#
+#     def point_at_distance(self, d):
+#         """Compute the point that is distance ``d`` from the start of the segment."""
+#         assert d >= 0
+#         if d > self.length:
+#             raise ValueError(f"Segment is shorter than distance {d}")
+#
+#         def fun(s):
+#             L = quad(lambda t: np.linalg.norm(self._time_derivative(t)), 0, s)[0]
+#             return (d - L) ** 2
+#
+#         res = minimize_scalar(fun, bounds=(0, 1), method="bounded")
+#         return self._evaluate(res.x)
 
 
 class CircularArcSegment:
@@ -142,28 +144,39 @@ class CircularArcSegment:
             center=self.center + Δ, point=self.v1 + Δ, angle=self.angle
         )
 
-    def closest_point_and_direction(self, p):
-        # TODO should I do more intelligent tie-breaking?
+    def closest_point_info(self, p):
         if np.allclose(p, self.center):
-            return self.v2
-
-        # compute closest point on the full circle
-        c0 = self.radius * util.unit(p - self.center)
-        angle = util.signed_angle(self._arm, c0)
-        if angle < 0:
-            angle += 2 * np.pi
-
-        # check if that point is inside the arc
-        # if not, then one of the end points is the closest point
-        if angle <= self.angle:
-            closest = self.center + c0
+            # at the center point all points on the arc are equally close
+            # TODO should I do more intelligent tie-breaking?
+            closest = self.v2
+            dist_from_start = self.length
         else:
-            endpoints = np.vstack((self.v1, self.v2))
-            idx = np.argmin(np.linalg.norm(endpoints - p, axis=1))
-            closest = endpoints[idx, :]
+            # compute closest point on the full circle
+            c0 = self.radius * util.unit(p - self.center)
+            angle = util.signed_angle(self._arm, c0)
+            if angle < 0:
+                angle += 2 * np.pi
+
+            # check if that point is inside the arc
+            # if not, then one of the end points is the closest point
+            if angle <= self.angle:
+                closest = self.center + c0
+                dist_from_start = self.radius * angle
+            else:
+                endpoints = np.vstack((self.v1, self.v2))
+                endpoint_dists = np.array([0, self.length])
+                idx = np.argmin(np.linalg.norm(endpoints - p, axis=1))
+                closest = endpoints[idx, :]
+                dist_from_start = endpoint_dists[idx]
 
         direction = util.rot2d(np.pi / 2) @ util.unit(closest - self.center)
-        return closest, direction
+        deviation = np.linalg.norm(p - closest)
+        return ClosestPointInfo(
+            point=closest,
+            deviation=deviation,
+            distance_from_start=dist_from_start,
+            direction=direction,
+        )
 
     def point_at_distance(self, d):
         """Compute the point that is distance ``d`` from the start of the segment."""
@@ -199,29 +212,37 @@ class SegmentPath:
         v2 = origin + direction
         return cls([LineSegment(v1, v2, infinite=True)])
 
-    def compute_closest_point(self, p):
-        minimum = (np.inf, None, None)
-        for segment in self.segments:
-            closest, direction = segment.closest_point_and_direction(p)
-            dist = np.linalg.norm(p - closest)
-            if dist < minimum[0]:
-                minimum = (dist, closest, direction)
-        return minimum[1]
-
     def compute_direction_and_offset(self, p):
         """Compute travel direction and lateral offset for a point p."""
-        minimum = (np.inf, None, None)
+        minimum = ClosestPointInfo(
+            point=None, deviation=np.inf, distance_from_start=None, direction=None
+        )
         for segment in self.segments:
-            closest, direction = segment.closest_point_and_direction(p)
-            dist = np.linalg.norm(p - closest)
-            if dist < minimum[0]:
-                minimum = (dist, closest, direction)
+            info = segment.closest_point_info(p)
+            if info.deviation < minimum.deviation:
+                minimum = info
 
-        _, closest, direction = minimum
         R = util.rot2d(np.pi / 2)
-        perp = R @ direction
-        offset = perp @ (p - closest)
-        return direction, offset
+        perp = R @ minimum.direction
+        offset = perp @ (p - minimum.point)
+        return minimum.direction, offset
+
+    def compute_closest_point_info(self, p):
+        infos = [segment.closest_point_info(p) for segment in self.segments]
+        idx = np.argmin([info.deviation for info in infos])
+
+        # total dist from start is the dist from the start of the segment with
+        # the closest point plus the length of all preceeding segments
+        dist_from_start = infos[idx].distance_from_start
+        for i in range(idx):
+            dist_from_start += self.segments[i].length
+
+        return ClosestPointInfo(
+            point=infos[idx].point,
+            deviation=infos[idx].deviation,
+            distance_from_start=dist_from_start,
+            direction=infos[idx].direction,
+        )
 
     def get_plotting_coords(self, n_bez=25, dist=0):
         """Get (x, y) coordinates of the path for plotting.
@@ -235,9 +256,9 @@ class SegmentPath:
         for segment in self.segments:
             if type(segment) is LineSegment:
                 vertices.extend([segment.v1, segment.v2])
-            elif type(segment) is QuadBezierSegment:
-                ts = np.linspace(0, 1, n_bez)
-                vertices.extend([segment._evaluate(t) for t in ts])
+            # elif type(segment) is QuadBezierSegment:
+            #     ts = np.linspace(0, 1, n_bez)
+            #     vertices.extend([segment._evaluate(t) for t in ts])
             elif type(segment) is CircularArcSegment:
                 ds = np.linspace(0, segment.length, n_bez)
                 vertices.extend([segment.point_at_distance(d) for d in ds])

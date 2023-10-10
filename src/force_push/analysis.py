@@ -1,33 +1,11 @@
 from collections import namedtuple
-import tqdm
+import glob
+from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn
-
-
-def rcparams(fontsize=6):
-    return {
-        "pgf.texsystem": "pdflatex",
-        "font.size": fontsize,
-        "font.family": "serif",
-        "font.sans-serif": "DejaVu Sans",
-        "font.weight": "normal",
-        "text.usetex": True,
-        "legend.fontsize": fontsize,
-        "axes.titlesize": fontsize,
-        "axes.labelsize": fontsize,
-        "figure.labelsize": fontsize,
-        "xtick.labelsize": fontsize,
-        "pgf.preamble": "\n".join(
-            [
-                r"\usepackage[utf8]{inputenc}",
-                r"\usepackage[T1]{fontenc}",
-                r"\usepackage{siunitx}",
-                r"\usepackage{bm}",
-            ]
-        ),
-    }
+import tqdm
 
 
 ExtremePointInfo = namedtuple("ExtremePointInfo", ["index", "distance", "point"])
@@ -68,10 +46,9 @@ def compute_simulation_extreme_points(data):
         for i in range(num_sims):
             for k in range(all_r_sw_ws[i].shape[0]):
                 r_sw_w = all_r_sw_ws[i][k, :2]
-                closest = path.compute_closest_point(r_sw_w)
-                dist = np.linalg.norm(closest - r_sw_w)
-                if dist > max_deviation_info.distance:
-                    max_deviation_info = ExtremePointInfo(i, dist, r_sw_w)
+                info = path.compute_closest_point_info(r_sw_w)
+                if info.deviation > max_deviation_info.distance:
+                    max_deviation_info = ExtremePointInfo(i, info.deviation, r_sw_w)
             progress.update(1)
 
     return {
@@ -132,3 +109,33 @@ def plot_simulation_results(data):
     # plt.title("Forces vs. time")
     # plt.xlabel("Time [s]")
     # plt.ylabel("Force [N]")
+
+
+def parse_bag_dir(directory):
+    """Parse params pickle path and bag path from a data directory.
+
+    Returns (param_path, bag_path), as strings."""
+    dir_path = Path(directory)
+
+    param_files = glob.glob(dir_path.as_posix() + "/*.pkl")
+    if len(param_files) == 0:
+        raise FileNotFoundError(
+            "Error: could not find a pickle in the specified directory."
+        )
+    if len(param_files) > 1:
+        raise FileNotFoundError(
+            "Error: multiple pickles in the specified directory. Please specify the name using the `--config_name` option."
+        )
+    param_path = param_files[0]
+
+    bag_files = glob.glob(dir_path.as_posix() + "/*.bag")
+    if len(bag_files) == 0:
+        raise FileNotFoundError(
+            "Error: could not find a bag file in the specified directory."
+        )
+    if len(bag_files) > 1:
+        raise FileNotFoundError(
+            "Error: multiple bag files in the specified directory. Please specify the name using the `--bag_name` option."
+        )
+    bag_path = bag_files[0]
+    return param_path, bag_path

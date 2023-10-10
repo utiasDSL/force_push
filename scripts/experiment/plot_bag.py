@@ -17,39 +17,6 @@ import force_push as fp
 
 import IPython
 
-# TODO
-BARREL_OFFSET = np.array([-0.00273432, -0.01013547, -0.00000609])
-
-
-def parse_bag_dir(directory):
-    """Parse params pickle path and bag path from a data directory.
-
-    Returns (param_path, bag_path), as strings."""
-    dir_path = Path(directory)
-
-    param_files = glob.glob(dir_path.as_posix() + "/*.pkl")
-    if len(param_files) == 0:
-        raise FileNotFoundError(
-            "Error: could not find a pickle in the specified directory."
-        )
-    if len(param_files) > 1:
-        raise FileNotFoundError(
-            "Error: multiple pickles in the specified directory. Please specify the name using the `--config_name` option."
-        )
-    param_path = param_files[0]
-
-    bag_files = glob.glob(dir_path.as_posix() + "/*.bag")
-    if len(bag_files) == 0:
-        raise FileNotFoundError(
-            "Error: could not find a bag file in the specified directory."
-        )
-    if len(bag_files) > 1:
-        raise FileNotFoundError(
-            "Error: multiple bag files in the specified directory. Please specify the name using the `--bag_name` option."
-        )
-    bag_path = bag_files[0]
-    return param_path, bag_path
-
 
 def main():
     parser = argparse.ArgumentParser()
@@ -64,7 +31,7 @@ def main():
     )
     args = parser.parse_args()
 
-    param_path, bag_path = parse_bag_dir(args.bagdir)
+    param_path, bag_path = fp.parse_bag_dir(args.bagdir)
 
     bag = rosbag.Bag(bag_path)
     with open(param_path, "rb") as f:
@@ -123,6 +90,7 @@ def main():
 
     # parse wrenches to find the first time when contact force is above
     # minimum force threshold, indicating contact has started
+    # TODO we need to rotate the wrenches into the correct frame
     wrench_msgs = [msg for _, msg, _ in bag.read_messages("/wrench/filtered")]
     wrench_times, wrenches = ros_utils.parse_wrench_stamped_msgs(
         wrench_msgs, normalize_time=False
@@ -151,7 +119,7 @@ def main():
         for i in range(slider_poses.shape[0]):
             C_wo = q2r(slider_orns[i, :], order="xyzs")
             r_sw_ws[i, :] = slider_positions[i, :] + C_wo @ r_co_o
-    r_sw_ws = slider_poses[:, :2] - r_cw_w0
+    r_sw_ws = r_sw_ws[:, :2] - r_cw_w0
 
     # path
     # need to normalize to r_cw_w0 origin like everything else here

@@ -103,9 +103,9 @@ class RobotController:
         # find nearby obstacles
         normals = []
         for obstacle in self.obstacles:
-            closest, dist = obstacle.closest_point_and_distance(r_bw_w)
-            if dist <= self.min_dist:
-                normals.append(util.unit(closest - r_bw_w))
+            info = obstacle.closest_point_info(r_bw_w)
+            if info.deviation <= self.min_dist:
+                normals.append(util.unit(info.point - r_bw_w))
 
         # no nearby obstacles
         if len(normals) == 0:
@@ -339,9 +339,9 @@ class PushController:
         # avoid the obstacles
         R = util.rot2d(np.pi / 2)
         for obstacle in self.obstacles:
-            closest, dist = obstacle.closest_point_and_distance(position)
-            if dist <= self.min_dist:
-                normal = util.unit(closest - position)
+            info = obstacle.closest_point_info(position)
+            if info.deviation <= self.min_dist:
+                normal = util.unit(info.point - position)
                 if pushdir @ normal > 0:
                     print("correction!")
                     perp = R @ normal

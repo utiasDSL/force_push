@@ -103,7 +103,7 @@ class BulletPusher(pyb_utils.Robot):
         # frame origin while the link moves via two prismatic joints
         uid = pyb.loadURDF(urdf_path, [0, 0, 0], [0, 0, 0, 1], useFixedBase=True)
         super().__init__(uid)
-        assert self.num_joints == 2
+        assert self.num_total_joints == 2
         assert self.tool_idx == 1
 
         # zero friction on the floor, variable contact friction

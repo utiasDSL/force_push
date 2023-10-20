@@ -41,21 +41,28 @@ def compute_simulation_extreme_points(data):
     completion_fractions = np.array(completion_fractions)
 
     # compute point of maximum deviation from the path (max closest distance)
-    max_deviation_info = ExtremePointInfo(index=0, distance=0, point=[0, 0])
+    # we want the max overall as well as the max deviation for each run
+    max_overall_deviation = ExtremePointInfo(index=0, distance=0, point=[0, 0])
+    max_deviations = []
     with tqdm.tqdm(total=num_sims) as progress:
         for i in range(num_sims):
+            max_deviation = ExtremePointInfo(index=0, distance=0, point=[0, 0])
             for k in range(all_r_sw_ws[i].shape[0]):
                 r_sw_w = all_r_sw_ws[i][k, :2]
                 info = path.compute_closest_point_info(r_sw_w)
-                if info.deviation > max_deviation_info.distance:
-                    max_deviation_info = ExtremePointInfo(i, info.deviation, r_sw_w)
+                if info.deviation > max_overall_deviation.distance:
+                    max_overall_deviation = ExtremePointInfo(i, info.deviation, r_sw_w)
+                if info.deviation > max_deviation.distance:
+                    max_deviation = ExtremePointInfo(k, info.deviation, r_sw_w)
+            max_deviations.append(max_deviation)
             progress.update(1)
 
     return {
         "ideal_final_pos": ideal_final_pos,
         "max_final_info": max_final_info,
-        "max_deviation_info": max_deviation_info,
+        "max_deviation_info": max_overall_deviation,
         "completion_fractions": completion_fractions,
+        "max_deviations": max_deviations,
     }
 
 

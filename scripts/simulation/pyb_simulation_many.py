@@ -26,7 +26,8 @@ CTRL_FREQ = 100
 CTRL_STEP = SIM_FREQ // CTRL_FREQ
 
 # seconds
-DURATION = 180
+# DURATION = 180
+DURATION = 300
 
 # friction
 # slider μ is set to 1
@@ -56,7 +57,9 @@ DEFAULT_SLIDER_CONTACT_STIFFNESS = 1e4
 SLIDER_LOW_INERTIA_MULT = 1.0 / 2.0
 
 SLIDER_INIT_POS = np.array([0, 0, 0.06])
-PUSHER_INIT_POS = np.array([-0.7, 0, 0.06])
+
+# starting position of pusher relative to the desired initial contact point
+PUSHER_INIT_REL_POS = np.array([-0.5, 0, 0])
 
 EE_OBS_MIN_DIST = 0.1
 
@@ -80,14 +83,17 @@ s0s = [-0.4, 0, 0.4]
 # θ0s = [-np.pi / 8]
 # s0s = [-0.4]
 
-START_AT_TRIAL = 0
+START_AT_TRIAL = 60
 
 
 def simulate(sim, pusher, slider, push_controller, force_controller):
     success = True
     r_pw_ws = []
     r_sw_ws = []
+    Q_wss = []
+    v_cmds = []
     forces = []
+    in_contacts = []
     ts = []
 
     last_force_time = 0
@@ -100,10 +106,11 @@ def simulate(sim, pusher, slider, push_controller, force_controller):
 
         # check if first contact has been made: we want to simulate DURATION
         # seconds after this time
-        points = pyb_utils.getContactPoints(pusher.uid, slider.uid, pusher.tool_idx, -1)
-        if not first_contact and len(points) > 0:
-            first_contact = True
-            first_contact_time = t
+        if not first_contact:
+            points = pyb_utils.getContactPoints(pusher.uid, slider.uid, pusher.tool_idx, -1)
+            if len(points) > 0:
+                first_contact = True
+                first_contact_time = t
 
         if i % CTRL_STEP == 0:
             force = pusher.get_contact_force([slider.uid])
@@ -119,10 +126,18 @@ def simulate(sim, pusher, slider, push_controller, force_controller):
             v_cmd = force_controller.update(force=f, v_cmd=v_cmd)
             pusher.command_velocity(v_cmd)
 
+            # contact info
+            points = pyb_utils.getContactPoints(pusher.uid, slider.uid, pusher.tool_idx, -1)
+            in_contact = len(points) > 0
+
             # record information
+            r_sw_w, Q_ws = slider.get_pose()
             r_pw_ws.append(r_pw_w)
-            r_sw_ws.append(slider.get_pose()[0])
+            r_sw_ws.append(r_sw_w)
+            Q_wss.append(Q_ws)
+            v_cmds.append(v_cmd)
             forces.append(force)
+            in_contacts.append(in_contact)
             ts.append(t)
 
             # check if the trial has failed (pusher has lost the slider)
@@ -141,16 +156,15 @@ def simulate(sim, pusher, slider, push_controller, force_controller):
         i += 1
         t = i * sim.timestep
         sim.step()
-        # time.sleep(0.1 / SIM_FREQ)
-
-    # print(first_contact_time)
-    # print(ts[-1])
+        time.sleep(0.001)
 
     ts = np.array(ts)
     r_pw_ws = np.array(r_pw_ws)
     r_sw_ws = np.array(r_sw_ws)
+    Q_wss = np.array(Q_wss)
+    v_cmds = np.array(v_cmds)
     forces = np.array(forces)
-    return ts, r_pw_ws, r_sw_ws, success, forces
+    return ts, r_pw_ws, r_sw_ws, Q_wss, v_cmds, success, forces, in_contacts
 
 
 def setup_box_slider(position):
@@ -280,7 +294,7 @@ def main():
     )
 
     urdf_path = make_urdf_file()
-    pusher = fp.BulletPusher(urdf_path, PUSHER_INIT_POS)
+    pusher = fp.BulletPusher(urdf_path, SLIDER_INIT_POS + PUSHER_INIT_REL_POS)
     if args.slider == "box":
         slider, slider_inertias = setup_box_slider(SLIDER_INIT_POS)
     elif args.slider == "circle":
@@ -367,8 +381,11 @@ def main():
     all_ts = []
     all_r_pw_ws = []
     all_r_sw_ws = []
+    all_Q_wss = []
+    all_v_cmds = []
     successes = []
     all_forces = []
+    all_in_contacts = []
     parameters = []
 
     count = 0
@@ -383,9 +400,21 @@ def main():
                 continue
 
             # set the new parameters
-            r_pw_w = PUSHER_INIT_POS + [0, s0 + y0, 0]
             r_sw_w = SLIDER_INIT_POS + [0, y0, 0]
-            Q_ws = r2q(rotz(θ0), order="xyzs")
+            C_ws = rotz(θ0)
+
+            # calculate position of the contact point
+            if args.slider == "box":
+                r_cs_s = np.array([-BOX_SLIDER_HALF_EXTENTS[0], s0, 0])
+                r_cw_w = r_sw_w + C_ws @ r_cs_s
+            else:
+                r_cs_s = np.array([-CIRCLE_SLIDER_RADIUS, 0, 0])
+                angle = -s0 / CIRCLE_SLIDER_RADIUS
+                r_cw_w = r_sw_w + rotz(angle) @ r_cs_s
+
+            # pusher starts some ways back from the contact point
+            r_pw_w = r_cw_w + PUSHER_INIT_REL_POS
+            Q_ws = r2q(C_ws, order="xyzs")
             pusher.set_contact_friction(μ0)
             slider.set_inertia_diagonal(I)
 
@@ -397,7 +426,7 @@ def main():
             sim.step()
 
             # run the sim
-            ts, r_pw_ws, r_sw_ws, success, forces = simulate(
+            ts, r_pw_ws, r_sw_ws, Q_wss, v_cmds, success, forces, in_contacts = simulate(
                 sim, pusher, slider, push_controller, force_controller
             )
             if not success:
@@ -408,8 +437,11 @@ def main():
             all_ts.append(ts)
             all_r_pw_ws.append(r_pw_ws)
             all_r_sw_ws.append(r_sw_ws)
+            all_Q_wss.append(Q_wss)
+            all_v_cmds.append(v_cmds)
             successes.append(success)
             all_forces.append(forces)
+            all_in_contacts.append(in_contacts)
             parameters.append([I, μ0, y0, θ0, s0])
 
             progress.update(1)
@@ -426,9 +458,12 @@ def main():
     data["times"] = all_ts
     data["pusher_positions"] = all_r_pw_ws
     data["slider_positions"] = all_r_sw_ws
+    data["slider_orientations"] = all_Q_wss
+    data["pusher_velocities"] = all_v_cmds
     data["successes"] = successes
     data["path_positions"] = r_dw_ws
     data["forces"] = all_forces
+    data["in_contacts"] = all_in_contacts
     data["parameters"] = parameters
 
     if args.save is not None:

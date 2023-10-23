@@ -83,7 +83,10 @@ s0s = [-0.4, 0, 0.4]
 # θ0s = [-np.pi / 8]
 # s0s = [-0.4]
 
-START_AT_TRIAL = 60
+# time constant for force filter
+FILTER_TIME_CONSTANT = 0.05
+
+START_AT_TRIAL = 0
 
 
 def simulate(sim, pusher, slider, push_controller, force_controller):
@@ -98,6 +101,8 @@ def simulate(sim, pusher, slider, push_controller, force_controller):
 
     last_force_time = 0
 
+    smoother = mm.ExponentialSmoother(τ=FILTER_TIME_CONSTANT, x0=np.zeros(3))
+
     t = 0
     i = 0
     first_contact = False
@@ -107,19 +112,22 @@ def simulate(sim, pusher, slider, push_controller, force_controller):
         # check if first contact has been made: we want to simulate DURATION
         # seconds after this time
         if not first_contact:
-            points = pyb_utils.getContactPoints(pusher.uid, slider.uid, pusher.tool_idx, -1)
+            points = pyb_utils.getContactPoints(
+                pusher.uid, slider.uid, pusher.tool_idx, -1
+            )
             if len(points) > 0:
                 first_contact = True
                 first_contact_time = t
 
         if i % CTRL_STEP == 0:
             force = pusher.get_contact_force([slider.uid])
+            force = smoother.update(force, dt=CTRL_STEP * sim.timestep)
+            f = force[:2]
 
             # get contact force and pusher position
-            if np.linalg.norm(force) >= FORCE_MIN_THRESHOLD:
+            if np.linalg.norm(f) >= FORCE_MIN_THRESHOLD:
                 last_force_time = t
             r_pw_w = pusher.get_joint_states()[0]
-            f = force[:2]
 
             # generate command
             v_cmd = push_controller.update(position=r_pw_w[:2], force=f)
@@ -127,7 +135,11 @@ def simulate(sim, pusher, slider, push_controller, force_controller):
             pusher.command_velocity(v_cmd)
 
             # contact info
-            points = pyb_utils.getContactPoints(pusher.uid, slider.uid, pusher.tool_idx, -1)
+            # TODO may be able to fold this into the getClosestPoints call
+            # below
+            points = pyb_utils.getContactPoints(
+                pusher.uid, slider.uid, pusher.tool_idx, -1
+            )
             in_contact = len(points) > 0
 
             # record information
@@ -156,7 +168,7 @@ def simulate(sim, pusher, slider, push_controller, force_controller):
         i += 1
         t = i * sim.timestep
         sim.step()
-        time.sleep(0.001)
+        # time.sleep(0.001)
 
     ts = np.array(ts)
     r_pw_ws = np.array(r_pw_ws)
@@ -426,9 +438,16 @@ def main():
             sim.step()
 
             # run the sim
-            ts, r_pw_ws, r_sw_ws, Q_wss, v_cmds, success, forces, in_contacts = simulate(
-                sim, pusher, slider, push_controller, force_controller
-            )
+            (
+                ts,
+                r_pw_ws,
+                r_sw_ws,
+                Q_wss,
+                v_cmds,
+                success,
+                forces,
+                in_contacts,
+            ) = simulate(sim, pusher, slider, push_controller, force_controller)
             if not success:
                 print(f"Trial {count} failed.")
                 print(f"I = {np.diag(I)}\nμ = {μ0}\ny0 = {y0}\nθ0 = {θ0}\ns0 = {s0}")

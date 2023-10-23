@@ -255,12 +255,17 @@ class PushController:
     def reset(self):
         """Reset the controller to its initial state."""
         self.first_contact = False
-        self.yc_int = 0
-        self.θd_int = 0
+        self.offset_int = 0
+        self.θf_int = 0
         self.θp = 0
         self.inc_sign = 1
         self.diverge = False
         self.converge = False
+
+        # this is the max achieved distance from the start of the path; we
+        # don't want to steer toward points that are closer to the start than
+        # this
+        self.dist_from_start = 0
 
     def update(self, position, force, dt=0):
         """Compute a new pushing velocity based on contact position and force
@@ -268,7 +273,12 @@ class PushController:
         assert len(position) == 2
         assert len(force) == 2
 
-        pathdir, yc = self.path.compute_direction_and_offset(position)
+        info = self.path.compute_closest_point_info(
+            position, min_dist_from_start=self.dist_from_start
+        )
+        assert np.isclose(self.dist_from_start, 0)
+        # self.dist_from_start = max(info.distance_from_start, self.dist_from_start)
+        pathdir, offset = info.direction, info.offset
         f_norm = np.linalg.norm(force)
 
         # bail if we haven't ever made contact yet
@@ -277,11 +287,14 @@ class PushController:
                 return self.speed * pathdir
             self.first_contact = True
 
-        θd = util.signed_angle(pathdir, util.unit(force))
+        θf = util.signed_angle(pathdir, util.unit(force))
+
+        print(f"offset = {offset}")
+        print(f"θf = {θf}")
 
         # integrators
-        self.yc_int += dt * yc
-        self.θd_int += dt * θd
+        self.offset_int += dt * offset
+        self.θf_int += dt * θf
 
         speed = self.speed
 
@@ -290,17 +303,17 @@ class PushController:
             # if we've lost contact, try to recover by circling back
             print("converge!")
 
-            if not self.converge:
-                self.con_init = self.θp
-                self.con = 0
+            # if not self.converge:
+            #     self.con_init = self.θp
+            #     self.con = 0
 
             # we keep the "convergence angle" separate from θp so we can
             # directly check its magnitude without worrying about wrapping to
             # pi and all that
-            self.con += self.con_inc
-            if self.con > self.div_max:
-                self.con = self.div_max
-            θp = self.con_init - self.inc_sign * self.con
+            # self.con += self.con_inc
+            # if self.con > self.div_max:
+            #     self.con = self.div_max
+            # θp = self.con_init - self.inc_sign * self.con
 
             # θp = self.θp - self.inc_sign * self.con_inc
             #
@@ -309,29 +322,27 @@ class PushController:
             # if abs(con_delta) > self.div_max:
             #     θp = self.con_init - self.div_max
 
-            # TODO we want to converge to the open loop angle; i.e., back
-            # toward the path
-            # but want to do this over time, not immediately
-            θ_target = -self.ky * yc
+            # converge to the open loop angle (i.e., back toward the path)
+            # over time
+            θ_target = -self.ky * offset
             Δθ = util.wrap_to_pi(θ_target - self.θp)
             if np.abs(Δθ) > self.con_inc:
                 Δθ = np.sign(Δθ) * self.con_inc
             θp = self.θp + Δθ
-            print(θp)
-            # time.sleep(1)
 
-            self.converge = True
+            # self.converge = True
         else:
             θp = (
-                (1 + self.kθ) * θd
-                + self.ky * yc
-                + self.ki_θ * self.θd_int
-                + self.ki_y * self.yc_int
+                (1 + self.kθ) * θf
+                + self.ky * offset
+                + self.ki_θ * self.θf_int
+                + self.ki_y * self.offset_int
             )
-            self.inc_sign = np.sign(θp)
-            self.converge = False
+            # self.inc_sign = np.sign(θp)
+            # self.converge = False
 
         self.θp = util.wrap_to_pi(θp)
+        print(f"θp = {self.θp}")
 
         # pushing velocity
         pushdir = util.rot2d(self.θp) @ pathdir
@@ -347,6 +358,6 @@ class PushController:
                     perp = R @ normal
                     pushdir0 = pushdir
                     pushdir = np.sign(pushdir @ perp) * perp
-                    print(f"original = {pushdir0}, corrected = {pushdir}")
+                    # print(f"original = {pushdir0}, corrected = {pushdir}")
 
         return speed * pushdir

@@ -135,7 +135,7 @@ class BulletPusher(pyb_utils.Robot):
 class BulletSquareSlider(BulletBody):
     """Square slider"""
 
-    def __init__(self, position, mass=1, half_extents=(0.5, 0.5, 0.1)):
+    def __init__(self, position, mass=1, half_extents=(0.5, 0.5, 0.1), orientation=None):
         collision_uid = pyb.createCollisionShape(
             shapeType=pyb.GEOM_BOX,
             halfExtents=tuple(half_extents),
@@ -145,13 +145,13 @@ class BulletSquareSlider(BulletBody):
             halfExtents=tuple(half_extents),
             rgbaColor=[0, 0, 1, 1],
         )
-        super().__init__(position, collision_uid, visual_uid, mass=mass)
+        super().__init__(position, collision_uid, visual_uid, mass=mass, orientation=orientation)
 
 
 class BulletCircleSlider(BulletBody):
     """Circular slider"""
 
-    def __init__(self, position, mass=1, radius=0.5, height=0.2):
+    def __init__(self, position, mass=1, radius=0.5, height=0.2, orientation=None):
         collision_uid = pyb.createCollisionShape(
             shapeType=pyb.GEOM_CYLINDER,
             radius=radius,
@@ -163,7 +163,9 @@ class BulletCircleSlider(BulletBody):
             length=height,
             rgbaColor=[0, 0, 1, 1],
         )
-        super().__init__(position, collision_uid, visual_uid, mass=mass)
+        super().__init__(
+            position, collision_uid, visual_uid, mass=mass, orientation=orientation
+        )
 
 
 class BulletBlock(BulletBody):

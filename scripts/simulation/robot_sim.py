@@ -10,6 +10,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pybullet as pyb
 import pyb_utils
+from spatialmath.base import rotz
 
 import mobile_manipulation_central as mm
 import force_push as fp
@@ -18,12 +19,14 @@ import IPython
 
 
 TIMESTEP = 0.01
-TOOL_JOINT_NAME = "contact_ball_joint"
+TOOL_LINK_NAME = "contact_ball"
 DURATION = 100
 
 CONTACT_MU = 0.5
 SURFACE_MU = 0.25
 OBSTACLE_MU = 0.25
+
+STRAIGHT_DIRECTION = fp.rot2d(np.deg2rad(125)) @ np.array([1, 0])
 
 PUSH_SPEED = 0.1
 
@@ -31,7 +34,7 @@ PUSH_SPEED = 0.1
 Kθ = 0.3
 KY = 0.3
 Kω = 1
-Kf = 0.005  # N / (m/s)
+Kf = 0.003  # N / (m/s)
 CON_INC = 0.1
 DIV_INC = 0.1
 
@@ -83,32 +86,38 @@ def main():
         action="store_true",
         default=False,
     )
+    parser.add_argument(
+        "--environment",
+        choices=["straight", "corner"],
+        help="Which environment to use",
+        required=True,
+    )
     args = parser.parse_args()
     open_loop = args.open_loop
 
     # load initial joint configuration
-    home = mm.load_home_position(name="pushing_corner", path=fp.HOME_CONFIG_FILE)
+    if args.environment == "straight":
+        home = mm.load_home_position(name="pushing_diag", path=fp.HOME_CONFIG_FILE)
+    else:
+        home = mm.load_home_position(name="pushing_corner", path=fp.HOME_CONFIG_FILE)
 
     # create the simulation
     urdf_path = make_urdf_file()
     sim = mm.BulletSimulation(TIMESTEP)
-    robot = mm.BulletSimulatedRobot(urdf_path, TOOL_JOINT_NAME)
+
+    robot_id = pyb.loadURDF(
+        urdf_path,
+        [0, 0, 0],
+        useFixedBase=True,
+    )
+    robot = pyb_utils.Robot(robot_id, tool_link_name=TOOL_LINK_NAME)
     robot.reset_joint_configuration(home)
-
-    # home2 = home.copy()
-    # home2[3] = 0
-    # robot.reset_joint_configuration(home2)
-
-    # IPython.embed()
-
-    # load calibrated offset between contact point and base frame origin
-    with open(fp.CONTACT_POINT_CALIBRATION_FILE) as f:
-        r_bc_b = np.array(yaml.safe_load(f)["r_bc_b"])
 
     # initial contact position
     r_bw_w = home[:2]
+    r_cw_w = robot.get_link_frame_pose()[0][:2]
     C_wb = fp.rot2d(home[2])
-    r_cw_w = r_bw_w - C_wb @ r_bc_b
+    r_bc_b = -C_wb.T @ (r_cw_w - r_bw_w)
 
     # NOTE for visualizing the circular approximation to the base for obstacle
     # avoidance
@@ -117,21 +126,40 @@ def main():
     # return
 
     # desired EE path
-    path = fp.SegmentPath(
-        [
-            fp.LineSegment([0.0, 0], [0.0, 1]),
-            fp.QuadBezierSegment([0.0, 1], [0.0, 3], [-2.0, 3]),
-            fp.LineSegment([-2.0, 3], [-3.0, 3], infinite=True),
-        ],
-        origin=r_cw_w,
-    )
-    obstacles = fp.translate_segments([fp.LineSegment([-3.0, 3.5], [3.0, 3.5])], r_cw_w)
-    block1 = fp.BulletBlock(
-        np.append(r_cw_w, 0) + [0, 4, 0.5], [3, 0.5, 0.5], mu=OBSTACLE_MU
-    )
+    if args.environment == "straight":
+        path = fp.SegmentPath.line(STRAIGHT_DIRECTION, origin=r_cw_w)
+        C_ws0 = rotz(home[2])
+        r_sw_w0 = np.append(r_cw_w, 0) + C_ws0 @ [0.6, 0, 0.2]
+        Q_ws0 = pyb_utils.matrix_to_quaternion(C_ws0)
+    else:
+        path = fp.SegmentPath(
+            [
+                fp.LineSegment([0.0, 0.0], [0.0, 2.0]),
+                fp.CircularArcSegment(
+                    center=[-2.0, 2.0], point=[0.0, 2.0], angle=np.pi / 2
+                ),
+                fp.LineSegment([-2.0, 4.0], [-4.0, 4.0], infinite=True),
+            ],
+            origin=r_cw_w,
+        )
+        r_sw_w0 = np.append(r_cw_w, 0) + [0, 0.6, 0.2]
+        Q_ws0 = (0, 0, 0, 1)
+    obstacles = []
+    # obstacles = fp.translate_segments(
+    #     [fp.LineSegment([-3.5, 4.25], [1.0, 4.25])], r_cw_w
+    # )
+    #
+    # block1 = fp.BulletBlock(
+    #     np.append(r_cw_w, 0) + [0, 4.25, 0.5], [3, 0.5, 0.5], mu=OBSTACLE_MU
+    # )
+
+    # print(r_sw_w0)
+    # print(np.append(r_cw_w, 0) + [0, 0.6, 0.2])
+    # return
 
     slider = fp.BulletSquareSlider(
-        np.append(r_cw_w, 0) + [0, 0.6, 0.2],
+        position=r_sw_w0,
+        orientation=Q_ws0,
         mass=SLIDER_MASS,
         half_extents=BOX_SLIDER_HALF_EXTENTS,
     )
@@ -148,7 +176,7 @@ def main():
 
     # controllers
     robot_controller = fp.RobotController(
-        -r_bc_b,
+        -r_bc_b + [0.0, 0.0],
         lb=VEL_LB,
         ub=VEL_UB,
         vel_weight=1,
@@ -185,14 +213,20 @@ def main():
 
     t = 0
     while t <= DURATION:
-        q, _ = robot.joint_states()
+        q, _ = robot.get_joint_states()
         r_bw_w = q[:2]
         C_wb = fp.rot2d(q[2])
-        r_cw_w = r_bw_w - C_wb @ r_bc_b
+        # r_cw_w = r_bw_w - C_wb @ r_bc_b
+        r_cw_w = robot.get_link_frame_pose()[0][:2]
 
-        pathdir, offset = path.compute_direction_and_offset(r_cw_w)
-        f = fp.get_contact_force(robot.uid, slider.uid)[:2]
+        info = path.compute_closest_point_info(r_cw_w)
+        pathdir, offset = info.direction, info.offset
+        f = fp.get_contact_force(robot.uid, slider.uid, robot.tool_idx, -1)
+        print(f)
+        f = f[:2]
         θd = np.arctan2(pathdir[1], pathdir[0])
+        # print(f"pc = {info.point}")
+        # print(f"pathdir = {pathdir}")
 
         if open_loop:
             θp = θd - KY * offset
@@ -210,6 +244,8 @@ def main():
         if cmd_vel is None:
             print("Failed to solve QP!")
             break
+
+        cmd_vel = np.append(v_ee_cmd, 0)
 
         # use P control on the arm joints to keep them in place
         u = np.concatenate((cmd_vel, 10 * (home[3:] - q[3:])))

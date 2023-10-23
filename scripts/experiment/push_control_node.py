@@ -22,6 +22,7 @@ TIMESTEP = 1.0 / RATE
 
 # Origin is taken as the EE's starting position
 STRAIGHT_DIRECTION = fp.rot2d(np.deg2rad(125)) @ np.array([1, 0])
+STRAIGHT_REV_DIRECTION = fp.rot2d(np.deg2rad(125 - 180)) @ np.array([1, 0])
 
 # pushing speed
 PUSH_SPEED = 0.1
@@ -67,7 +68,7 @@ def main():
     )
     parser.add_argument(
         "--environment",
-        choices=["straight", "corner", "corridor"],
+        choices=["straight", "corner", "corridor", "straight_rev"],
         help="Which environment to use",
         required=True,
     )
@@ -104,6 +105,8 @@ def main():
 
     if args.environment == "straight":
         path = fp.SegmentPath.line(STRAIGHT_DIRECTION, origin=r_cw_w)
+    elif args.environment == "straight_rev":
+        path = fp.SegmentPath.line(STRAIGHT_REV_DIRECTION, origin=r_cw_w)
     else:
         path = fp.SegmentPath(
             [
@@ -141,7 +144,7 @@ def main():
 
     # generate joint commands to realize desired EE velocity
     robot_controller = fp.RobotController(
-        -r_bc_b,
+        r_cb_b=-r_bc_b,
         lb=VEL_LB,
         ub=VEL_UB,
         vel_weight=VEL_WEIGHT,
@@ -214,7 +217,10 @@ def main():
         f = -f_w[:2]
 
         # direction of the path
-        pathdir, offset = path.compute_direction_and_offset(r_cw_w)
+        # TODO we should actually be tracking the minimum distance here, which
+        # is annoying
+        info = path.compute_closest_point_info(r_cw_w)
+        pathdir, offset = info.direction, info.offset
         θd = np.arctan2(pathdir[1], pathdir[0])
 
         # in open-loop mode we just follow the path rather than controlling to

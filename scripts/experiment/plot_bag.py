@@ -43,6 +43,8 @@ def main():
 
     if params["environment"] == "straight":
         home = mm.load_home_position(name="pushing_diag", path=fp.HOME_CONFIG_FILE)
+    elif params["environment"] == "straight_rev":
+        home = mm.load_home_position(name="pushing_diag_rev", path=fp.HOME_CONFIG_FILE)
     else:
         home = mm.load_home_position(name="pushing_corner", path=fp.HOME_CONFIG_FILE)
 

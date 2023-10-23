@@ -15,8 +15,15 @@ def translate_segments(segments, offset):
 
 
 ClosestPointInfo = namedtuple(
-    "ClosestPointInfo", ["point", "deviation", "distance_from_start", "direction"]
+    "ClosestPointInfo",
+    ["point", "deviation", "distance_from_start", "direction", "offset"],
 )
+
+
+def compute_offset(point, direction, p):
+    R = util.rot2d(np.pi / 2)
+    perp = R @ direction
+    return perp @ (p - point)
 
 
 class LineSegment:
@@ -35,29 +42,38 @@ class LineSegment:
     def offset(self, Δ):
         return LineSegment(v1=self.v1 + Δ, v2=self.v2 + Δ, infinite=self.infinite)
 
-    def closest_point_info(self, p, tol=1e-8):
+    def closest_point_info(self, p, min_dist_from_start=0, tol=1e-8):
+        assert 0 <= min_dist_from_start <= self.length
+
         r = p - self.v1
         proj = self.direction @ r  # project onto the line
 
         # compute closest point (and its distance from the start of the path)
-        if self.length < tol or proj <= 0:
+        if self.length < tol:
             closest = self.v1
-            dist_from_start = 0
+            dist_from_start = min_dist_from_start
         elif not self.infinite and proj >= self.length:
             closest = self.v2
             dist_from_start = self.length
         else:
-            closest = self.v1 + proj * self.direction
-            dist_from_start = proj
+            dist = max(proj, min_dist_from_start)
+            closest = self.v1 + dist * self.direction
+            dist_from_start = dist
 
         # deviation from the path
         deviation = np.linalg.norm(p - closest)
+
+        offset = compute_offset(point=closest, direction=self.direction, p=p)
+
+        # import IPython
+        # IPython.embed()
 
         return ClosestPointInfo(
             point=closest,
             deviation=deviation,
             distance_from_start=dist_from_start,
             direction=self.direction,
+            offset=offset,
         )
 
     def point_at_distance(self, d):
@@ -66,55 +82,6 @@ class LineSegment:
         if d > self.length:
             raise ValueError(f"Segment is shorter than distance {d}")
         return self.v1 + d * self.direction
-
-
-# class QuadBezierSegment:
-#     """Path segment defined by a quadratic Bezier curve."""
-#
-#     def __init__(self, v1, v2, v3):
-#         self.v1 = np.array(v1)
-#         self.v2 = np.array(v2)
-#         self.v3 = np.array(v3)
-#
-#         self.length = quad(lambda t: np.linalg.norm(self._time_derivative(t)), 0, 1)[0]
-#
-#     def offset(self, Δ):
-#         return QuadBezierSegment(v1=self.v1 + Δ, v2=self.v2 + Δ, v3=self.v3 + Δ)
-#
-#     def _evaluate(self, t):
-#         assert 0 <= t <= 1
-#         return (1 - t) ** 2 * self.v1 + 2 * (1 - t) * t * self.v2 + t**2 * self.v3
-#
-#     def _time_derivative(self, t):
-#         assert 0 <= t <= 1
-#         return 2 * (1 - t) * (self.v2 - self.v1) + 2 * t * (self.v3 - self.v2)
-#
-#     def closest_point_and_direction(self, p):
-#
-#         # minimize distance between curve and point p
-#         def fun(t):
-#             b = self._evaluate(t)
-#             return (p - b) @ (p - b)
-#
-#         res = minimize_scalar(fun, bounds=(0, 1), method="bounded")
-#         t = res.x
-#
-#         closest = self._evaluate(t)
-#         direction = util.unit(self._time_derivative(t))
-#         return closest, direction
-#
-#     def point_at_distance(self, d):
-#         """Compute the point that is distance ``d`` from the start of the segment."""
-#         assert d >= 0
-#         if d > self.length:
-#             raise ValueError(f"Segment is shorter than distance {d}")
-#
-#         def fun(s):
-#             L = quad(lambda t: np.linalg.norm(self._time_derivative(t)), 0, s)[0]
-#             return (d - L) ** 2
-#
-#         res = minimize_scalar(fun, bounds=(0, 1), method="bounded")
-#         return self._evaluate(res.x)
 
 
 class CircularArcSegment:
@@ -128,7 +95,9 @@ class CircularArcSegment:
         self.angle = angle
         self.radius = np.linalg.norm(self._arm)
 
-        self.v2 = self.center + util.rot2d(angle) @ self._arm
+        assert self.radius > 0
+
+        self.v2 = self._rotate_from_start(angle)
 
     @property
     def length(self):
@@ -139,15 +108,27 @@ class CircularArcSegment:
         """Vector from the center to the start of the arc."""
         return self.v1 - self.center
 
+    def _rotate_from_start(self, angle):
+        """Compute the point on the circle that is a rotation ``angle`` from the start."""
+        return self.center + util.rot2d(angle) @ self._arm
+
     def offset(self, Δ):
+        """Create a new ``CircularArcSegment`` that is translated by ``Δ``."""
         return CircularArcSegment(
             center=self.center + Δ, point=self.v1 + Δ, angle=self.angle
         )
 
-    def closest_point_info(self, p):
+    def closest_point_info(self, p, min_dist_from_start=0):
+        assert 0 <= min_dist_from_start <= self.length
+
+        min_angle_from_start = min_dist_from_start / self.radius
+
         if np.allclose(p, self.center):
-            # at the center point all points on the arc are equally close
-            # TODO should I do more intelligent tie-breaking?
+            # at the center point all points on the arc are equally close; take
+            # the one closest to the allowable start of the arc
+            # closest = self._rotate_from_start(min_angle_from_start)
+            # dist_from_start = min_dist_from_start
+            # TODO for consistency with previous work
             closest = self.v2
             dist_from_start = self.length
         else:
@@ -159,23 +140,28 @@ class CircularArcSegment:
 
             # check if that point is inside the arc
             # if not, then one of the end points is the closest point
-            if angle <= self.angle:
+            if min_angle_from_start <= angle <= self.angle:
                 closest = self.center + c0
                 dist_from_start = self.radius * angle
             else:
-                endpoints = np.vstack((self.v1, self.v2))
-                endpoint_dists = np.array([0, self.length])
+                start = self._rotate_from_start(min_angle_from_start)
+                end = self.v2
+                endpoints = np.vstack((start, end))
+                endpoint_dists = np.array([min_dist_from_start, self.length])
+
                 idx = np.argmin(np.linalg.norm(endpoints - p, axis=1))
                 closest = endpoints[idx, :]
                 dist_from_start = endpoint_dists[idx]
 
         direction = util.rot2d(np.pi / 2) @ util.unit(closest - self.center)
         deviation = np.linalg.norm(p - closest)
+        offset = compute_offset(point=closest, direction=direction, p=p)
         return ClosestPointInfo(
             point=closest,
             deviation=deviation,
             distance_from_start=dist_from_start,
             direction=direction,
+            offset=offset,
         )
 
     def point_at_distance(self, d):
@@ -203,6 +189,15 @@ class SegmentPath:
         else:
             self.segments = translate_segments(segments, origin)
 
+        # check that the segments actually form a connected path
+        for i in range(1, len(self.segments)):
+            if not np.allclose(self.segments[i - 1].v2, self.segments[i].v1):
+                d = np.linalg.norm(self.segments[i - 1].v2 - self.segments[i].v1)
+                raise ValueError(f"Segment {i - 1} and {i} are {d} distance apart!")
+
+        self._seg_lengths = np.array([seg.length for seg in segments])
+        self._cum_seg_lengths = np.cumsum(self._seg_lengths)
+
     @classmethod
     def line(cls, direction, origin=None):
         """Construct an infinite line path."""
@@ -212,36 +207,43 @@ class SegmentPath:
         v2 = origin + direction
         return cls([LineSegment(v1, v2, infinite=True)])
 
-    def compute_direction_and_offset(self, p):
-        """Compute travel direction and lateral offset for a point p."""
-        minimum = ClosestPointInfo(
-            point=None, deviation=np.inf, distance_from_start=None, direction=None
-        )
-        for segment in self.segments:
-            info = segment.closest_point_info(p)
-            if info.deviation < minimum.deviation:
-                minimum = info
+    def compute_closest_point_info(self, p, min_dist_from_start=0):
+        assert min_dist_from_start >= 0
 
-        R = util.rot2d(np.pi / 2)
-        perp = R @ minimum.direction
-        offset = perp @ (p - minimum.point)
-        return minimum.direction, offset
+        # only start looking starting at this segment; the others are two close
+        # to the start
+        min_idx = np.argmax(self._cum_seg_lengths >= min_dist_from_start)
 
-    def compute_closest_point_info(self, p):
-        infos = [segment.closest_point_info(p) for segment in self.segments]
+        # the minimum distance for each segment is 0, except possibly for the
+        # first one
+        min_dist_from_seg_starts = np.zeros(len(self.segments) - min_idx)
+        if min_idx == 0:
+            min_dist_from_seg_starts[0] = min_dist_from_start
+        else:
+            min_dist_from_seg_starts[0] = (
+                min_dist_from_start - self._cum_seg_lengths[min_idx - 1]
+            )
+
+        # find the segment with minimum deviation
+        infos = []
+        for seg, min_dist in zip(self.segments[min_idx:], min_dist_from_seg_starts):
+            infos.append(seg.closest_point_info(p, min_dist_from_start=min_dist))
         idx = np.argmin([info.deviation for info in infos])
+        info = infos[idx]
+        seg_idx = min_idx + idx
 
         # total dist from start is the dist from the start of the segment with
         # the closest point plus the length of all preceeding segments
-        dist_from_start = infos[idx].distance_from_start
-        for i in range(idx):
-            dist_from_start += self.segments[i].length
+        dist_from_start = info.distance_from_start
+        if seg_idx > 0:
+            dist_from_start += self._cum_seg_lengths[seg_idx - 1]
 
         return ClosestPointInfo(
-            point=infos[idx].point,
-            deviation=infos[idx].deviation,
+            point=info.point,
+            deviation=info.deviation,
             distance_from_start=dist_from_start,
-            direction=infos[idx].direction,
+            direction=info.direction,
+            offset=info.offset,
         )
 
     def get_plotting_coords(self, n_bez=25, dist=0):
@@ -256,9 +258,6 @@ class SegmentPath:
         for segment in self.segments:
             if type(segment) is LineSegment:
                 vertices.extend([segment.v1, segment.v2])
-            # elif type(segment) is QuadBezierSegment:
-            #     ts = np.linspace(0, 1, n_bez)
-            #     vertices.extend([segment._evaluate(t) for t in ts])
             elif type(segment) is CircularArcSegment:
                 ds = np.linspace(0, segment.length, n_bez)
                 vertices.extend([segment.point_at_distance(d) for d in ds])

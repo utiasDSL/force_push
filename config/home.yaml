@@ -4,6 +4,9 @@ pushing_straight: [-0.5, -4.0, 1.5708, 1.5708, -0.1745, 1.5708, -1.3963,  1.5708
 # push diagonally across the room (allows for a longer path)
 pushing_diag: [2.5, -3.5, 2.1817, 1.5708, -0.1745, 1.5708, -1.3963,  1.5708, 1.3100]
 
+# push diagonally across the room in the reverse direction
+pushing_diag_rev: [-2.25, 3.25, -0.9599, 1.5708, -0.1745, 1.5708, -1.3963,  1.5708, 1.3100]
+
 # use for pushing with a 90-deg turn
 # pushing_corner: [2.0, -3.5, 1.5708, 1.5708, -0.1745, 1.5708, -1.3963,  1.5708, 1.3100]
 pushing_corner: [1.25, -3.5, 1.5708, 1.5708, -0.1745, 1.5708, -1.3963,  1.5708, 1.3100]

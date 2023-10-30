@@ -8,6 +8,8 @@ import yaml
 
 import rospy
 import numpy as np
+from spatialmath import UnitQuaternion as UQ
+from spatialmath.base import rotz
 
 import mobile_manipulation_central as mm
 import force_push as fp
@@ -29,11 +31,11 @@ PUSH_SPEED = 0.1
 
 # control gains
 Kθ = 0.3
-KY = 0.3
+# KY = 0.3
+KY = 0.5
 Kω = 1
 KF = 0.003
 CON_INC = 0.1
-DIV_INC = 0.3
 
 # base velocity bounds
 VEL_UB = np.array([0.5, 0.5, 0.25])
@@ -88,6 +90,10 @@ def main():
     with open(fp.CONTACT_POINT_CALIBRATION_FILE) as f:
         r_bc_b = np.array(yaml.safe_load(f)["r_bc_b"])
 
+    with open(fp.FORCE_ORN_CALIBRATION_FILE) as f:
+        data = yaml.safe_load(f)
+        ΔC = UQ(s=data["w"], v=[data["x"], data["y"], data["z"]]).R
+
     # wait until robot feedback has been received
     robot = mm.RidgebackROSInterface()
     rate = rospy.Rate(RATE)
@@ -132,10 +138,8 @@ def main():
         ky=KY,
         path=path,
         con_inc=CON_INC,
-        div_inc=DIV_INC,
         obstacles=obstacles,
         force_min=FORCE_MIN_THRESHOLD,
-        force_max=np.inf,  # NOTE
         min_dist=EE_OBS_MIN_DIST,
     )
 
@@ -192,6 +196,8 @@ def main():
     print(f"Done. Bias = {bias}")
 
     wrench_estimator = fp.WrenchEstimator(bias=bias, τ=FILTER_TIME_CONSTANT)
+    while not rospy.is_shutdown() and not wrench_estimator.ready():
+        rate.sleep()
 
     if args.save is not None:
         # wait a bit to ensure bag is setup before we actually do anything
@@ -211,7 +217,9 @@ def main():
         model.forward(q)
         C_wf = model.link_pose(link_idx=ft_idx, rotation_matrix=True)[1]
         f_f = wrench_estimator.wrench_filtered[:3]
-        f_w = C_wf @ f_f
+        C_wb3 = rotz(q[2])
+        f_w = C_wb3 @ ΔC @ C_wb3.T @ C_wf @ f_f
+        # f_w = C_wf @ f_f
 
         # force direction is negative to switch from sensed force to applied force
         f = -f_w[:2]
@@ -222,13 +230,13 @@ def main():
         info = path.compute_closest_point_info(r_cw_w)
         pathdir, offset = info.direction, info.offset
         θd = np.arctan2(pathdir[1], pathdir[0])
+        print(f"offset = {offset}")
 
         # in open-loop mode we just follow the path rather than controlling to
         # push the slider
         if open_loop:
             θp = θd - KY * offset
             v_ee_cmd = PUSH_SPEED * fp.rot2d(θp) @ [1, 0]
-            # v_ee_cmd = PUSH_SPEED * pathdir
         else:
             v_ee_cmd = push_controller.update(r_cw_w, f)
             v_ee_cmd = force_controller.update(force=f, v_cmd=v_ee_cmd)

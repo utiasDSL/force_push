@@ -17,7 +17,6 @@ def main():
     ft_idx = model.get_link_index("ft_sensor")
     # q_arm = home[3:]
 
-
     # C_test = rotz(np.pi / 2) @ rotx(np.pi) @ roty(-np.pi / 2) @ rotz(np.deg2rad(-15))
     # q_test = np.concatenate((np.zeros(3), q_arm))
     q_test = np.concatenate(

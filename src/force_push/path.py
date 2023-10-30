@@ -45,10 +45,10 @@ class LineSegment:
     def closest_point_info(self, p, min_dist_from_start=0, tol=1e-8):
         assert 0 <= min_dist_from_start <= self.length
 
-        r = p - self.v1
-        proj = self.direction @ r  # project onto the line
+        # project onto the line
+        proj = self.direction @ (p - self.v1)
 
-        # compute closest point (and its distance from the start of the path)
+        # compute closest point (and its distance from the start of the segment)
         if self.length < tol:
             closest = self.v1
             dist_from_start = min_dist_from_start
@@ -63,10 +63,10 @@ class LineSegment:
         # deviation from the path
         deviation = np.linalg.norm(p - closest)
 
-        offset = compute_offset(point=closest, direction=self.direction, p=p)
+        offset = compute_offset(point=self.v1, direction=self.direction, p=p)
 
-        # import IPython
-        # IPython.embed()
+        # if deviation > 0.1:
+        #     IPython.embed()
 
         return ClosestPointInfo(
             point=closest,

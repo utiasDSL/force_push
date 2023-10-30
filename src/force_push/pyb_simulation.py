@@ -15,11 +15,14 @@ def get_contact_force(uid1, uid2, linkIndexA=-2, linkIndexB=-2, max_contacts=1):
     for point in points:
         normal = -np.array(point.contactNormalOnB)
         nf = point.normalForce * normal
+        # ff1 = -point.lateralFriction1 * np.array(point.lateralFrictionDir1)
+        # ff2 = -point.lateralFriction2 * np.array(point.lateralFrictionDir2)
         ff1 = -point.lateralFriction1 * np.array(point.lateralFrictionDir1)
         ff2 = -point.lateralFriction2 * np.array(point.lateralFrictionDir2)
         # print(f"fric force = {ff1 + ff2}")
         # print(f"norm force = {nf}")
         force += nf + ff1 + ff2
+        # print(f"pb = {point.positionOnB}")
     return force
 
 
@@ -115,10 +118,15 @@ class BulletPusher(pyb_utils.Robot):
         """Set the friction for the link in contact with the slider."""
         pyb.changeDynamics(self.uid, self.tool_idx, lateralFriction=μ)
 
-    def get_contact_force(self, uids):
+    def get_contact_force(self, uids, max_contacts=1):
         """Return contact force, expressed in the world frame."""
         return sum(
-            [get_contact_force(self.uid, uid, self.tool_idx, -1) for uid in uids]
+            [
+                get_contact_force(
+                    self.uid, uid, self.tool_idx, max_contacts=max_contacts
+                )
+                for uid in uids
+            ]
         )
 
     def reset(self, position=None, orientation=None):
@@ -135,7 +143,9 @@ class BulletPusher(pyb_utils.Robot):
 class BulletSquareSlider(BulletBody):
     """Square slider"""
 
-    def __init__(self, position, mass=1, half_extents=(0.5, 0.5, 0.1), orientation=None):
+    def __init__(
+        self, position, mass=1, half_extents=(0.5, 0.5, 0.1), orientation=None
+    ):
         collision_uid = pyb.createCollisionShape(
             shapeType=pyb.GEOM_BOX,
             halfExtents=tuple(half_extents),
@@ -145,7 +155,9 @@ class BulletSquareSlider(BulletBody):
             halfExtents=tuple(half_extents),
             rgbaColor=[0, 0, 1, 1],
         )
-        super().__init__(position, collision_uid, visual_uid, mass=mass, orientation=orientation)
+        super().__init__(
+            position, collision_uid, visual_uid, mass=mass, orientation=orientation
+        )
 
 
 class BulletCircleSlider(BulletBody):

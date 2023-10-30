@@ -194,12 +194,8 @@ class PushController:
         Integral gain for path tracking.
     force_min : float
         Contact requires a force of at least this much.
-    force_max : float
-        DEPRECATED. Diverge if force exceeds this much.
     con_inc : float
         Increment to push angle to converge back to previous point.
-    div_inc : float
-        DEPRECATED. Increment to push angle to diverge when force is too high.
     obstacles :
         List of obstacles to avoid with the EE.
     min_dist :
@@ -216,9 +212,7 @@ class PushController:
         ki_y=0,
         corridor_radius=np.inf,
         force_min=1,
-        force_max=50,
         con_inc=0.3,
-        div_inc=0.3,
         obstacles=None,
         min_dist=0.1,
     ):
@@ -238,11 +232,9 @@ class PushController:
 
         # force thresholds
         self.force_min = force_min
-        self.force_max = force_max
 
-        # convergence and divergence increment
+        # convergence increment
         self.con_inc = con_inc
-        self.div_inc = div_inc
         self.div_max = np.pi
 
         # obstacles
@@ -258,8 +250,6 @@ class PushController:
         self.offset_int = 0
         self.θf_int = 0
         self.θp = 0
-        self.inc_sign = 1
-        self.diverge = False
         self.converge = False
 
         # this is the max achieved distance from the start of the path; we
@@ -289,38 +279,20 @@ class PushController:
 
         θf = util.signed_angle(pathdir, util.unit(force))
 
-        print(f"offset = {offset}")
-        print(f"θf = {θf}")
+        # print(f"offset = {offset}")
+        # print(f"θf = {θf}")
+        # print(f"r_cw_w = {position}")
+        # print(f"f_dir = {util.unit(force)}")
+        # print(f"f_norm = {f_norm}")
 
         # integrators
-        self.offset_int += dt * offset
-        self.θf_int += dt * θf
-
-        speed = self.speed
+        # self.offset_int += dt * offset
+        # self.θf_int += dt * θf
 
         # pushing angle
         if f_norm < self.force_min:
             # if we've lost contact, try to recover by circling back
             print("converge!")
-
-            # if not self.converge:
-            #     self.con_init = self.θp
-            #     self.con = 0
-
-            # we keep the "convergence angle" separate from θp so we can
-            # directly check its magnitude without worrying about wrapping to
-            # pi and all that
-            # self.con += self.con_inc
-            # if self.con > self.div_max:
-            #     self.con = self.div_max
-            # θp = self.con_init - self.inc_sign * self.con
-
-            # θp = self.θp - self.inc_sign * self.con_inc
-            #
-            # # limit convergence to no more than div_max
-            # con_delta = util.wrap_to_pi(self.con_init - θp)
-            # if abs(con_delta) > self.div_max:
-            #     θp = self.con_init - self.div_max
 
             # converge to the open loop angle (i.e., back toward the path)
             # over time
@@ -329,22 +301,15 @@ class PushController:
             if np.abs(Δθ) > self.con_inc:
                 Δθ = np.sign(Δθ) * self.con_inc
             θp = self.θp + Δθ
-
-            # self.converge = True
         else:
-            θp = (
-                (1 + self.kθ) * θf
-                + self.ky * offset
-                + self.ki_θ * self.θf_int
-                + self.ki_y * self.offset_int
-            )
-            # self.inc_sign = np.sign(θp)
-            # self.converge = False
+            # relative to pathdir
+            θp = (1 + self.kθ) * θf + self.ky * offset
+            print(f"θf term = {(1 + self.kθ) * θf}, off term = {self.ky * offset}")
 
         self.θp = util.wrap_to_pi(θp)
-        print(f"θp = {self.θp}")
+        # print(f"θp = {self.θp}")
 
-        # pushing velocity
+        # pushing direction
         pushdir = util.rot2d(self.θp) @ pathdir
 
         # avoid the obstacles
@@ -360,4 +325,4 @@ class PushController:
                     pushdir = np.sign(pushdir @ perp) * perp
                     # print(f"original = {pushdir0}, corrected = {pushdir}")
 
-        return speed * pushdir
+        return self.speed * pushdir

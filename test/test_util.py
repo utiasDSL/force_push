@@ -10,6 +10,11 @@ def test_signed_angle_ccw():
     θ = fp.signed_angle(a, b)
     assert np.isclose(θ, np.pi / 2)
 
+    a = np.array([np.cos(np.pi / 4), np.sin(np.pi / 4)])
+    b = np.array([np.cos(3 * np.pi / 4), np.sin(3 * np.pi / 4)])
+    θ = fp.signed_angle(a, b)
+    assert np.isclose(θ, np.pi / 2)
+
 
 def test_signed_angle_cw():
     a = np.array([1, 0])
@@ -18,11 +23,12 @@ def test_signed_angle_cw():
     assert np.isclose(θ, -np.pi / 2)
 
 
-def test_signed_angle_cw():
-    a = np.array([np.cos(np.pi / 4), np.sin(np.pi / 4)])
-    b = np.array([np.cos(3 * np.pi / 4), np.sin(3 * np.pi / 4)])
-    θ = fp.signed_angle(a, b)
-    assert np.isclose(θ, np.pi / 2)
+def test_signed_angle_through_pi():
+    x = np.array([1, 0])
+    a = fp.rot2d(3 * np.pi / 4) @ x
+    b = fp.rot2d(-3 * np.pi / 4) @ x
+    assert np.isclose(fp.signed_angle(a, b), np.pi / 2)
+    assert np.isclose(fp.signed_angle(b, a), -np.pi / 2)
 
 
 def test_wrap_to_pi():

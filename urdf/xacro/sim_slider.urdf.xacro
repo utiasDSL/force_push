@@ -1,0 +1,230 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot name="sim_slider" xmlns:xacro="http://wiki.ros.org/xacro">
+  <material name="red">
+    <color rgba="0.8 0.0 0.0 1.0"/>
+  </material>
+  <material name="black">
+    <color rgba="0.0 0.0 0.0 1.0"/>
+  </material>
+
+  <link name="base_link">
+	 <inertial>
+     <mass value="0.0001"/>
+     <inertia ixx="1.0" ixy="0" ixz="0" iyy="1.0" iyz="0" izz="1.0"/>
+     <origin rpy="0 0 0" xyz="0 0 0"/>
+    </inertial>
+  </link>
+
+	<joint name="slider_joint_x" type="prismatic">
+    <parent link="base_link"/>
+    <child link="dummy_link1"/>
+    <axis xyz="1 0 0"/>
+    <origin rpy="0 0 0" xyz="0 0 0.06"/>
+    <limit effort="0" velocity="1000.0"/>
+  </joint>
+
+	<link name="dummy_link1">
+	 <inertial>
+     <mass value="0.000"/>
+     <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+     <origin rpy="0 0 0" xyz="0 0 0"/>
+    </inertial>
+  </link>
+
+	<joint name="slider_joint_y" type="prismatic">
+    <parent link="dummy_link1"/>
+    <child link="dummy_link2"/>
+    <axis xyz="0 1 0"/>
+    <origin rpy="0 0 0" xyz="0 0 0"/>
+    <limit effort="0" velocity="1000.0"/>
+  </joint>
+
+	<link name="dummy_link2">
+	 <inertial>
+     <mass value="0.000"/>
+     <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+     <origin rpy="0 0 0" xyz="0 0 0"/>
+    </inertial>
+  </link>
+
+	<joint name="slider_joint_z" type="prismatic">
+    <parent link="dummy_link2"/>
+    <child link="dummy_link3"/>
+    <axis xyz="0 0 1"/>
+    <origin rpy="0 0 0" xyz="0 0 0"/>
+    <limit effort="0" velocity="1000.0"/>
+    <!-- <dynamics damping="0" friction="0"/> -->
+  </joint>
+
+	<link name="dummy_link3">
+	 <inertial>
+     <mass value="0.000"/>
+     <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+     <origin rpy="0 0 0" xyz="0 0 0"/>
+    </inertial>
+  </link>
+
+	<joint name="slider_joint_yaw" type="revolute">
+    <parent link="dummy_link3"/>
+    <child link="slider_link"/>
+    <axis xyz="0 0 1"/>
+    <origin rpy="0 0 0" xyz="0 0 0"/>
+    <limit effort="0" velocity="1000.0"/>
+    <dynamics damping="0" friction="0.0"/>
+  </joint>
+
+	<!-- <joint name="slider_joint_yaw" type="planar"> -->
+  <!--   <parent link="dummy_link3"/> -->
+  <!--   <child link="slider_link"/> -->
+  <!--   <axis xyz="0 0 1"/> -->
+  <!--   <origin rpy="0 0 0" xyz="0 0 0"/> -->
+  <!--   &#60;&#33;&#45;&#45; <limit effort="0" velocity="1000.0"/> &#45;&#45;&#62; -->
+  <!--   &#60;&#33;&#45;&#45; <dynamics damping="0" friction="0.0"/> &#45;&#45;&#62; -->
+  <!-- </joint> -->
+
+  <link name="slider_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <mass value="1"/>
+      <inertia ixx="1"  ixy="0"  ixz="0" iyy="1" iyz="0" izz="1" />
+    </inertial>
+
+    <visual>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <box size="1.0 1.0 0.12"/>
+         <!-- <cylinder radius="0.5" length="0.12"/> -->
+      </geometry>
+      <material name="red"/>
+    </visual>
+
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <box size="1.0 1.0 0.12"/>
+         <!-- <cylinder radius="0.5" length="0.12"/> -->
+      </geometry>
+    </collision>
+  </link>
+
+	<!-- <joint name="slider_foot1_joint" type="fixed"> -->
+  <!--   <parent link="slider_link"/> -->
+  <!--   <child link="slider_foot1_link"/> -->
+  <!--   <axis xyz="0 0 1"/> -->
+  <!--   <origin rpy="0 0 0" xyz="0 0 -0.07"/> -->
+  <!-- </joint> -->
+
+  <!-- <link name="slider_foot1_link"> -->
+  <!--   <inertial> -->
+  <!--     <origin rpy="0 0 0" xyz="0 0 0"/> -->
+  <!--     <mass value="0.01"/> -->
+  <!--     <inertia ixx="1"  ixy="0"  ixz="0" iyy="1" iyz="0" izz="1" /> -->
+  <!--   </inertial> -->
+  <!--  -->
+  <!--   <visual> -->
+  <!--     <origin rpy="0 0 0" xyz="0 0 0"/> -->
+  <!--     <geometry> -->
+  <!--       <sphere radius="0.01"/> -->
+  <!--     </geometry> -->
+  <!--     <material name="red"/> -->
+  <!--   </visual> -->
+  <!--  -->
+  <!--   <collision> -->
+  <!--     <origin rpy="0 0 0" xyz="0 0 0"/> -->
+  <!--     <geometry> -->
+  <!--       <sphere radius="0.01"/> -->
+  <!--     </geometry> -->
+  <!--   </collision> -->
+  <!-- </link> -->
+
+	<!-- <joint name="slider_foot2_joint" type="fixed"> -->
+  <!--   <parent link="slider_link"/> -->
+  <!--   <child link="slider_foot2_link"/> -->
+  <!--   <axis xyz="0 0 1"/> -->
+  <!--   <origin rpy="0 0 0" xyz="0.5 -0.5 -0.07"/> -->
+  <!-- </joint> -->
+  <!--  -->
+  <!-- <link name="slider_foot2_link"> -->
+  <!--   <inertial> -->
+  <!--     <origin rpy="0 0 0" xyz="0 0 0"/> -->
+  <!--     <mass value="0.01"/> -->
+  <!--     <inertia ixx="1"  ixy="0"  ixz="0" iyy="1" iyz="0" izz="1" /> -->
+  <!--   </inertial> -->
+  <!--  -->
+  <!--   <visual> -->
+  <!--     <origin rpy="0 0 0" xyz="0 0 0"/> -->
+  <!--     <geometry> -->
+  <!--       <sphere radius="0.01"/> -->
+  <!--     </geometry> -->
+  <!--     <material name="red"/> -->
+  <!--   </visual> -->
+  <!--  -->
+  <!--   <collision> -->
+  <!--     <origin rpy="0 0 0" xyz="0 0 0"/> -->
+  <!--     <geometry> -->
+  <!--       <sphere radius="0.01"/> -->
+  <!--     </geometry> -->
+  <!--   </collision> -->
+  <!-- </link> -->
+  <!--  -->
+	<!-- <joint name="slider_foot3_joint" type="fixed"> -->
+  <!--   <parent link="slider_link"/> -->
+  <!--   <child link="slider_foot3_link"/> -->
+  <!--   <axis xyz="0 0 1"/> -->
+  <!--   <origin rpy="0 0 0" xyz="-0.5 -0.5 -0.07"/> -->
+  <!-- </joint> -->
+  <!--  -->
+  <!-- <link name="slider_foot3_link"> -->
+  <!--   <inertial> -->
+  <!--     <origin rpy="0 0 0" xyz="0 0 0"/> -->
+  <!--     <mass value="0.01"/> -->
+  <!--     <inertia ixx="1"  ixy="0"  ixz="0" iyy="1" iyz="0" izz="1" /> -->
+  <!--   </inertial> -->
+  <!--  -->
+  <!--   <visual> -->
+  <!--     <origin rpy="0 0 0" xyz="0 0 0"/> -->
+  <!--     <geometry> -->
+  <!--       <sphere radius="0.01"/> -->
+  <!--     </geometry> -->
+  <!--     <material name="red"/> -->
+  <!--   </visual> -->
+  <!--  -->
+  <!--   <collision> -->
+  <!--     <origin rpy="0 0 0" xyz="0 0 0"/> -->
+  <!--     <geometry> -->
+  <!--       <sphere radius="0.01"/> -->
+  <!--     </geometry> -->
+  <!--   </collision> -->
+  <!-- </link> -->
+  <!--  -->
+	<!-- <joint name="slider_foot4_joint" type="fixed"> -->
+  <!--   <parent link="slider_link"/> -->
+  <!--   <child link="slider_foot4_link"/> -->
+  <!--   <axis xyz="0 0 1"/> -->
+  <!--   <origin rpy="0 0 0" xyz="-0.5 0.5 -0.07"/> -->
+  <!-- </joint> -->
+  <!--  -->
+  <!-- <link name="slider_foot4_link"> -->
+  <!--   <inertial> -->
+  <!--     <origin rpy="0 0 0" xyz="0 0 0"/> -->
+  <!--     <mass value="0.01"/> -->
+  <!--     <inertia ixx="1"  ixy="0"  ixz="0" iyy="1" iyz="0" izz="1" /> -->
+  <!--   </inertial> -->
+  <!--  -->
+  <!--   <visual> -->
+  <!--     <origin rpy="0 0 0" xyz="0 0 0"/> -->
+  <!--     <geometry> -->
+  <!--       <sphere radius="0.01"/> -->
+  <!--     </geometry> -->
+  <!--     <material name="red"/> -->
+  <!--   </visual> -->
+  <!--  -->
+  <!--   <collision> -->
+  <!--     <origin rpy="0 0 0" xyz="0 0 0"/> -->
+  <!--     <geometry> -->
+  <!--       <sphere radius="0.01"/> -->
+  <!--     </geometry> -->
+  <!--   </collision> -->
+  <!-- </link> -->
+
+</robot>

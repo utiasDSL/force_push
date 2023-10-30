@@ -64,10 +64,11 @@ class WrenchEstimator:
         if bias is None:
             bias = np.zeros(6)
         self.bias = bias
-        self.wrench = np.zeros(6)
-        self.wrench_filtered = np.zeros(6)
 
-        self.smoother = mm.ExponentialSmoother(τ=τ, x0=np.zeros(6))
+        self.wrench = None
+        self.wrench_filtered = None
+
+        self.smoother = mm.ExponentialSmoother(τ=τ, x0=None)
 
         # publish for logging purposes
         self.publish = publish
@@ -82,8 +83,14 @@ class WrenchEstimator:
         self.prev_time = rospy.Time.now().to_sec()
         self.wrench_sub = rospy.Subscriber(topic_name, WrenchStamped, self._wrench_cb)
 
+    def ready(self):
+        return self.wrench is not None and self.wrench_filtered is not None
+
     def _publish_wrenches(self):
         """Publish raw and filtered wrenches."""
+        if not self.ready():
+            return
+
         now = rospy.Time.now()
 
         msg_raw = WrenchStamped()

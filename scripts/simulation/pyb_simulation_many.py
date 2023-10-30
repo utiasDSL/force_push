@@ -42,7 +42,6 @@ Kθ = 0.3
 KY = 0.1
 KF = 0.003
 CON_INC = 0.1
-DIV_INC = 0.1
 
 FORCE_MIN_THRESHOLD = 1
 FORCE_MAX_THRESHOLD = 50
@@ -218,6 +217,7 @@ def setup_circle_slider(position):
 def setup_straight_path():
     obstacles = None
     return fp.SegmentPath.line(direction=[1, 0]), obstacles
+    # return fp.SegmentPath.line(direction=fp.rot2d(np.pi / 4) @ [1, 0]), obstacles
 
 
 def setup_corner_path(corridor=False):
@@ -349,10 +349,8 @@ def main():
         ky=KY,
         path=path,
         con_inc=CON_INC,
-        div_inc=DIV_INC,
         obstacles=obstacles,
         force_min=FORCE_MIN_THRESHOLD,
-        force_max=np.inf,
         min_dist=EE_OBS_MIN_DIST,
     )
     force_controller = fp.AdmittanceController(
@@ -371,7 +369,6 @@ def main():
         "ky": KY,
         "kf": KF,
         "con_inc": CON_INC,
-        "div_inc": DIV_INC,
         "force_min": FORCE_MIN_THRESHOLD,
         "force_max": FORCE_MAX_THRESHOLD,
         "ee_obs_min_dist": EE_OBS_MIN_DIST,

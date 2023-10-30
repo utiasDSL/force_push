@@ -10,7 +10,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pybullet as pyb
 import pyb_utils
-from spatialmath.base import rotz
+from spatialmath.base import rotx, roty, rotz
 
 import mobile_manipulation_central as mm
 import force_push as fp
@@ -20,13 +20,14 @@ import IPython
 
 TIMESTEP = 0.01
 TOOL_LINK_NAME = "contact_ball"
-DURATION = 100
+DURATION = 300
 
 CONTACT_MU = 0.5
 SURFACE_MU = 0.25
 OBSTACLE_MU = 0.25
 
-STRAIGHT_DIRECTION = fp.rot2d(np.deg2rad(125)) @ np.array([1, 0])
+STRAIGHT_ANGLE = np.deg2rad(0)
+STRAIGHT_DIRECTION = fp.rot2d(STRAIGHT_ANGLE) @ np.array([1, 0])
 
 PUSH_SPEED = 0.1
 
@@ -36,7 +37,6 @@ KY = 0.3
 Kω = 1
 Kf = 0.003  # N / (m/s)
 CON_INC = 0.1
-DIV_INC = 0.1
 
 # only control based on force when it is high enough (i.e. in contact with
 # something)
@@ -48,7 +48,7 @@ VEL_UB = np.array([0.5, 0.5, 0.25])
 VEL_LB = -VEL_UB
 
 # slider params
-SLIDER_MASS = 1.0
+SLIDER_MASS = 10.0
 BOX_SLIDER_HALF_EXTENTS = (0.5, 0.5, 0.2)
 CIRCLE_SLIDER_RADIUS = 0.5
 CIRCLE_SLIDER_HEIGHT = 0.4
@@ -98,6 +98,7 @@ def main():
     # load initial joint configuration
     if args.environment == "straight":
         home = mm.load_home_position(name="pushing_diag", path=fp.HOME_CONFIG_FILE)
+        home[2] = STRAIGHT_ANGLE
     else:
         home = mm.load_home_position(name="pushing_corner", path=fp.HOME_CONFIG_FILE)
 
@@ -166,12 +167,13 @@ def main():
 
     # set friction and contact properties
     pyb.changeDynamics(sim.ground_uid, -1, lateralFriction=SURFACE_MU)
-    pyb.changeDynamics(robot.uid, robot.tool_idx, lateralFriction=CONTACT_MU)
+    pyb.changeDynamics(robot.uid, robot.tool_idx, lateralFriction=CONTACT_MU, contactDamping=SLIDER_CONTACT_DAMPING, contactStiffness=SLIDER_CONTACT_STIFFNESS)
     pyb.changeDynamics(
         slider.uid,
         -1,
         contactDamping=SLIDER_CONTACT_DAMPING,
         contactStiffness=SLIDER_CONTACT_STIFFNESS,
+        # anisotropicFriction=(1, 1, 0),
     )
 
     # controllers
@@ -190,9 +192,7 @@ def main():
         ky=KY,
         path=path,
         con_inc=CON_INC,
-        div_inc=DIV_INC,
         force_min=FORCE_MIN_THRESHOLD,
-        force_max=np.inf,
     )
 
     # admittance control to comply with large forces
@@ -211,6 +211,8 @@ def main():
     cmd_vels = []
     forces = []
 
+    smoother = mm.ExponentialSmoother(τ=0.05, x0=np.zeros(3))
+
     t = 0
     while t <= DURATION:
         q, _ = robot.get_joint_states()
@@ -219,11 +221,29 @@ def main():
         # r_cw_w = r_bw_w - C_wb @ r_bc_b
         r_cw_w = robot.get_link_frame_pose()[0][:2]
 
+        C_wc = robot.get_link_frame_pose(as_rotation_matrix=True)[1]
+
         info = path.compute_closest_point_info(r_cw_w)
         pathdir, offset = info.direction, info.offset
         f = fp.get_contact_force(robot.uid, slider.uid, robot.tool_idx, -1)
-        print(f)
-        f = f[:2]
+
+        C_wb3 = rotz(q[2])
+        C_bc = C_wb3.T @ C_wc
+
+        f_actual = f.copy()
+        f_w = f.copy()
+        # f_corrupt[2] = -10
+        f_c = C_wc.T @ f_w
+        f_b = C_bc @ f_c
+        f_corrupt_b = rotz(np.deg2rad(1.3)) @ f_b
+        f_corrupt_w = C_wb3 @ f_corrupt_b
+        f_corrupt = smoother.update(f_corrupt_w, dt=sim.timestep)
+        print(f"f corrupt = {f_corrupt[:2]}")
+        print(f"f actual = {f_actual[:2]}")
+        f = f_corrupt[:2]
+
+        # IPython.embed()
+        # return
         θd = np.arctan2(pathdir[1], pathdir[0])
         # print(f"pc = {info.point}")
         # print(f"pathdir = {pathdir}")
@@ -262,6 +282,12 @@ def main():
         # frame, but the real mobile base takes commands in the body frame
         # (this is just an easy 2D rotation away)
         robot.command_velocity(u)
+        # slider.set_velocity(linear=[-0.1, 0, 0])
+
+        # if t > 5:
+        #     pts = pyb_utils.getContactPoints(slider.uid, sim.ground_uid)
+        #     IPython.embed()
+        #     return
 
         # step the sim forward in time
         t = sim.step(t)

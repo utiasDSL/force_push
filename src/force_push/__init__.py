@@ -20,3 +20,4 @@ rospack = rospkg.RosPack()
 HOME_CONFIG_FILE = Path(rospack.get_path("force_push")) / "config/home.yaml"
 CONFIG_DIR_PATH = Path(rospack.get_path("force_push")) / "config"
 CONTACT_POINT_CALIBRATION_FILE = CONFIG_DIR_PATH / "contact_point_calibration.yaml"
+FORCE_ORN_CALIBRATION_FILE = CONFIG_DIR_PATH / "force_orn_calibration.yaml"

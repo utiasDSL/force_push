@@ -205,6 +205,7 @@ def main():
         time.sleep(3.0)
 
     cmd_vel = np.zeros(3)
+    dist_from_start = 0
 
     t = rospy.Time.now().to_sec()
     while not rospy.is_shutdown():
@@ -225,21 +226,22 @@ def main():
         f = -f_w[:2]
 
         # direction of the path
-        # TODO we should actually be tracking the minimum distance here, which
-        # is annoying
-        info = path.compute_closest_point_info(r_cw_w)
-        pathdir, offset = info.direction, info.offset
-        θd = np.arctan2(pathdir[1], pathdir[0])
-        print(f"offset = {offset}")
+        # TODO we need to track the min dist from start here, which is kind of
+        # annoying since it is already present inside the push controller
+        info = path.compute_closest_point_info(r_cw_w, min_dist_from_start=dist_from_start)
+        dist_from_start = max(info.distance_from_start, dist_from_start)
+        θd = np.arctan2(info.direction[1], info.direction[0])
+        print(f"offset = {info.offset}")
 
         # in open-loop mode we just follow the path rather than controlling to
         # push the slider
         if open_loop:
-            θp = θd - KY * offset
+            θp = θd - KY * info.offset
             v_ee_cmd = PUSH_SPEED * fp.rot2d(θp) @ [1, 0]
         else:
             v_ee_cmd = push_controller.update(r_cw_w, f)
             v_ee_cmd = force_controller.update(force=f, v_cmd=v_ee_cmd)
+            assert np.isclose(push_controller.dist_from_start, dist_from_start)
 
         # desired angular velocity is calculated to align the robot with the
         # current path direction

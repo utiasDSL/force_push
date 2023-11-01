@@ -304,7 +304,7 @@ class PushController:
         else:
             # relative to pathdir
             θp = (1 + self.kθ) * θf + self.ky * offset
-            print(f"θf term = {(1 + self.kθ) * θf}, off term = {self.ky * offset}")
+            # print(f"θf term = {(1 + self.kθ) * θf}, off term = {self.ky * offset}")
 
         self.θp = util.wrap_to_pi(θp)
         # print(f"θp = {self.θp}")

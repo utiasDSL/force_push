@@ -62,9 +62,9 @@ PUSHER_INIT_REL_POS = np.array([-0.5, 0, 0])
 
 EE_OBS_MIN_DIST = 0.1
 
-# if the closest distance between pusher and slider exceeds this amount, then
-# the trial is considered to have failed
-FAILURE_DIST = 1.0
+# if the distance between pusher and slider exceeds this amount, then the trial
+# is considered to have failed
+FAILURE_DIST = 2.0
 
 # trial fails if no force occurs for this many seconds
 FAILURE_TIME = 20.0
@@ -119,7 +119,11 @@ def simulate(sim, pusher, slider, push_controller, force_controller):
                 first_contact_time = t
 
         if i % CTRL_STEP == 0:
-            force = pusher.get_contact_force([slider.uid])
+            # force = pusher.get_contact_force([slider.uid])
+            # force applied on slider
+            points = pyb_utils.getContactPoints(slider.uid, pusher.uid, -1, pusher.tool_idx)
+            assert len(points) <= 1
+            force = pyb_utils.get_points_contact_wrench(points)[0]
             force = smoother.update(force, dt=CTRL_STEP * sim.timestep)
             f = force[:2]
 
@@ -134,11 +138,6 @@ def simulate(sim, pusher, slider, push_controller, force_controller):
             pusher.command_velocity(v_cmd)
 
             # contact info
-            # TODO may be able to fold this into the getClosestPoints call
-            # below
-            points = pyb_utils.getContactPoints(
-                pusher.uid, slider.uid, pusher.tool_idx, -1
-            )
             in_contact = len(points) > 0
 
             # record information
@@ -152,8 +151,9 @@ def simulate(sim, pusher, slider, push_controller, force_controller):
             ts.append(t)
 
             # check if the trial has failed (pusher has lost the slider)
-            pts = pyb_utils.getClosestPoints(pusher.uid, slider.uid, distance=10)
-            if pts[0].contactDistance > FAILURE_DIST:
+            # pts = pyb_utils.getClosestPoints(pusher.uid, slider.uid, distance=10)
+            # if pts[0].contactDistance > FAILURE_DIST:
+            if np.linalg.norm(r_pw_w - r_sw_w[:2]) > FAILURE_DIST:
                 success = False
                 print("Pusher and slider too far apart!")
                 break

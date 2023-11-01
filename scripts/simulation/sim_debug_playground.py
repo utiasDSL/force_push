@@ -19,13 +19,13 @@ import IPython
 
 
 USE_URDF_SLIDER = False
-COMMAND_SLIDER = True
+COMMAND_SLIDER = False
 STOP_AT_TIME = 5
 USE_BOX_GROUND = False
 
 TIMESTEP = 0.01
 TOOL_LINK_NAME = "contact_ball"
-DURATION = 100
+DURATION = 50
 
 CONTACT_MU = 0.5
 SURFACE_MU = 0.25
@@ -222,7 +222,7 @@ def main():
     pusher_urdf_path = make_pusher_urdf_file()
     pusher = fp.BulletPusher(
         pusher_urdf_path,
-        np.append(r_cw_w + [0, 0.4], 0),
+        np.append(r_cw_w + [0, 0], 0),
         mu=CONTACT_MU,
     )
     # pusher.set_joint_friction_forces([0, 0])
@@ -357,9 +357,9 @@ def main():
         contactStiffness=SLIDER_CONTACT_STIFFNESS,
     )
 
-    pyb.setPhysicsEngineParameter(
-        enableConeFriction=1, constraintSolverType=0,
-    )
+    # pyb.setPhysicsEngineParameter(
+    #     enableConeFriction=1, numSolverIterations=500,
+    # )
 
     # pyb.changeDynamics(pusher.uid, pusher.tool_idx, collisionMargin=0)
 
@@ -502,7 +502,7 @@ def main():
                 slider.command_velocity([0.1, 0.1, 0])
                 # slider.command_effort([2, 2, 0])
             else:
-                slider.set_velocity(linear=[0, -0.1, 0])
+                slider.set_velocity(linear=[0.1, 0.1, 0])
                 # slider.apply_wrench(force=[2.5, 0, 0], frame=pyb.LINK_FRAME)
         pts = pyb_utils.getContactPoints(slider.uid, sim.ground_uid)
         ff_sum = 0

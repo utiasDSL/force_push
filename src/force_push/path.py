@@ -126,11 +126,11 @@ class CircularArcSegment:
         if np.allclose(p, self.center):
             # at the center point all points on the arc are equally close; take
             # the one closest to the allowable start of the arc
-            # closest = self._rotate_from_start(min_angle_from_start)
-            # dist_from_start = min_dist_from_start
+            closest = self._rotate_from_start(min_angle_from_start)
+            dist_from_start = min_dist_from_start
             # TODO for consistency with previous work
-            closest = self.v2
-            dist_from_start = self.length
+            # closest = self.v2
+            # dist_from_start = self.length
         else:
             # compute closest point on the full circle
             c0 = self.radius * util.unit(p - self.center)

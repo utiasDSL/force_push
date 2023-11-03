@@ -50,6 +50,7 @@ FORCE_MIN_THRESHOLD = 5
 FORCE_MAX_THRESHOLD = 50
 
 # time constant for force filter
+# TODO increase back to original level?
 # FILTER_TIME_CONSTANT = 0.1
 FILTER_TIME_CONSTANT = 0.05
 
@@ -93,6 +94,7 @@ def main():
     with open(fp.FORCE_ORN_CALIBRATION_FILE) as f:
         data = yaml.safe_load(f)
         ΔC = UQ(s=data["w"], v=[data["x"], data["y"], data["z"]]).R
+    # ΔC = np.eye(3)
 
     # wait until robot feedback has been received
     robot = mm.RidgebackROSInterface()
@@ -167,8 +169,8 @@ def main():
         "ky": KY,
         "kω": Kω,
         "kf": KF,
+        "ΔC": ΔC,
         "con_inc": CON_INC,
-        "div_inc": DIV_INC,
         "vel_ub": VEL_UB,
         "vel_lb": VEL_LB,
         "force_min": FORCE_MIN_THRESHOLD,
@@ -231,12 +233,13 @@ def main():
         info = path.compute_closest_point_info(r_cw_w, min_dist_from_start=dist_from_start)
         dist_from_start = max(info.distance_from_start, dist_from_start)
         θd = np.arctan2(info.direction[1], info.direction[0])
-        print(f"offset = {info.offset}")
+        # print(f"offset = {info.offset}")
 
         # in open-loop mode we just follow the path rather than controlling to
         # push the slider
         if open_loop:
             θp = θd - KY * info.offset
+            print(f"θd = {θd}, θp = {θp}")
             v_ee_cmd = PUSH_SPEED * fp.rot2d(θp) @ [1, 0]
         else:
             v_ee_cmd = push_controller.update(r_cw_w, f)

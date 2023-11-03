@@ -9,7 +9,7 @@ import yaml
 import numpy as np
 import rosbag
 import matplotlib.pyplot as plt
-from spatialmath.base import q2r
+from spatialmath.base import q2r, rotz
 
 import mobile_manipulation_central as mm
 from mobile_manipulation_central import ros_utils
@@ -37,10 +37,6 @@ def main():
     with open(param_path, "rb") as f:
         params = pickle.load(f)
 
-    if args.slider == "ThingBarrel":
-        with open(fp.CONFIG_DIR_PATH / "barrel_offset_calibration.yaml") as f:
-            r_co_o = yaml.safe_load(f)["r_co_o"]
-
     if params["environment"] == "straight":
         home = mm.load_home_position(name="pushing_diag", path=fp.HOME_CONFIG_FILE)
     elif params["environment"] == "straight_rev":
@@ -51,6 +47,12 @@ def main():
     model = mm.MobileManipulatorKinematics()
     ft_idx = model.get_link_index("ft_sensor")
     q_arm = home[3:]
+
+    # compute rotate from force sensor to base
+    q_nom = np.concatenate((np.zeros(3), q_arm))
+    model.forward(q_nom)
+    C_bf = model.link_pose(link_idx=ft_idx, rotation_matrix=True)[1]
+    ΔC = params["ΔC"]
 
     r_bc_b = params["r_bc_b"]
 
@@ -92,17 +94,23 @@ def main():
 
     # parse wrenches to find the first time when contact force is above
     # minimum force threshold, indicating contact has started
-    # TODO we need to rotate the wrenches into the correct frame
     wrench_msgs = [msg for _, msg, _ in bag.read_messages("/wrench/filtered")]
     wrench_times, wrenches = ros_utils.parse_wrench_stamped_msgs(
         wrench_msgs, normalize_time=False
     )
-    wrench_idx = np.argmax(
-        np.linalg.norm(wrenches[:, :2], axis=1) >= params["force_min"]
-    )
     wrench_times -= t0
 
-    print(f"First contact wrench index = {wrench_idx}")
+    # align the messages so we can put them align them with the world frame
+    wrenches_aligned = np.array(
+        ros_utils.interpolate_list(rb_times, wrench_times, wrenches)
+    )
+    f_ws = np.zeros((wrenches_aligned.shape[0], 3))
+    for i in range(f_ws.shape[0]):
+        C_wb = rotz(qs_rb[i, 2])
+        # negative to switch to applied force
+        f_ws[i, :] = -C_wb @ ΔC @ C_bf @ wrenches_aligned[i, :3]
+    force_idx = np.argmax(np.linalg.norm(f_ws[:, :2], axis=1) >= params["force_min"])
+    print(f"First contact wrench index = {force_idx}")
 
     # slider
     slider_topic = ros_utils.vicon_topic_name(args.slider)
@@ -112,16 +120,7 @@ def main():
     )
     slider_times -= t0
     slider_positions = slider_poses[:, :3]
-
-    # for the barrel we have to take the offset into account (the offset is
-    # from the Vicon object centroid to the fitted center of the barrel)
-    r_sw_ws = slider_positions
-    if args.slider == "ThingBarrel":
-        slider_orns = slider_poses[:, 3:]
-        for i in range(slider_poses.shape[0]):
-            C_wo = q2r(slider_orns[i, :], order="xyzs")
-            r_sw_ws[i, :] = slider_positions[i, :] + C_wo @ r_co_o
-    r_sw_ws = r_sw_ws[:, :2] - r_cw_w0
+    r_sw_ws = slider_positions[:, :2] - r_cw_w0
 
     # path
     # need to normalize to r_cw_w0 origin like everything else here
@@ -207,10 +206,10 @@ def main():
     plt.grid()
 
     plt.figure()
-    plt.plot(wrench_times, wrenches[:, 0], label="fx")
-    plt.plot(wrench_times, wrenches[:, 1], label="fy")
-    plt.plot(wrench_times, wrenches[:, 2], label="fz")
-    plt.plot(wrench_times, np.linalg.norm(wrenches[:, :2], axis=1), label="fxy")
+    plt.plot(rb_times, f_ws[:, 0], label="fx")
+    plt.plot(rb_times, f_ws[:, 1], label="fy")
+    plt.plot(rb_times, f_ws[:, 2], label="fz")
+    plt.plot(rb_times, np.linalg.norm(f_ws[:, :2], axis=1), label="fxy")
     plt.xlabel("Time [s]")
     plt.ylabel("Contact force [N]")
     plt.title("Contact forces vs. time")

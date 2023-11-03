@@ -84,9 +84,6 @@ def main():
     while not rospy.is_shutdown() and t - t0 < DURATION:
         # q = np.concatenate((robot.q, q_arm))
         q = np.concatenate((np.zeros(3), q_arm))
-        r_bw_w = q[:2]
-        C_wb = fp.rot2d(q[2])
-        r_cw_w = r_bw_w - C_wb @ r_bc_b
 
         model.forward(q)
         C_wf = model.link_pose(link_idx=ft_idx, rotation_matrix=True)[1]

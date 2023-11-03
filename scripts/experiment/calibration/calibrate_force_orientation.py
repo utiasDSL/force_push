@@ -85,11 +85,6 @@ def main():
     out_data = {"x": float(Q[0]), "y": float(Q[1]), "z": float(Q[2]), "w": float(Q[3])}
     print(yaml.dump(out_data))
 
-    f_bs = np.array([C_bfs[i, :, :] @ f_fs[i, :] for i in range(n)])
-    f_bs2 = np.array([C_normed @ C_bfs[i, :, :] @ f_fs[i, :] for i in range(n)])
-
-    IPython.embed()
-
     # save parameters to a file for use in control
     if args.save is not None:
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")

@@ -146,7 +146,9 @@ def main():
     )
 
     # admittance control to comply with large forces
-    force_controller = fp.AdmittanceController(kf=KF, force_max=FORCE_MAX_THRESHOLD)
+    force_controller = fp.AdmittanceController(
+        kf=KF, force_max=FORCE_MAX_THRESHOLD, vel_max=PUSH_SPEED
+    )
 
     # generate joint commands to realize desired EE velocity
     robot_controller = fp.RobotController(
@@ -210,7 +212,16 @@ def main():
     dist_from_start = 0
 
     t = rospy.Time.now().to_sec()
+    t0 = t
+    ACCELERATION_DURATION = 1.0
+    ACCELERATION_MAGNITUDE = PUSH_SPEED / ACCELERATION_DURATION
     while not rospy.is_shutdown():
+        # short acceleration phase to avoid excessive forces
+        if t - t0 < ACCELERATION_DURATION:
+            speed = (t - t0) * ACCELERATION_MAGNITUDE
+        else:
+            speed = PUSH_SPEED
+        push_controller.speed = speed
 
         q = np.concatenate((robot.q, q_arm))
         r_bw_w = q[:2]
@@ -230,7 +241,9 @@ def main():
         # direction of the path
         # TODO we need to track the min dist from start here, which is kind of
         # annoying since it is already present inside the push controller
-        info = path.compute_closest_point_info(r_cw_w, min_dist_from_start=dist_from_start)
+        info = path.compute_closest_point_info(
+            r_cw_w, min_dist_from_start=dist_from_start
+        )
         dist_from_start = max(info.distance_from_start, dist_from_start)
         θd = np.arctan2(info.direction[1], info.direction[0])
         # print(f"offset = {info.offset}")
@@ -240,7 +253,7 @@ def main():
         if open_loop:
             θp = θd - KY * info.offset
             print(f"θd = {θd}, θp = {θp}")
-            v_ee_cmd = PUSH_SPEED * fp.rot2d(θp) @ [1, 0]
+            v_ee_cmd = speed * fp.rot2d(θp) @ [1, 0]
         else:
             v_ee_cmd = push_controller.update(r_cw_w, f)
             v_ee_cmd = force_controller.update(force=f, v_cmd=v_ee_cmd)

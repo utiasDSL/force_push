@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Print positions of markers indicating location of wall obstacle."""
+"""Print positions of markers indicating location of wall obstacle.
+
+Relative to the initial contact point (i.e., the start of the path), we want
+the wall markers located at (-3.5, 4.25), (-2.0, 4.25), (-0.5, 4.25), and (1.0, 4.25).
+"""
 import yaml
 
 import rospy
@@ -14,6 +18,9 @@ import IPython
 
 
 RATE = 100  # Hz
+
+# True to use the real robot position, False to use the exact home position.
+USE_HOME = False
 
 
 def is_inside_polygon(vertices, point):
@@ -59,7 +66,7 @@ class WallPositionCalibrator:
 def main():
     np.set_printoptions(precision=6, suppress=True)
 
-    rospy.init_node("calibrate_wall_position_node", disable_signals=True)
+    rospy.init_node("calibrate_wall_position_node")
     rate = rospy.Rate(RATE)
 
     box_vertices = np.array([[2.2, 2.0], [2.2, 2.5], [-3.7, 2.5], [-3.7, 2.0]])
@@ -68,14 +75,21 @@ def main():
     with open(fp.CONTACT_POINT_CALIBRATION_FILE) as f:
         r_bc_b = np.array(yaml.safe_load(f)["r_bc_b"])
 
-    robot = mm.RidgebackROSInterface()
-    rate = rospy.Rate(RATE)
-    while not rospy.is_shutdown() and not robot.ready():
-        rate.sleep()
 
-    q = robot.q
-    r_bw_w = q[:2]
-    C_wb = fp.rot2d(q[2])
+    if USE_HOME:
+        q = mm.load_home_position(name="pushing_corner", path=fp.HOME_CONFIG_FILE)[:3]
+    else:
+        robot = mm.RidgebackROSInterface()
+        rate = rospy.Rate(RATE)
+        print("Waiting for robot feedback...")
+        while not rospy.is_shutdown() and not robot.ready():
+             rate.sleep()
+        print("...got it.")
+        q = robot.q
+
+    home = mm.load_home_position(name="pushing_corner", path=fp.HOME_CONFIG_FILE)
+    r_bw_w = home[:2]
+    C_wb = fp.rot2d(home[2])
     r_cw_w = r_bw_w - C_wb @ r_bc_b
 
     calibrator = WallPositionCalibrator(box_vertices, r_cw_w)

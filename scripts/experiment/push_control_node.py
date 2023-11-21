@@ -18,7 +18,7 @@ import IPython
 
 
 # Datasheet claims the F/T sensor output rate is 100Hz, though rostopic says
-# more like ~62Hz
+# more like ~63Hz
 RATE = 100  # Hz
 TIMESTEP = 1.0 / RATE
 
@@ -50,8 +50,6 @@ FORCE_MIN_THRESHOLD = 5
 FORCE_MAX_THRESHOLD = 50
 
 # time constant for force filter
-# TODO increase back to original level?
-# FILTER_TIME_CONSTANT = 0.1
 FILTER_TIME_CONSTANT = 0.05
 
 # minimum obstacle distance

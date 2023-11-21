@@ -20,10 +20,11 @@ def compute_simulation_extreme_points(data):
     """
     # compute the final point if the slider moved exactly along the path
     path = data["path"]
-    dist = data["duration"] * data["push_speed"]
-    ideal_final_pos = path.point_at_distance(dist)
+    v = data["push_speed"]
 
     all_r_sw_ws = data["slider_positions"]
+    all_in_contacts = data["in_contacts"]
+    all_times = data["times"]
     num_sims = len(all_r_sw_ws)
 
     # compute distance between actual final points and the ideal one
@@ -33,11 +34,29 @@ def compute_simulation_extreme_points(data):
     max_final_info = ExtremePointInfo(index=0, distance=0, point=[0, 0])
     completion_fractions = []
     for i in range(num_sims):
+
+        first_contact_idx = np.argmax(all_in_contacts[i])
+        t0 = all_times[i][first_contact_idx]
+        tf = all_times[i][-1]
+        duration = tf - t0
+        ideal_dist = v * duration
+
+        # final position if path was tracked exactly the whole time
+        ideal_final_pos = path.point_at_distance(ideal_dist)
+
+        # actual final position
+        # slider starts such that the closest point on the path is the origin
         final_slider_pos = all_r_sw_ws[i][-1, :2]
-        final_dist = np.linalg.norm(ideal_final_pos - final_slider_pos)
-        completion_fractions.append((dist - final_dist) / dist)
+
+        # distance between ideal and actual final positions
+        final_dist_from_ideal = np.linalg.norm(ideal_final_pos - final_slider_pos)
+
+        completion_fractions.append((ideal_dist - final_dist_from_ideal) / ideal_dist)
+
+        # also record the run that has the farthest distance from the ideal
+        # final position
         if final_dist > max_final_info.distance:
-            max_final_info = ExtremePointInfo(i, final_dist, final_slider_pos)
+            max_final_info = ExtremePointInfo(i, final_dist_from_ideal, final_slider_pos)
     completion_fractions = np.array(completion_fractions)
 
     # compute point of maximum deviation from the path (max closest distance)
@@ -46,14 +65,19 @@ def compute_simulation_extreme_points(data):
     max_deviations = []
     with tqdm.tqdm(total=num_sims) as progress:
         for i in range(num_sims):
+
+            # get the maximum deviation for a single run
             max_deviation = ExtremePointInfo(index=0, distance=0, point=[0, 0])
             for k in range(all_r_sw_ws[i].shape[0]):
                 r_sw_w = all_r_sw_ws[i][k, :2]
                 info = path.compute_closest_point_info(r_sw_w)
-                if info.deviation > max_overall_deviation.distance:
-                    max_overall_deviation = ExtremePointInfo(i, info.deviation, r_sw_w)
+
                 if info.deviation > max_deviation.distance:
                     max_deviation = ExtremePointInfo(k, info.deviation, r_sw_w)
+
+                # compare to overall maximum deviation
+                if info.deviation > max_overall_deviation.distance:
+                    max_overall_deviation = ExtremePointInfo(i, info.deviation, r_sw_w)
             max_deviations.append(max_deviation)
             progress.update(1)
 
@@ -66,10 +90,10 @@ def compute_simulation_extreme_points(data):
     }
 
 
-def plot_simulation_results(data):
+def plot_simulation_results(data, plot_forces=False):
     all_r_sw_ws = data["slider_positions"]
     all_forces = data["forces"]
-    ts = data["times"]
+    all_times = data["times"]
     r_dw_ws = data["path_positions"]
 
     Is = np.array([p[0] for p in data["parameters"]])
@@ -108,14 +132,15 @@ def plot_simulation_results(data):
     ax.set_aspect("equal")
     plt.grid()
 
-    # plt.figure()
-    # for i in range(n):
-    #     plt.plot(ts[i], all_forces[i][:, 0], color="r", alpha=0.5)
-    #     plt.plot(ts[i], all_forces[i][:, 1], color="b", alpha=0.5)
-    # plt.grid()
-    # plt.title("Forces vs. time")
-    # plt.xlabel("Time [s]")
-    # plt.ylabel("Force [N]")
+    if plot_forces:
+        plt.figure()
+        for i in range(n):
+            plt.plot(all_times[i], all_forces[i][:, 0], color="r", alpha=0.5)
+            plt.plot(all_times[i], all_forces[i][:, 1], color="b", alpha=0.5)
+        plt.grid()
+        plt.title("Forces vs. time")
+        plt.xlabel("Time [s]")
+        plt.ylabel("Force [N]")
 
 
 def parse_bag_dir(directory):

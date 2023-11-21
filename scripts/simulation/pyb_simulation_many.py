@@ -26,7 +26,6 @@ CTRL_FREQ = 100
 CTRL_STEP = SIM_FREQ // CTRL_FREQ
 
 # seconds
-# DURATION = 180
 DURATION = 300
 
 # friction
@@ -88,7 +87,7 @@ FILTER_TIME_CONSTANT = 0.05
 START_AT_TRIAL = 0
 
 
-def simulate(sim, pusher, slider, push_controller, force_controller):
+def simulate(sim, pusher, slider, push_controller, force_controller, blocks):
     success = True
     r_pw_ws = []
     r_sw_ws = []
@@ -106,7 +105,8 @@ def simulate(sim, pusher, slider, push_controller, force_controller):
     i = 0
     first_contact = False
     first_contact_time = 0
-    while t < first_contact_time + DURATION:
+    max_pen_dist = 0
+    while t <= first_contact_time + DURATION:
 
         # check if first contact has been made: we want to simulate DURATION
         # seconds after this time
@@ -136,6 +136,16 @@ def simulate(sim, pusher, slider, push_controller, force_controller):
             v_cmd = push_controller.update(position=r_pw_w[:2], force=f)
             v_cmd = force_controller.update(force=f, v_cmd=v_cmd)
             pusher.command_velocity(v_cmd)
+
+            # we can use this to check for penetration distance with the
+            # obstacles
+            # if blocks is not None:
+            #     for block in blocks:
+            #         pts = pyb_utils.getContactPoints(slider.uid, block.uid)
+            #         for pt in pts:
+            #             if pt.contactDistance < max_pen_dist:
+            #                 max_pen_dist = pt.contactDistance
+            #                 print(max_pen_dist)
 
             # contact info
             in_contact = len(points) > 0
@@ -216,8 +226,8 @@ def setup_circle_slider(position):
 
 def setup_straight_path():
     obstacles = None
-    return fp.SegmentPath.line(direction=[1, 0]), obstacles
-    # return fp.SegmentPath.line(direction=fp.rot2d(np.pi / 4) @ [1, 0]), obstacles
+    blocks = None
+    return fp.SegmentPath.line(direction=[1, 0]), obstacles, blocks
 
 
 def setup_corner_path(corridor=False):
@@ -240,10 +250,12 @@ def setup_corner_path(corridor=False):
             fp.LineSegment([3.5, 1.5], [3.5, 11.5]),
             fp.LineSegment([6.5, -1.5], [6.5, 11.5]),
         ]
+        blocks = [block1, block2, block3]
     else:
+        blocks = None
         obstacles = None
 
-    return path, obstacles
+    return path, obstacles, blocks
 
 
 def make_urdf_file():
@@ -321,11 +333,11 @@ def main():
     # pyb.changeDynamics(slider.uid, -1, collisionMargin=0)
 
     if args.environment == "straight":
-        path, obstacles = setup_straight_path()
+        path, obstacles, blocks = setup_straight_path()
     elif args.environment == "corner":
-        path, obstacles = setup_corner_path(corridor=False)
+        path, obstacles, blocks = setup_corner_path(corridor=False)
     elif args.environment == "corridor":
-        path, obstacles = setup_corner_path(corridor=True)
+        path, obstacles, blocks = setup_corner_path(corridor=True)
 
     # somewhat janky: for now, we show both vertices for lines and just the
     # middle one for quadratic bezier segments
@@ -444,7 +456,7 @@ def main():
                 success,
                 forces,
                 in_contacts,
-            ) = simulate(sim, pusher, slider, push_controller, force_controller)
+            ) = simulate(sim, pusher, slider, push_controller, force_controller, blocks)
             if not success:
                 print(f"Trial {count} failed.")
                 print(f"I = {np.diag(I)}\nμ = {μ0}\ny0 = {y0}\nθ0 = {θ0}\ns0 = {s0}")

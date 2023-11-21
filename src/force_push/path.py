@@ -249,10 +249,18 @@ class SegmentPath:
     def get_plotting_coords(self, n_bez=25, dist=0):
         """Get (x, y) coordinates of the path for plotting.
 
-        Parameters:
-            n_bez: number of points to discretize each Bezier curve
+        Parameters
+        ----------
+        n_bez :
+            Number of points to discretize each curved segments.
+        dist :
+            If the final segment is an infinite line, add a final point
+            ``dist`` along this line from the previous vertex.
 
-        Returns a shape (n, 2) array of (x, y) coordinates.
+        Returns
+        -------
+        :
+            A shape (n, 2) array of (x, y) coordinates.
         """
         vertices = []
         for segment in self.segments:

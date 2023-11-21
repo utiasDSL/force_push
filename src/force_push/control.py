@@ -42,6 +42,7 @@ class AdmittanceController:
         if f_norm > self.force_max:
             vf = -self.kf * (f_norm - self.force_max) * util.unit(force)
             v_cmd = v_cmd + vf
+            print("admittance!")
         if np.linalg.norm(v_cmd) > self.vel_max:
             v_cmd = self.vel_max * util.unit(v_cmd)
         return v_cmd
@@ -171,6 +172,7 @@ class RobotController:
             P=P, q=q, A=A, b=b, G=G, h=h, lb=self.lb, ub=self.ub, solver=self.solver
         )
         u, α = x[:3], x[3]
+        # print(f"eq err = {np.linalg.norm(A @ x - b)}")
         # print(f"α = {α}")
         return u
 
@@ -266,8 +268,8 @@ class PushController:
         info = self.path.compute_closest_point_info(
             position, min_dist_from_start=self.dist_from_start
         )
-        assert np.isclose(self.dist_from_start, 0)
-        # self.dist_from_start = max(info.distance_from_start, self.dist_from_start)
+        # assert np.isclose(self.dist_from_start, 0)
+        self.dist_from_start = max(info.distance_from_start, self.dist_from_start)
         pathdir, offset = info.direction, info.offset
         f_norm = np.linalg.norm(force)
 

@@ -10,6 +10,7 @@ import numpy as np
 import rosbag
 import matplotlib.pyplot as plt
 from spatialmath.base import q2r, rotz
+from spatialmath import UnitQuaternion
 
 import mobile_manipulation_central as mm
 from mobile_manipulation_central import ros_utils
@@ -121,6 +122,11 @@ def main():
     slider_times -= t0
     slider_positions = slider_poses[:, :3]
     r_sw_ws = slider_positions[:, :2] - r_cw_w0
+
+    # check initial yaw angle
+    # Q_sw0 = slider_poses[0, 3:]
+    # yaw = UnitQuaternion(s=Q_sw0[3], v=Q_sw0[:3]).rpy()[2]
+    # print(f"yaw = {np.rad2deg(yaw)}")
 
     # path
     # need to normalize to r_cw_w0 origin like everything else here

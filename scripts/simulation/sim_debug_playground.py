@@ -18,9 +18,9 @@ import force_push as fp
 import IPython
 
 
-USE_URDF_SLIDER = False
-COMMAND_SLIDER = False
-STOP_AT_TIME = 5
+USE_URDF_SLIDER = True
+COMMAND_SLIDER = True
+STOP_AT_TIME = None
 USE_BOX_GROUND = False
 
 TIMESTEP = 0.01
@@ -31,7 +31,7 @@ CONTACT_MU = 0.5
 SURFACE_MU = 0.25
 OBSTACLE_MU = 0.25
 
-STRAIGHT_ANGLE = np.deg2rad(0)
+STRAIGHT_ANGLE = np.deg2rad(45)
 C_wd = fp.rot2d(STRAIGHT_ANGLE)
 C_dw = C_wd.T
 STRAIGHT_DIRECTION = C_wd @ np.array([1, 0])

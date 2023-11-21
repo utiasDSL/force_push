@@ -31,11 +31,15 @@ def main():
         results = fp.compute_simulation_extreme_points(data)
         data.update(results)
 
-    if args.save:
-        output_path = Path(input_path.stem + "_results.pkl")
-        with open(output_path, "wb") as f:
-            pickle.dump(data, f)
-        print(f"Saved processed data to {output_path}")
+        if args.save:
+            output_path = Path(input_path.stem + "_results.pkl")
+            with open(output_path, "wb") as f:
+                pickle.dump(data, f)
+            print(f"Saved processed data to {output_path}")
+    else:
+        print("This data has already been processed.")
+        if args.save:
+            print("Not saving.")
 
     fp.plot_simulation_results(data)
 

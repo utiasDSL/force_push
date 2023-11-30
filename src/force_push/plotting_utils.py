@@ -1,4 +1,6 @@
 """Utilities for making nice plots."""
+import matplotlib.pyplot as plt
+
 
 def rcparams(fontsize=6):
     return {
@@ -32,3 +34,19 @@ def hide_x_ticks(ax):
 def hide_y_ticks(ax):
     ax.set_yticklabels([])
     ax.tick_params(axis="y", colors=(0, 0, 0, 0))
+
+
+def make_line(a, b, color="k", **kwargs):
+    return plt.Line2D(
+        [a[0], b[0]],
+        [a[1], b[1]],
+        color=color,
+        linewidth=1,
+        solid_capstyle="round",
+        **kwargs
+    )
+
+
+def update_line(line, a, b):
+    line.set_xdata([a[0], b[0]])
+    line.set_ydata([a[1], b[1]])

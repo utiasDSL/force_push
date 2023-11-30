@@ -21,6 +21,7 @@ import IPython
 # more like ~63Hz
 RATE = 100  # Hz
 TIMESTEP = 1.0 / RATE
+TIMESTEP_WARN = 1.5 * TIMESTEP
 
 # Origin is taken as the EE's starting position
 STRAIGHT_DIRECTION = fp.rot2d(np.deg2rad(125)) @ np.array([1, 0])
@@ -28,6 +29,12 @@ STRAIGHT_REV_DIRECTION = fp.rot2d(np.deg2rad(125 - 180)) @ np.array([1, 0])
 
 # pushing speed
 PUSH_SPEED = 0.1
+
+# duration of initial acceleration phase
+ACCELERATION_DURATION = 1.0
+
+# acceleration value during acceleration phase (afterward it is zero)
+ACCELERATION_MAGNITUDE = PUSH_SPEED / ACCELERATION_DURATION
 
 # control gains
 Kθ = 0.3
@@ -211,8 +218,6 @@ def main():
 
     t = rospy.Time.now().to_sec()
     t0 = t
-    ACCELERATION_DURATION = 1.0
-    ACCELERATION_MAGNITUDE = PUSH_SPEED / ACCELERATION_DURATION
     while not rospy.is_shutdown():
         # short acceleration phase to avoid excessive forces
         if t - t0 < ACCELERATION_DURATION:
@@ -250,7 +255,6 @@ def main():
         # push the slider
         if open_loop:
             θp = θd - KY * info.offset
-            print(f"θd = {θd}, θp = {θp}")
             v_ee_cmd = speed * fp.rot2d(θp) @ [1, 0]
         else:
             v_ee_cmd = push_controller.update(r_cw_w, f)
@@ -273,8 +277,8 @@ def main():
         rate.sleep()
 
         t_new = rospy.Time.now().to_sec()
-        if t - t_new > TIMESTEP:
-            print(f"Loop took {t - t_new} seconds")
+        if t_new - t >= TIMESTEP_WARN:
+            print(f"Loop took {t_new - t} seconds")
         t = t_new
 
     robot.brake()

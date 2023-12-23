@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import datetime
 import itertools
 import pickle
 from pathlib import Path
@@ -75,7 +76,7 @@ y0s = [-0.4, 0, 0.4]
 θ0s = [-np.pi / 8, 0, np.pi / 8]
 s0s = [-0.4, 0, 0.4]
 
-# I_mask = [True, False, False]
+# I_mask = [False, True, False]
 # μ0s = [0]
 # y0s = [-0.4]
 # θ0s = [-np.pi / 8]
@@ -85,6 +86,15 @@ s0s = [-0.4, 0, 0.4]
 FILTER_TIME_CONSTANT = 0.05
 
 START_AT_TRIAL = 0
+
+FILM_FACE_SWITCHING_EXAMPLE = False
+
+if FILM_FACE_SWITCHING_EXAMPLE:
+    I_mask = [False, True, False]
+    μ0s = [0]
+    y0s = [-0.4]
+    θ0s = [-np.pi / 8]
+    s0s = [-0.4]
 
 
 def simulate(sim, pusher, slider, push_controller, force_controller, blocks):
@@ -101,27 +111,43 @@ def simulate(sim, pusher, slider, push_controller, force_controller, blocks):
 
     smoother = mm.ExponentialSmoother(τ=FILTER_TIME_CONSTANT, x0=np.zeros(3))
 
+    if FILM_FACE_SWITCHING_EXAMPLE:
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        camera = pyb_utils.Camera.from_distance_rpy(
+            target_position=[4.14, 0.57, -0.16],
+            distance=4,
+            roll=0,
+            pitch=-52.6,
+            yaw=8,
+        )
+        recorder = pyb_utils.FrameRecorder(
+            camera, fps=25, dirname=f"face_switching_frames_{timestamp}"
+        )
+
     t = 0
     i = 0
     first_contact = False
-    first_contact_time = 0
+    first_contact_index = 0
     max_pen_dist = 0
-    while t <= first_contact_time + DURATION:
+    while i <= first_contact_index + DURATION * SIM_FREQ:
 
+        # TODO should this be done inside the below if? this would ensure the
+        # correct overall duration as recorded
         # check if first contact has been made: we want to simulate DURATION
         # seconds after this time
-        if not first_contact:
-            points = pyb_utils.getContactPoints(
-                pusher.uid, slider.uid, pusher.tool_idx, -1
-            )
-            if len(points) > 0:
-                first_contact = True
-                first_contact_time = t
+        # if not first_contact:
+        #     points = pyb_utils.getContactPoints(
+        #         pusher.uid, slider.uid, pusher.tool_idx, -1
+        #     )
+        #     if len(points) > 0:
+        #         first_contact = True
+        #         first_contact_time = t
 
         if i % CTRL_STEP == 0:
-            # force = pusher.get_contact_force([slider.uid])
             # force applied on slider
-            points = pyb_utils.getContactPoints(slider.uid, pusher.uid, -1, pusher.tool_idx)
+            points = pyb_utils.getContactPoints(
+                slider.uid, pusher.uid, -1, pusher.tool_idx
+            )
             assert len(points) <= 1
             force = pyb_utils.get_points_contact_wrench(points)[0]
             force = smoother.update(force, dt=CTRL_STEP * sim.timestep)
@@ -149,6 +175,9 @@ def simulate(sim, pusher, slider, push_controller, force_controller, blocks):
 
             # contact info
             in_contact = len(points) > 0
+            if not first_contact and in_contact:
+                first_contact = True
+                first_contact_index = i
 
             # record information
             r_sw_w, Q_ws = slider.get_pose()
@@ -161,8 +190,6 @@ def simulate(sim, pusher, slider, push_controller, force_controller, blocks):
             ts.append(t)
 
             # check if the trial has failed (pusher has lost the slider)
-            # pts = pyb_utils.getClosestPoints(pusher.uid, slider.uid, distance=10)
-            # if pts[0].contactDistance > FAILURE_DIST:
             if np.linalg.norm(r_pw_w - r_sw_w[:2]) > FAILURE_DIST:
                 success = False
                 print("Pusher and slider too far apart!")
@@ -174,10 +201,18 @@ def simulate(sim, pusher, slider, push_controller, force_controller, blocks):
                 print("Loss of contact for too long!")
                 break
 
+        if FILM_FACE_SWITCHING_EXAMPLE:
+            recorder.capture_frame(t)
+
         i += 1
         t = i * sim.timestep
         sim.step()
         # time.sleep(0.001)
+
+    first_contact_idx = np.argmax(in_contacts)
+    t0 = ts[first_contact_idx]
+    tf = ts[-1]
+    print(f"duration = {tf - t0}")
 
     ts = np.array(ts)
     r_pw_ws = np.array(r_pw_ws)
@@ -308,7 +343,7 @@ def main():
         plt.show()
         return
 
-    sim = mm.BulletSimulation(1.0 / SIM_FREQ, gui=not args.no_gui)
+    sim = mm.BulletSimulation(1.0 / SIM_FREQ, gui=not args.no_gui, extra_gui=False)
     pyb.changeDynamics(sim.ground_uid, -1, lateralFriction=SURFACE_MU)
     pyb.resetDebugVisualizerCamera(
         cameraDistance=5.6,
@@ -328,6 +363,7 @@ def main():
     slider.set_contact_parameters(
         stiffness=float(args.stiffness), damping=float(args.damping)
     )
+    # print(pyb_utils.getDynamicsInfo(slider.uid, -1))
 
     # pyb.changeDynamics(pusher.uid, -1, collisionMargin=0)
     # pyb.changeDynamics(slider.uid, -1, collisionMargin=0)

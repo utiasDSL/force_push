@@ -55,7 +55,7 @@ def compute_simulation_extreme_points(data):
 
         # also record the run that has the farthest distance from the ideal
         # final position
-        if final_dist > max_final_info.distance:
+        if final_dist_from_ideal > max_final_info.distance:
             max_final_info = ExtremePointInfo(i, final_dist_from_ideal, final_slider_pos)
     completion_fractions = np.array(completion_fractions)
 

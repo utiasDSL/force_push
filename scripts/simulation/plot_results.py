@@ -41,6 +41,23 @@ def main():
         if args.save:
             print("Not saving.")
 
+    # print the duration starting at first contact
+    num_sims = len(data["times"])
+    for idx in range(num_sims):
+        times = data["times"][idx]
+        in_contact = data["in_contacts"][idx]
+
+        # index when contact first occurs
+        first_contact_idx = np.argmax(in_contact)
+
+        # no contact before the first one
+        assert np.logical_not(in_contact[:first_contact_idx]).all()
+
+        t0 = times[first_contact_idx]
+        tf = times[-1]
+        assert np.isclose(data["duration"], tf - t0)
+        # print(f"duration = {tf - t0}")
+
     fp.plot_simulation_results(data)
 
     max_final_info = data["max_final_info"]

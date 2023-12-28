@@ -25,6 +25,11 @@ catkin build
 
 ## Simulation Experiments
 
+Simulations are run in PyBullet. A small patch improving planar sliding
+friction can be found
+[here](https://github.com/bulletphysics/bullet3/pull/4539), which will require
+you to build PyBullet from source.
+
 Run the simulations using the script
 `scripts/simulation/pyb_simulation_many.py`. The results can be saved as a
 Python pickle and post-processed using `scripts/simulation/process_sim_results.py`

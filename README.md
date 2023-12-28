@@ -15,12 +15,21 @@ cd ~/catkin_ws
 git clone https://github.com/adamheins/force_push
 ```
 
+Ensure all the Python dependencies in `requirements.txt` are satisfied (e.g.,
+by doing something like `pip install -r requirements.txt`).
+
 Build the workspace:
 ```bash
 catkin build
 ```
 
-## Experiments
+## Simulation Experiments
+
+Run the simulations using the script
+`scripts/simulation/pyb_simulation_many.py`. The results can be saved as a
+Python pickle and post-processed using `scripts/simulation/process_sim_results.py`
+
+## Hardware Experiments
 
 Experiments are done using utilities in mobile_manipulation_central.
 
@@ -61,15 +70,14 @@ looks for a marker near the expected location, calculates the offset, and
 outputs the results to a YAML file. To use this calibration subsequently, move
 the YAML file to the `config` directory.
 
-### Pushing control
+It is also desirable to calibrate the orientation of the FT sensor (see the
+calibration notes in the `mobile_manipulation_central` repository and the
+scripts in `scripts/experiment/calibration`).
 
-To run the pushing controller, do:
-```
-./scripts/experiments/push_control_node.py
-```
-If the flag `--open-loop` is provided, then the system will not respond to
-forces and instead just try to follow the desired path with the end effector in
-an open-loop manner.
+### Pushing controller
+
+To run the pushing controller, use the script
+`scripts/experiments/push_control_node.py` with desired options.
 
 ## License
 

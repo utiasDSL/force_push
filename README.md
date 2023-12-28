@@ -5,6 +5,9 @@ feedback.
 
 ## Install
 
+This code has been tested on Ubuntu 20.04 with ROS Noetic and Python 3.8.
+Initialize your catkin workspace before proceeding.
+
 First install
 [mobile_manipulation_central](https://github.com/utiasDSL/mobile_manipulation_central)
 into the catkin workspace.

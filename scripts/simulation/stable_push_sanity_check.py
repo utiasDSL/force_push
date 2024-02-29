@@ -5,12 +5,12 @@ from pathlib import Path
 import time
 import yaml
 
-import rospkg
 import numpy as np
 import matplotlib.pyplot as plt
 import pybullet as pyb
 import pyb_utils
 from spatialmath.base import rotz
+from xacrodoc import XacroDoc
 
 import mobile_manipulation_central as mm
 import force_push as fp
@@ -48,33 +48,6 @@ SLIDER_CONTACT_DAMPING = 100
 SLIDER_CONTACT_STIFFNESS = 10000
 
 
-def make_pusher_urdf_file():
-    rospack = rospkg.RosPack()
-    path = Path(rospack.get_path("force_push")) / "urdf/urdf/sim_pusher.urdf"
-    if not path.parent.exists():
-        path.parent.mkdir()
-
-    includes = ["$(find force_push)/urdf/xacro/sim_pusher.urdf.xacro"]
-    mm.XacroDoc.from_includes(includes).to_urdf_file(path)
-    return path.as_posix()
-
-
-def compile_xacro_urdf_file(name):
-    xacro_name = name
-    parts = xacro_name.split(".")
-    assert parts[-1] == "xacro"
-    urdf_name = ".".join(parts[:-1])
-
-    rospack = rospkg.RosPack()
-    path = Path(rospack.get_path("force_push")) / "urdf/urdf" / urdf_name
-    if not path.parent.exists():
-        path.parent.mkdir()
-
-    includes = ["$(find force_push)/urdf/xacro/" + xacro_name]
-    mm.XacroDoc.from_includes(includes).to_urdf_file(path)
-    return path.as_posix()
-
-
 def main():
     np.set_printoptions(precision=6, suppress=True)
 
@@ -98,12 +71,15 @@ def main():
 
     r_cw_w = np.array([0, 0])
 
-    pusher_urdf_path = make_pusher_urdf_file()
-    pusher = fp.BulletPusher(
-        pusher_urdf_path,
-        [0, 0, 0],
-        mu=CONTACT_MU,
+    pusher_xacro_doc = XacroDoc.from_includes(
+        ["$(find force_push)/urdf/xacro/sim_pusher.urdf.xacro"]
     )
+    with pusher_xacro_doc.temp_urdf_file_path() as pusher_urdf_path:
+        pusher = fp.BulletPusher(
+            pusher_urdf_path,
+            [0, 0, 0],
+            mu=CONTACT_MU,
+        )
 
     slider = fp.BulletSquareSlider(
         position=[0.5, 0, 0.06],
@@ -167,8 +143,12 @@ def main():
 
             if STOP_AT_TIME is not None and t > STOP_AT_TIME:
                 # pts = pyb_utils.getContactPoints(pusher.uid)
-                f_con1 = fp.get_contact_force(slider.uid, sim.ground_uid, max_contacts=4)
-                f_con2, _ = pyb_utils.get_total_contact_wrench(slider.uid, sim.ground_uid)
+                f_con1 = fp.get_contact_force(
+                    slider.uid, sim.ground_uid, max_contacts=4
+                )
+                f_con2, _ = pyb_utils.get_total_contact_wrench(
+                    slider.uid, sim.ground_uid
+                )
                 IPython.embed()
                 return
 

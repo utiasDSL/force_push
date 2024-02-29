@@ -5,12 +5,12 @@ from pathlib import Path
 import time
 import yaml
 
-import rospkg
 import numpy as np
 import matplotlib.pyplot as plt
 import pybullet as pyb
 import pyb_utils
 from spatialmath.base import rotx, roty, rotz
+from xacrodoc import XacroDoc
 
 import mobile_manipulation_central as mm
 import force_push as fp
@@ -62,20 +62,6 @@ OBS_MIN_DIST = 0.75
 OBS_INFL_DIST = 1.5
 
 
-def make_urdf_file():
-    rospack = rospkg.RosPack()
-    path = Path(rospack.get_path("force_push")) / "urdf/urdf/thing_pyb_pusher.urdf"
-    if not path.parent.exists():
-        path.parent.mkdir()
-
-    includes = [
-        "$(find mobile_manipulation_central)/urdf/xacro/thing_pyb.urdf.xacro",
-        "$(find force_push)/urdf/xacro/contact_ball.urdf.xacro",
-    ]
-    mm.XacroDoc.from_includes(includes).to_urdf_file(path)
-    return path.as_posix()
-
-
 def main():
     np.set_printoptions(precision=6, suppress=True)
 
@@ -103,14 +89,20 @@ def main():
         home = mm.load_home_position(name="pushing_corner", path=fp.HOME_CONFIG_FILE)
 
     # create the simulation
-    urdf_path = make_urdf_file()
     sim = mm.BulletSimulation(TIMESTEP)
 
-    robot_id = pyb.loadURDF(
-        urdf_path,
-        [0, 0, 0],
-        useFixedBase=True,
+    xacro_doc = XacroDoc.from_includes(
+        [
+            "$(find mobile_manipulation_central)/urdf/xacro/thing_pyb.urdf.xacro",
+            "$(find force_push)/urdf/xacro/contact_ball.urdf.xacro",
+        ]
     )
+    with xacro_doc.temp_urdf_file_path() as urdf_path:
+        robot_id = pyb.loadURDF(
+            urdf_path,
+            [0, 0, 0],
+            useFixedBase=True,
+        )
     robot = pyb_utils.Robot(robot_id, tool_link_name=TOOL_LINK_NAME)
     robot.reset_joint_configuration(home)
 
@@ -226,7 +218,9 @@ def main():
         )
         dist_from_start = max(info.distance_from_start, dist_from_start)
         pathdir, offset = info.direction, info.offset
-        f = pyb_utils.get_total_contact_wrench(slider.uid, robot.uid, -1, robot.tool_idx)[0]
+        f = pyb_utils.get_total_contact_wrench(
+            slider.uid, robot.uid, -1, robot.tool_idx
+        )[0]
         f = f[:2]
 
         # C_wc = robot.get_link_frame_pose(as_rotation_matrix=True)[1]

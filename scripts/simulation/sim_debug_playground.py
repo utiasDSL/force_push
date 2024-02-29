@@ -5,12 +5,12 @@ from pathlib import Path
 import time
 import yaml
 
-import rospkg
 import numpy as np
 import matplotlib.pyplot as plt
 import pybullet as pyb
 import pyb_utils
 from spatialmath.base import rotz
+from xacrodoc import XacroDoc
 
 import mobile_manipulation_central as mm
 import force_push as fp
@@ -110,59 +110,6 @@ def box_mesh(position, half_extents, orientation=None):
     )
 
 
-# TODO make this a general utility
-def make_urdf_file():
-    rospack = rospkg.RosPack()
-    path = Path(rospack.get_path("force_push")) / "urdf/urdf/thing_pyb_pusher.urdf"
-    if not path.parent.exists():
-        path.parent.mkdir()
-
-    includes = [
-        "$(find mobile_manipulation_central)/urdf/xacro/thing_pyb.urdf.xacro",
-        "$(find force_push)/urdf/xacro/contact_ball.urdf.xacro",
-    ]
-    mm.XacroDoc.from_includes(includes).to_urdf_file(path)
-    return path.as_posix()
-
-
-def make_pusher_urdf_file():
-    rospack = rospkg.RosPack()
-    path = Path(rospack.get_path("force_push")) / "urdf/urdf/sim_pusher.urdf"
-    if not path.parent.exists():
-        path.parent.mkdir()
-
-    includes = ["$(find force_push)/urdf/xacro/sim_pusher.urdf.xacro"]
-    mm.XacroDoc.from_includes(includes).to_urdf_file(path)
-    return path.as_posix()
-
-
-# def make_slider_urdf_file():
-#     rospack = rospkg.RosPack()
-#     path = Path(rospack.get_path("force_push")) / "urdf/urdf/sim_slider.urdf"
-#     if not path.parent.exists():
-#         path.parent.mkdir()
-#
-#     includes = ["$(find force_push)/urdf/xacro/sim_slider.urdf.xacro"]
-#     mm.XacroDoc.from_includes(includes).to_urdf_file(path)
-#     return path.as_posix()
-
-
-def compile_xacro_urdf_file(name):
-    xacro_name = name
-    parts = xacro_name.split(".")
-    assert parts[-1] == "xacro"
-    urdf_name = ".".join(parts[:-1])
-
-    rospack = rospkg.RosPack()
-    path = Path(rospack.get_path("force_push")) / "urdf/urdf" / urdf_name
-    if not path.parent.exists():
-        path.parent.mkdir()
-
-    includes = ["$(find force_push)/urdf/xacro/" + xacro_name]
-    mm.XacroDoc.from_includes(includes).to_urdf_file(path)
-    return path.as_posix()
-
-
 def main():
     np.set_printoptions(precision=6, suppress=True)
 
@@ -189,7 +136,6 @@ def main():
         home = mm.load_home_position(name="pushing_corner", path=fp.HOME_CONFIG_FILE)
 
     # create the simulation
-    urdf_path = make_urdf_file()
     sim = mm.BulletSimulation(TIMESTEP)
 
     # try replacing the ground plane with a large flat box
@@ -204,11 +150,16 @@ def main():
         pyb.changeDynamics(sim.ground_uid, -1, lateralFriction=10)
         sim.ground_uid = ground.uid
 
-    # robot_id = pyb.loadURDF(
-    #     urdf_path,
-    #     [0, 0, 0],
-    #     useFixedBase=True,
-    # )
+    # robot_xacro_doc = XacroDoc.from_includes([
+    #     "$(find mobile_manipulation_central)/urdf/xacro/thing_pyb.urdf.xacro",
+    #     "$(find force_push)/urdf/xacro/contact_ball.urdf.xacro",
+    # ])
+    # with robot_xacro_doc.temp_urdf_file_path() as urdf_path:
+    #     robot_id = pyb.loadURDF(
+    #         urdf_path,
+    #         [0, 0, 0],
+    #         useFixedBase=True,
+    #     )
     # robot = pyb_utils.Robot(robot_id, tool_link_name=TOOL_LINK_NAME)
     # robot.reset_joint_configuration(home)
 
@@ -219,12 +170,15 @@ def main():
     # C_wb = fp.rot2d(home[2])
     # r_bc_b = -C_wb.T @ (r_cw_w - r_bw_w)
 
-    pusher_urdf_path = make_pusher_urdf_file()
-    pusher = fp.BulletPusher(
-        pusher_urdf_path,
-        np.append(r_cw_w + [0, 0], 0),
-        mu=CONTACT_MU,
+    pusher_xacro_doc = XacroDoc.from_includes(
+        ["$(find force_push)/urdf/xacro/sim_pusher.urdf.xacro"]
     )
+    with pusher_xacro_doc.temp_urdf_file_path() as pusher_urdf_path:
+        pusher = fp.BulletPusher(
+            pusher_urdf_path,
+            np.append(r_cw_w + [0, 0], 0),
+            mu=CONTACT_MU,
+        )
     # pusher.set_joint_friction_forces([0, 0])
     pyb.setCollisionFilterPair(pusher.uid, sim.ground_uid, pusher.tool_idx, -1, 0)
 
@@ -263,12 +217,15 @@ def main():
     # )
 
     if USE_URDF_SLIDER:
-        slider_urdf_path = compile_xacro_urdf_file("sim_slider.urdf.xacro")
-        slider_uid = pyb.loadURDF(
-            slider_urdf_path,
-            [0, 0, 0],
-            useFixedBase=True,
+        slider_xacro_doc = XacroDoc.from_includes(
+            ["$(find force_push)/urdf/xacro/sim_slider.urdf.xacro"]
         )
+        with slider_urdf_path.temp_urdf_file_path() as slider_urdf_path:
+            slider_uid = pyb.loadURDF(
+                slider_urdf_path,
+                [0, 0, 0],
+                useFixedBase=True,
+            )
         slider = pyb_utils.Robot(
             slider_uid,
             tool_link_name="slider_link",

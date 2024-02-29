@@ -12,7 +12,7 @@ import pyb_utils
 import pybullet as pyb
 from spatialmath.base import rotz, r2q
 import tqdm
-import rospkg
+from xacrodoc import XacroDoc
 
 import mobile_manipulation_central as mm
 import force_push as fp
@@ -292,17 +292,6 @@ def setup_corner_path(corridor=False):
     return path, obstacles, blocks
 
 
-def make_urdf_file():
-    rospack = rospkg.RosPack()
-    path = Path(rospack.get_path("force_push")) / "urdf/urdf/sim_pusher.urdf"
-    if not path.parent.exists():
-        path.parent.mkdir()
-
-    includes = ["$(find force_push)/urdf/xacro/sim_pusher.urdf.xacro"]
-    mm.XacroDoc.from_includes(includes).to_urdf_file(path)
-    return path.as_posix()
-
-
 def main():
     np.set_printoptions(precision=6, suppress=True)
 
@@ -351,8 +340,9 @@ def main():
         cameraTargetPosition=[3.66, 0.42, 0.49],
     )
 
-    urdf_path = make_urdf_file()
-    pusher = fp.BulletPusher(urdf_path, SLIDER_INIT_POS + PUSHER_INIT_REL_POS)
+    xacro_doc = XacroDoc.from_includes(["$(find force_push)/urdf/xacro/sim_pusher.urdf.xacro"])
+    with xacro_doc.temp_urdf_file_path() as urdf_path:
+        pusher = fp.BulletPusher(urdf_path, SLIDER_INIT_POS + PUSHER_INIT_REL_POS)
     if args.slider == "box":
         slider, slider_inertias = setup_box_slider(SLIDER_INIT_POS)
     elif args.slider == "circle":

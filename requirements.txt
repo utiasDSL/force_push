@@ -11,3 +11,4 @@ qpsolvers>=4.2.0
 scipy>=1.11.4
 spatialmath_python>=1.0.3
 tqdm>=4.65.0
+xacrodoc>=0.3.0

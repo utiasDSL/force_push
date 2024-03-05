@@ -108,7 +108,7 @@ def main():
         rate.sleep()
 
     # custom signal handler to brake the robot
-    signal_handler = mm.RobotSignalHandler(robot)
+    signal_handler = mm.SimpleSignalHandler()
 
     # desired path
     q = robot.q
@@ -218,7 +218,7 @@ def main():
 
     t = rospy.Time.now().to_sec()
     t0 = t
-    while not rospy.is_shutdown():
+    while not rospy.is_shutdown() and not signal_handler.received:
         # short acceleration phase to avoid excessive forces
         if t - t0 < ACCELERATION_DURATION:
             speed = (t - t0) * ACCELERATION_MAGNITUDE
@@ -242,14 +242,11 @@ def main():
         f = -f_w[:2]
 
         # direction of the path
-        # TODO we need to track the min dist from start here, which is kind of
-        # annoying since it is already present inside the push controller
         info = path.compute_closest_point_info(
             r_cw_w, min_dist_from_start=dist_from_start
         )
         dist_from_start = max(info.distance_from_start, dist_from_start)
         θd = np.arctan2(info.direction[1], info.direction[0])
-        # print(f"offset = {info.offset}")
 
         # in open-loop mode we just follow the path rather than controlling to
         # push the slider
@@ -282,6 +279,8 @@ def main():
         t = t_new
 
     robot.brake()
+    time.sleep(0.5)  # wait a bit to make sure brake is published
+
     if args.save is not None:
         recorder.close()
 

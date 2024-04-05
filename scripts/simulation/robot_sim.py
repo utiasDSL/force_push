@@ -59,7 +59,9 @@ SLIDER_CONTACT_STIFFNESS = 10000
 OBS_MIN_DIST = 0.75
 
 # obstacle starts to influence at this distance
-OBS_INFL_DIST = 1.5
+# OBS_INFL_DIST = 1.5
+
+USE_DIPOLE_CONTROLLER = True
 
 
 def main():
@@ -137,18 +139,14 @@ def main():
         )
         r_sw_w0 = np.append(r_cw_w, 0) + [0, 0.6, 0.2]
         Q_ws0 = (0, 0, 0, 1)
-    # obstacles = []
-    obstacles = fp.translate_segments(
-        [fp.LineSegment([-3.5, 4.25], [1.0, 4.25])], r_cw_w
-    )
-
-    block1 = fp.BulletBlock(
-        np.append(r_cw_w, 0) + [0, 4.25 + 0.5, 0.5], [3, 0.5, 0.5], mu=OBSTACLE_MU
-    )
-
-    # print(r_sw_w0)
-    # print(np.append(r_cw_w, 0) + [0, 0.6, 0.2])
-    # return
+    obstacles = []
+    # obstacles = fp.translate_segments(
+    #     [fp.LineSegment([-3.5, 4.25], [1.0, 4.25])], r_cw_w
+    # )
+    #
+    # block1 = fp.BulletBlock(
+    #     np.append(r_cw_w, 0) + [0, 4.25 + 0.5, 0.5], [3, 0.5, 0.5], mu=OBSTACLE_MU
+    # )
 
     slider = fp.BulletSquareSlider(
         position=r_sw_w0,
@@ -178,14 +176,17 @@ def main():
         obstacles=obstacles,
         min_dist=OBS_MIN_DIST,
     )
-    push_controller = fp.PushController(
-        speed=PUSH_SPEED,
-        kθ=Kθ,
-        ky=KY,
-        path=path,
-        con_inc=CON_INC,
-        force_min=FORCE_MIN_THRESHOLD,
-    )
+    if USE_DIPOLE_CONTROLLER:
+        push_controller = fp.DipolePushController(speed=PUSH_SPEED, path=path)
+    else:
+        push_controller = fp.PushController(
+            speed=PUSH_SPEED,
+            kθ=Kθ,
+            ky=KY,
+            path=path,
+            con_inc=CON_INC,
+            force_min=FORCE_MIN_THRESHOLD,
+        )
 
     # admittance control to comply with large forces
     force_controller = fp.AdmittanceController(kf=Kf, force_max=FORCE_MAX_THRESHOLD)
@@ -212,6 +213,7 @@ def main():
         r_bw_w = q[:2]
         C_wb = fp.rot2d(q[2])
         r_cw_w = robot.get_link_frame_pose()[0][:2]
+        r_sw_w = slider.get_pose()[0][:2]
 
         info = path.compute_closest_point_info(
             r_cw_w, min_dist_from_start=dist_from_start
@@ -223,32 +225,17 @@ def main():
         )[0]
         f = f[:2]
 
-        # C_wc = robot.get_link_frame_pose(as_rotation_matrix=True)[1]
-        # C_wb3 = rotz(q[2])
-        # C_bc = C_wb3.T @ C_wc
-        # f_actual = f.copy()
-        # f_w = f.copy()
-        # f_corrupt[2] = -10
-        # f_c = C_wc.T @ f_w
-        # f_b = C_bc @ f_c
-        # f_corrupt_b = rotz(np.deg2rad(1.3)) @ f_b
-        # f_corrupt_w = C_wb3 @ f_corrupt_b
-        # f_corrupt = smoother.update(f_corrupt_w, dt=sim.timestep)
-        # print(f"f corrupt = {f_corrupt[:2]}")
-        # print(f"f actual = {f_actual[:2]}")
-        # f = f_corrupt[:2]
-        # f = f_w
-
-        # IPython.embed()
-        # return
         θd = np.arctan2(pathdir[1], pathdir[0])
-        # print(f"pc = {info.point}")
-        # print(f"pathdir = {pathdir}")
 
         if open_loop:
             θp = θd - KY * offset
             v_ee_cmd = PUSH_SPEED * fp.rot2d(θp) @ [1, 0]
             # v_ee_cmd = PUSH_SPEED * pathdir
+        elif USE_DIPOLE_CONTROLLER:
+            v_ee_cmd = push_controller.update(
+                contact_position=r_cw_w, slider_position=r_sw_w
+            )
+            # TODO no admittance at the moment, but could easily incorporate
         else:
             v_ee_cmd = push_controller.update(r_cw_w, f)
             v_ee_cmd = force_controller.update(force=f, v_cmd=v_ee_cmd)

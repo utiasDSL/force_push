@@ -212,7 +212,7 @@ class PushController:
         path,
         ki_θ=0,
         ki_y=0,
-        corridor_radius=np.inf,
+        # corridor_radius=np.inf,
         force_min=1,
         con_inc=0.3,
         obstacles=None,
@@ -230,7 +230,7 @@ class PushController:
         # if infinite, then the corridor is just open space
         # to be used with hallways (won't work if there aren't actually walls
         # present)
-        self.corridor_radius = corridor_radius
+        # self.corridor_radius = corridor_radius
 
         # force thresholds
         self.force_min = force_min
@@ -260,8 +260,20 @@ class PushController:
         self.dist_from_start = 0
 
     def update(self, position, force, dt=0):
-        """Compute a new pushing velocity based on contact position and force
-        (all expressed in the world frame)."""
+        """Compute a new pushing velocity.
+
+        Parameters
+        ----------
+        position : np.ndarray, shape (2,)
+            2D position of the contact point in the world frame.
+        force : np.ndarray, shape (2,)
+            2D contact force expressed in the world frame.
+
+        Returns
+        -------
+        : np.ndarray, shape (2,)
+            The 2D pushing velocity in the world frame.
+        """
         assert len(position) == 2
         assert len(force) == 2
 
@@ -326,5 +338,75 @@ class PushController:
                     pushdir0 = pushdir
                     pushdir = np.sign(pushdir @ perp) * perp
                     # print(f"original = {pushdir0}, corrected = {pushdir}")
+
+        return self.speed * pushdir
+
+
+class DipolePushController:
+    """Dipole-based pushing controller from Igarashi et al. (2010).
+
+    See https://doi.org/10.1109/ROBOT.2010.5509483.
+
+    This controller requires measurements of the slider's position.
+
+    Parameters
+    ----------
+    speed : float, non-negative
+        Linear pushing speed.
+    path :
+        Path to track.
+    """
+
+    def __init__(self, speed, path):
+        self.speed = speed
+        self.path = path
+
+        self.reset()
+
+    def reset(self):
+        """Reset the controller to its initial state."""
+        self.dist_from_start = 0
+
+    def update(self, contact_position, slider_position):
+        """Compute a new pushing velocity.
+
+        Parameters
+        ----------
+        contact_position : np.ndarray, shape (2,)
+            2D position of the contact point in the world frame.
+        slider_position : np.ndarray, shape (2,)
+            2D position of the slider in the world frame.
+
+        Returns
+        -------
+        : np.ndarray, shape (2,)
+            The 2D pushing velocity in the world frame.
+        """
+        assert len(contact_position) == 2
+        assert len(slider_position) == 2
+
+        # we can use the slider position here because this controller assumes
+        # it is available
+        info = self.path.compute_closest_point_info(
+            slider_position, min_dist_from_start=self.dist_from_start
+        )
+        self.dist_from_start = max(info.distance_from_start, self.dist_from_start)
+        pathdir = info.direction
+
+        # orthogonal axis of local path frame
+        R = util.rot2d(np.pi / 2)
+        orthdir = R @ pathdir
+
+        q = contact_position - slider_position
+        θ = util.signed_angle(pathdir, util.unit(q))
+
+        # see Fig. 4 of Igarashi et al. (2010)
+        pushdir = util.unit(np.cos(2 * θ) * pathdir + np.sin(2 * θ) * orthdir)
+
+        # print(f"pathdir = {pathdir}")
+        # print(f"orthdir = {orthdir}")
+        # print(f"θ = {θ}")
+        # print(f"pushdir = {pushdir}")
+        # raise ValueError()
 
         return self.speed * pushdir

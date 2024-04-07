@@ -31,7 +31,19 @@ catkin build
 Simulations are run in PyBullet. A small patch improving planar sliding
 friction can be found
 [here](https://github.com/bulletphysics/bullet3/pull/4539), which will require
-you to build PyBullet from source.
+you to build PyBullet from source:
+```
+# get patched version
+git clone https://github.com/adamheins/bullet3
+
+# build
+cd bullet3
+./build_cmake_pybullet_double.sh
+
+# add this version to Python path
+cd bullet3/build_cmake/examples/pybullet
+export PYTHONPATH=$(pwd):$PYTHONPATH
+```
 
 Run the simulations using the script
 `scripts/simulation/pyb_simulation_many.py`. The results can be saved as a

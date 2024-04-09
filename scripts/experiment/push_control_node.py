@@ -63,6 +63,8 @@ FILTER_TIME_CONSTANT = 0.05
 BASE_OBS_MIN_DIST = 0.65  # 0.55 radius circle + 0.1 obstacle dist
 EE_OBS_MIN_DIST = 0.1
 
+DIPOLE_LOOKAHEAD_DIST = 1  # meters
+
 
 def main():
     np.set_printoptions(precision=6, suppress=True)
@@ -75,6 +77,10 @@ def main():
         default=False,
     )
     parser.add_argument(
+        "--dipole",
+        help="Name of the object to push with the vision-based dipole method rather than force-based pushing",
+    )
+    parser.add_argument(
         "--environment",
         choices=["straight", "corner", "corridor", "straight_rev"],
         help="Which environment to use",
@@ -83,7 +89,13 @@ def main():
     parser.add_argument("--save", help="Save data to this file.")
     parser.add_argument("--notes", help="Additional information written to notes.txt.")
     args = parser.parse_args()
+
     open_loop = args.open_loop
+    dipole_object_name = args.dipole
+    use_dipole = dipole_object_name is not None
+
+    if open_loop and use_dipole:
+        raise ValueError("Only one of open-loop or dipole can be active at once.")
 
     rospy.init_node("push_control_node", disable_signals=True)
 
@@ -139,16 +151,27 @@ def main():
         obstacles = None
 
     # push controller generates EE velocity commands to realize stable pushing
-    push_controller = fp.PushController(
-        speed=PUSH_SPEED,
-        kθ=Kθ,
-        ky=KY,
-        path=path,
-        con_inc=CON_INC,
-        obstacles=obstacles,
-        force_min=FORCE_MIN_THRESHOLD,
-        min_dist=EE_OBS_MIN_DIST,
-    )
+    if use_dipole:
+        push_controller = fp.DipolePushController(
+            speed=PUSH_SPEED, path=path, lookahead_dist=DIPOLE_LOOKAHEAD_DIST
+        )
+
+        # we need to measure the position of the pushed object for the dipole
+        # method
+        vicon_object = mm.ViconObjectInterface(dipole_object_name)
+        while not rospy.is_shutdown() and not vicon_object.ready():
+            rate.sleep()
+    else:
+        push_controller = fp.PushController(
+            speed=PUSH_SPEED,
+            kθ=Kθ,
+            ky=KY,
+            path=path,
+            con_inc=CON_INC,
+            obstacles=obstacles,
+            force_min=FORCE_MIN_THRESHOLD,
+            min_dist=EE_OBS_MIN_DIST,
+        )
 
     # admittance control to comply with large forces
     force_controller = fp.AdmittanceController(
@@ -172,6 +195,7 @@ def main():
         "ctrl_freq": RATE,
         "push_speed": PUSH_SPEED,
         "open_loop": open_loop,
+        "dipole_object_name": dipole_object_name,
         "kθ": Kθ,
         "ky": KY,
         "kω": Kω,
@@ -190,6 +214,7 @@ def main():
         "path": path,
         "obstacles": obstacles,
         "r_bc_b": r_bc_b,
+        "dipole_lookahead_dist": DIPOLE_LOOKAHEAD_DIST,
     }
 
     # record data
@@ -226,6 +251,8 @@ def main():
             speed = PUSH_SPEED
         push_controller.speed = speed
 
+        # TODO need to get r_sw_w
+
         q = np.concatenate((robot.q, q_arm))
         r_bw_w = q[:2]
         C_wb = fp.rot2d(q[2])
@@ -253,6 +280,17 @@ def main():
         if open_loop:
             θp = θd - KY * info.offset
             v_ee_cmd = speed * fp.rot2d(θp) @ [1, 0]
+        elif use_dipole:
+            r_sw_w = vicon_object.position[:2]
+            v_ee_cmd = push_controller.update(
+                contact_position=r_cw_w, slider_position=r_sw_w
+            )
+            v_ee_cmd = force_controller.update(force=f, v_cmd=v_ee_cmd)
+            # print(f"v_ee_cmd = {v_ee_cmd}")
+
+            # NOTE this is different because the dipole controller uses the
+            # slider position
+            # assert np.isclose(push_controller.dist_from_start, dist_from_start)
         else:
             v_ee_cmd = push_controller.update(r_cw_w, f)
             v_ee_cmd = force_controller.update(force=f, v_cmd=v_ee_cmd)

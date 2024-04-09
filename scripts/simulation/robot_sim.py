@@ -32,6 +32,7 @@ STRAIGHT_DIRECTION = fp.rot2d(STRAIGHT_ANGLE) @ np.array([1, 0])
 PUSH_SPEED = 0.1
 
 # control gains
+# Kθ = 0.3
 Kθ = 0.3
 KY = 0.5
 Kω = 1
@@ -48,8 +49,8 @@ VEL_UB = np.array([0.5, 0.5, 0.25])
 VEL_LB = -VEL_UB
 
 # slider params
-SLIDER_MASS = 10.0
-BOX_SLIDER_HALF_EXTENTS = (0.5, 0.5, 0.2)
+SLIDER_MASS = 1.0
+BOX_SLIDER_HALF_EXTENTS = (0.2, 0.5, 0.2)
 CIRCLE_SLIDER_RADIUS = 0.5
 CIRCLE_SLIDER_HEIGHT = 0.4
 SLIDER_CONTACT_DAMPING = 100
@@ -61,7 +62,15 @@ OBS_MIN_DIST = 0.75
 # obstacle starts to influence at this distance
 # OBS_INFL_DIST = 1.5
 
+# initial offset of slider center w.r.t. contact point
+INIT_Y_OFFSET = 0.3
+
 USE_DIPOLE_CONTROLLER = True
+DIPOLE_LOOKAHEAD_DIST = 1
+
+# used to test the effects of e.g. an angular bias in the force measurement,
+# representing a poor orientation calibration of the force sensor
+TEST_WITH_CORRUPT_FORCE = False
 
 
 def main():
@@ -124,7 +133,7 @@ def main():
     if args.environment == "straight":
         path = fp.SegmentPath.line(STRAIGHT_DIRECTION, origin=r_cw_w)
         C_ws0 = rotz(home[2])
-        r_sw_w0 = np.append(r_cw_w, 0) + C_ws0 @ [0.6, 0, 0.2]
+        r_sw_w0 = np.append(r_cw_w, 0) + C_ws0 @ [0.6, INIT_Y_OFFSET, 0.2]
         Q_ws0 = pyb_utils.matrix_to_quaternion(C_ws0)
     else:
         path = fp.SegmentPath(
@@ -177,7 +186,9 @@ def main():
         min_dist=OBS_MIN_DIST,
     )
     if USE_DIPOLE_CONTROLLER:
-        push_controller = fp.DipolePushController(speed=PUSH_SPEED, path=path)
+        push_controller = fp.DipolePushController(
+            speed=PUSH_SPEED, path=path, lookahead_dist=DIPOLE_LOOKAHEAD_DIST
+        )
     else:
         push_controller = fp.PushController(
             speed=PUSH_SPEED,
@@ -205,7 +216,7 @@ def main():
     forces = []
 
     dist_from_start = 0
-    smoother = mm.ExponentialSmoother(τ=0.05, x0=np.zeros(3))
+    smoother = mm.ExponentialSmoother(τ=0.05, x0=np.zeros(2))
 
     t = 0
     while t <= DURATION:
@@ -223,7 +234,27 @@ def main():
         f = pyb_utils.get_total_contact_wrench(
             slider.uid, robot.uid, -1, robot.tool_idx
         )[0]
-        f = f[:2]
+
+        if TEST_WITH_CORRUPT_FORCE:
+            C_wc = robot.get_link_frame_pose(as_rotation_matrix=True)[1]
+            C_wb3 = rotz(q[2])
+            f_actual = f.copy()
+            f_w = f.copy()
+
+            # body frame force
+            f_b = C_wb3.T @ f_w
+
+            # add angular bias in the body frame
+            f_corrupt_b = rotz(np.deg2rad(0)) @ f_b
+
+            # rotate back to world frame
+            f_corrupt_w = C_wb3 @ f_corrupt_b
+            f = f_corrupt_w[:2]
+            print(f_actual[:2])
+        else:
+            f = f[:2]
+
+        f = smoother.update(f, dt=sim.timestep)
 
         θd = np.arctan2(pathdir[1], pathdir[0])
 

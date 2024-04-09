@@ -357,9 +357,13 @@ class DipolePushController:
         Path to track.
     """
 
-    def __init__(self, speed, path):
+    def __init__(self, speed, path, lookahead_dist):
+        assert speed > 0
+        assert lookahead_dist >= 0
+
         self.speed = speed
         self.path = path
+        self.lookahead_dist = lookahead_dist
 
         self.reset()
 
@@ -391,17 +395,24 @@ class DipolePushController:
             slider_position, min_dist_from_start=self.dist_from_start
         )
         self.dist_from_start = max(info.distance_from_start, self.dist_from_start)
-        pathdir = info.direction
+
+        # target point to steer toward is `self.lookahead_dist` ahead of the
+        # closest point on the path
+        target = self.path.point_at_distance(
+            info.distance_from_start + self.lookahead_dist
+        )
+        targetdir = util.unit(target - slider_position)
+        # targetdir = info.direction
 
         # orthogonal axis of local path frame
         R = util.rot2d(np.pi / 2)
-        orthdir = R @ pathdir
+        orthdir = R @ targetdir
 
         q = contact_position - slider_position
-        θ = util.signed_angle(pathdir, util.unit(q))
+        θ = util.signed_angle(targetdir, util.unit(q))
 
         # see Fig. 4 of Igarashi et al. (2010)
-        pushdir = util.unit(np.cos(2 * θ) * pathdir + np.sin(2 * θ) * orthdir)
+        pushdir = util.unit(np.cos(2 * θ) * targetdir + np.sin(2 * θ) * orthdir)
 
         # print(f"pathdir = {pathdir}")
         # print(f"orthdir = {orthdir}")

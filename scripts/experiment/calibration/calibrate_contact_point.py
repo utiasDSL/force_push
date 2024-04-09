@@ -4,6 +4,7 @@
 The results are saved to a yaml file for consumption by other scripts (such as
 controllers).
 """
+import datetime
 import yaml
 
 import rospy
@@ -103,9 +104,11 @@ def main():
     print(f"actual  = {r_bc_b}")
 
     # save the results
-    with open(CALIBRATION_FILE, "w") as f:
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    output_file_name =  "contact_point_calibration_" + timestamp + ".yaml"
+    with open(output_file_name, "w") as f:
         yaml.dump({"r_bc_b": r_bc_b.tolist()}, stream=f)
-    print(f"Saved to {CALIBRATION_FILE}")
+    print(f"Saved to {output_file_name}")
 
 
 if __name__ == "__main__":

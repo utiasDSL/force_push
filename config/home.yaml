@@ -1,7 +1,7 @@
 zero: [0, 0, 0, 1.5708, -0.1745, 1.5708, -1.3963,  1.5708, 1.3100]
 
 # push straight across the room
-pushing_straight: [-0.5, -4.0, 1.5708, 1.5708, -0.1745, 1.5708, -1.3963,  1.5708, 1.3100]
+# pushing_straight: [-0.5, -4.0, 1.5708, 1.5708, -0.1745, 1.5708, -1.3963,  1.5708, 1.3100]
 
 # push diagonally across the room (allows for a longer path)
 pushing_diag: [2.5, -3.5, 2.1817, 1.5708, -0.1745, 1.5708, -1.3963,  1.5708, 1.3100]

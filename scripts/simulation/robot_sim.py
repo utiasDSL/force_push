@@ -63,7 +63,7 @@ OBS_MIN_DIST = 0.75
 # OBS_INFL_DIST = 1.5
 
 # initial offset of slider center w.r.t. contact point
-INIT_Y_OFFSET = 0.3
+INIT_Y_OFFSET = 0.0
 
 USE_DIPOLE_CONTROLLER = True
 DIPOLE_LOOKAHEAD_DIST = 1
@@ -123,6 +123,10 @@ def main():
     C_wb = fp.rot2d(home[2])
     r_bc_b = -C_wb.T @ (r_cw_w - r_bw_w)
 
+    # NOTE: test offsets in the contact point
+    # r_bc_b[0] -= 0.03
+    # r_bc_b[1] += 0.05
+
     # NOTE for visualizing the circular approximation to the base for obstacle
     # avoidance
     # pyb_utils.BulletBody.cylinder([home[0], home[1], 0], radius=0.55, height=0.2)
@@ -157,11 +161,18 @@ def main():
     #     np.append(r_cw_w, 0) + [0, 4.25 + 0.5, 0.5], [3, 0.5, 0.5], mu=OBSTACLE_MU
     # )
 
-    slider = fp.BulletSquareSlider(
+    # slider = fp.BulletSquareSlider(
+    #     position=r_sw_w0,
+    #     orientation=Q_ws0,
+    #     mass=SLIDER_MASS,
+    #     half_extents=BOX_SLIDER_HALF_EXTENTS,
+    # )
+    slider = fp.BulletCircleSlider(
         position=r_sw_w0,
         orientation=Q_ws0,
         mass=SLIDER_MASS,
-        half_extents=BOX_SLIDER_HALF_EXTENTS,
+        radius=CIRCLE_SLIDER_RADIUS,
+        height=CIRCLE_SLIDER_HEIGHT,
     )
 
     # set friction and contact properties
@@ -306,7 +317,12 @@ def main():
     r_sw_ws = np.array(r_sw_ws)
     forces = np.array(forces)
     cmd_vels = np.array(cmd_vels)
-    path_xy = path.get_plotting_coords()
+
+    d = path.segments[-1].direction
+    v = path.segments[-1].v2
+    dist = np.max((r_sw_ws[:, :2] - v) @ d)
+    dist = max(0, dist)
+    path_xy = path.get_plotting_coords(dist=dist)
 
     plt.figure()
     plt.plot(ts, qs[:, 0], label="x")

@@ -38,7 +38,6 @@ ACCELERATION_MAGNITUDE = PUSH_SPEED / ACCELERATION_DURATION
 
 # control gains
 Kθ = 0.3
-# KY = 0.3
 KY = 0.5
 Kω = 1
 KF = 0.003
@@ -56,6 +55,9 @@ ACC_WEIGHT = 0.0
 FORCE_MIN_THRESHOLD = 5
 FORCE_MAX_THRESHOLD = 50
 
+# the run will stop if this much force is measured
+FORCE_MAX_ALLOWED = 150  # Newtons
+
 # time constant for force filter
 FILTER_TIME_CONSTANT = 0.05
 
@@ -63,7 +65,16 @@ FILTER_TIME_CONSTANT = 0.05
 BASE_OBS_MIN_DIST = 0.65  # 0.55 radius circle + 0.1 obstacle dist
 EE_OBS_MIN_DIST = 0.1
 
+# when using the dipole controller, steer toward the point on the path that is
+# this distance ahead of the current closest point
 DIPOLE_LOOKAHEAD_DIST = 1  # meters
+
+# set `False` to disable admittance controller
+USE_ADMITTANCE_CONTROL = True
+
+# for the dipole 5-lb box experiments, we need the obstacle to be longer to
+# actually catch the box
+EXTEND_OBSTACLE_LEN = 0
 
 
 def main():
@@ -145,7 +156,7 @@ def main():
         )
     if args.environment == "corridor":
         obstacles = fp.translate_segments(
-            [fp.LineSegment([-3.5, 4.25], [1.0, 4.25])], r_cw_w
+            [fp.LineSegment([-3.5, 4.25], [1.0 + EXTEND_OBSTACLE_LEN, 4.25])], r_cw_w
         )
     else:
         obstacles = None
@@ -215,6 +226,8 @@ def main():
         "obstacles": obstacles,
         "r_bc_b": r_bc_b,
         "dipole_lookahead_dist": DIPOLE_LOOKAHEAD_DIST,
+        "force_max_allowed": FORCE_MAX_ALLOWED,
+        "use_admittance_control": USE_ADMITTANCE_CONTROL,
     }
 
     # record data
@@ -224,13 +237,16 @@ def main():
         print(f"Recording data to {recorder.log_dir}")
 
     # zero the F-T sensor
+    # TODO this hangs with F-T sensor not active
     print("Estimating F-T sensor bias...")
     bias_estimator = fp.WrenchBiasEstimator()
     bias = bias_estimator.estimate(RATE)
     print(f"Done. Bias = {bias}")
 
     wrench_estimator = fp.WrenchEstimator(bias=bias, τ=FILTER_TIME_CONSTANT)
-    while not rospy.is_shutdown() and not wrench_estimator.ready():
+    while not rospy.is_shutdown() and not signal_handler.received:
+        if wrench_estimator.ready():
+            break
         rate.sleep()
 
     if args.save is not None:
@@ -251,8 +267,6 @@ def main():
             speed = PUSH_SPEED
         push_controller.speed = speed
 
-        # TODO need to get r_sw_w
-
         q = np.concatenate((robot.q, q_arm))
         r_bw_w = q[:2]
         C_wb = fp.rot2d(q[2])
@@ -267,6 +281,12 @@ def main():
 
         # force direction is negative to switch from sensed force to applied force
         f = -f_w[:2]
+
+        f_norm = np.linalg.norm(f)
+        # print(f"f norm = {f_norm}")
+        if f_norm > FORCE_MAX_ALLOWED:
+            print(f"Measured force of {f_norm} exceeds allowed maximum.")
+            break
 
         # direction of the path
         info = path.compute_closest_point_info(
@@ -285,15 +305,16 @@ def main():
             v_ee_cmd = push_controller.update(
                 contact_position=r_cw_w, slider_position=r_sw_w
             )
-            v_ee_cmd = force_controller.update(force=f, v_cmd=v_ee_cmd)
-            # print(f"v_ee_cmd = {v_ee_cmd}")
+            if USE_ADMITTANCE_CONTROL:
+                v_ee_cmd = force_controller.update(force=f, v_cmd=v_ee_cmd)
 
             # NOTE this is different because the dipole controller uses the
             # slider position
             # assert np.isclose(push_controller.dist_from_start, dist_from_start)
         else:
             v_ee_cmd = push_controller.update(r_cw_w, f)
-            v_ee_cmd = force_controller.update(force=f, v_cmd=v_ee_cmd)
+            if USE_ADMITTANCE_CONTROL:
+                v_ee_cmd = force_controller.update(force=f, v_cmd=v_ee_cmd)
             assert np.isclose(push_controller.dist_from_start, dist_from_start)
 
         # desired angular velocity is calculated to align the robot with the

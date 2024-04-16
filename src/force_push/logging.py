@@ -10,6 +10,7 @@ ROSBAG_TOPICS = [
         "--regex", "/ridgeback_velocity_controller/(.*)",
         "--regex", "/vicon/(.*)",
         "--regex", "/wrench/(.*)",
+        "/time_msg",
 ]
 # fmt: on
 

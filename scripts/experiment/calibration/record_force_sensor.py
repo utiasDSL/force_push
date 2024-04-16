@@ -28,7 +28,10 @@ DURATION = 30
 # FILTER_TIME_CONSTANT = 0.1
 FILTER_TIME_CONSTANT = 0.05
 
-USE_CALIBRATED_FORCE_ORN = True
+# set to `True` to use the current calibrated orientation to rotate force into
+# the base frame
+# this **does not** affect the data saved for subsequent calibration
+USE_CALIBRATED_FORCE_ORN = False
 
 
 def main():
@@ -46,10 +49,6 @@ def main():
     model = mm.MobileManipulatorKinematics(tool_link_name="gripper")
     ft_idx = model.get_link_index("ft_sensor")
     q_arm = home[3:]
-
-    # load calibrated offset between contact point and base frame origin
-    with open(fp.CONTACT_POINT_CALIBRATION_FILE) as f:
-        r_bc_b = np.array(yaml.safe_load(f)["r_bc_b"])
 
     if USE_CALIBRATED_FORCE_ORN:
         with open(fp.FORCE_ORN_CALIBRATION_FILE) as f:

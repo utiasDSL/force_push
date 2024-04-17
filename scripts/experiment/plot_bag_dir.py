@@ -71,10 +71,6 @@ def main():
     r_cw_w0 = r_bw_w - C_wb @ r_bc_b
     r_bw_ws = qs_rb[:, :2] - r_cw_w0
 
-    # print(f"r_bw_w act = {r_bw_w}")
-    # print(f"r_bw_w des = {home[:2]}")
-    # return
-
     # base velocity commands
     cmd_msgs = [msg for _, msg, _ in bag.read_messages("/ridgeback/cmd_vel")]
     cmd_times = [t.to_sec() for _, _, t in bag.read_messages("/ridgeback/cmd_vel")]
@@ -84,6 +80,24 @@ def main():
         cmd_vels.append(cmd_vel)
     cmd_vels = np.array(cmd_vels)
     cmd_times -= t0
+
+    # compute velocity of the contact point
+    qs_cmd_aligned = np.array(ros_utils.interpolate_list(cmd_times, rb_times, qs_rb))
+    v_cw_ws = []
+    for i in range(cmd_times.shape[0]):
+        C_wb = rotz(qs_cmd_aligned[i, 2])
+
+        # rotate cmd from body to world frame
+        V_bw_w = C_wb @ cmd_vels[i, :]
+
+        # 2D skew matrix
+        W = np.array([[0, -V_bw_w[2]], [V_bw_w[2], 0]])
+
+        # compute contact point velocity
+        v_cw_w = V_bw_w[:2] - W @ C_wb[:2, :2] @ r_bc_b
+        v_cw_ws.append(v_cw_w)
+    v_cw_ws = np.array(v_cw_ws)
+    v_cw_w_norms = np.linalg.norm(v_cw_ws, axis=1)
 
     # contact point
     r_cw_ws = []
@@ -209,6 +223,16 @@ def main():
     plt.ylabel("Command")
     plt.title("Base commands vs. time")
     plt.legend()
+    plt.grid()
+
+    plt.figure()
+    plt.plot(cmd_times, v_cw_w_norms, label="vx")
+    # plt.plot(cmd_times, cmd_vels[:, 1], label="vy")
+    # plt.plot(cmd_times, cmd_vels[:, 2], label="ω")
+    plt.xlabel("Time [s]")
+    plt.ylabel("Velocity [m/s]")
+    plt.title("Contact point velocity")
+    # plt.legend()
     plt.grid()
 
     plt.figure()

@@ -172,8 +172,6 @@ class RobotController:
             P=P, q=q, A=A, b=b, G=G, h=h, lb=self.lb, ub=self.ub, solver=self.solver
         )
         u, α = x[:3], x[3]
-        # print(f"eq err = {np.linalg.norm(A @ x - b)}")
-        # print(f"α = {α}")
         return u
 
 
@@ -212,7 +210,6 @@ class PushController:
         path,
         ki_θ=0,
         ki_y=0,
-        # corridor_radius=np.inf,
         force_min=1,
         con_inc=0.3,
         obstacles=None,
@@ -225,12 +222,6 @@ class PushController:
 
         self.ki_θ = ki_θ
         self.ki_y = ki_y
-
-        # distance from center of corridor the edges
-        # if infinite, then the corridor is just open space
-        # to be used with hallways (won't work if there aren't actually walls
-        # present)
-        # self.corridor_radius = corridor_radius
 
         # force thresholds
         self.force_min = force_min
@@ -293,16 +284,6 @@ class PushController:
 
         θf = util.signed_angle(pathdir, util.unit(force))
 
-        # print(f"offset = {offset}")
-        # print(f"θf = {θf}")
-        # print(f"r_cw_w = {position}")
-        # print(f"f_dir = {util.unit(force)}")
-        # print(f"f_norm = {f_norm}")
-
-        # integrators
-        # self.offset_int += dt * offset
-        # self.θf_int += dt * θf
-
         # pushing angle
         if f_norm < self.force_min:
             # if we've lost contact, try to recover by circling back
@@ -318,10 +299,8 @@ class PushController:
         else:
             # relative to pathdir
             θp = (1 + self.kθ) * θf + self.ky * offset
-            # print(f"θf term = {(1 + self.kθ) * θf}, off term = {self.ky * offset}")
 
         self.θp = util.wrap_to_pi(θp)
-        # print(f"θp = {self.θp}")
 
         # pushing direction
         pushdir = util.rot2d(self.θp) @ pathdir
@@ -337,7 +316,6 @@ class PushController:
                     perp = R @ normal
                     pushdir0 = pushdir
                     pushdir = np.sign(pushdir @ perp) * perp
-                    # print(f"original = {pushdir0}, corrected = {pushdir}")
 
         return self.speed * pushdir
 
@@ -402,7 +380,6 @@ class DipolePushController:
             info.distance_from_start + self.lookahead_dist
         )
         targetdir = util.unit(target - slider_position)
-        # targetdir = info.direction
 
         # orthogonal axis of local path frame
         R = util.rot2d(np.pi / 2)
@@ -413,11 +390,5 @@ class DipolePushController:
 
         # see Fig. 4 of Igarashi et al. (2010)
         pushdir = util.unit(np.cos(2 * θ) * targetdir + np.sin(2 * θ) * orthdir)
-
-        # print(f"pathdir = {pathdir}")
-        # print(f"orthdir = {orthdir}")
-        # print(f"θ = {θ}")
-        # print(f"pushdir = {pushdir}")
-        # raise ValueError()
 
         return self.speed * pushdir

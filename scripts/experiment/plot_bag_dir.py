@@ -11,6 +11,7 @@ import rosbag
 import matplotlib.pyplot as plt
 from spatialmath.base import q2r, rotz
 from spatialmath import UnitQuaternion
+from scipy.spatial.transform import Rotation
 
 import mobile_manipulation_central as mm
 from mobile_manipulation_central import ros_utils
@@ -125,16 +126,21 @@ def main():
         # negative to switch to applied force
         f_ws[i, :] = -C_wb @ ΔC @ C_bf @ wrenches_aligned[i, :3]
     force_idx = np.argmax(np.linalg.norm(f_ws[:, :2], axis=1) >= params["force_min"])
+    first_contact_time = wrench_times[force_idx]
     print(f"First contact wrench index = {force_idx}")
+    print(f"First contact time = {first_contact_time} s")
 
     # slider
     slider_topic = ros_utils.vicon_topic_name(args.slider)
     slider_msgs = [msg for _, msg, _ in bag.read_messages(slider_topic)]
+    # slider_times2 = [t.to_sec() for _, _, t in bag.read_messages(slider_topic)]
     slider_times, slider_poses = ros_utils.parse_transform_stamped_msgs(
         slider_msgs, normalize_time=False
     )
     slider_times -= t0
+    # slider_times2 -= t0
     slider_positions = slider_poses[:, :3]
+    slider_orientations = Rotation.from_quat(slider_poses[:, 3:])
     r_sw_ws = slider_positions[:, :2] - r_cw_w0
 
     # check initial yaw angle
@@ -158,6 +164,59 @@ def main():
         obstacles = []
     for i in range(len(obstacles)):
         obstacles[i] = obstacles[i].offset(-r_cw_w0)
+
+    # path completion metric
+    last_time = slider_times[-1]
+    duration = last_time - first_contact_time
+    ideal_distance = params["push_speed"] * duration
+
+    r_sw_w_first_contact_idx = np.argmax(slider_times >= first_contact_time)
+    r_sw_w_first_contact_position = r_sw_ws[r_sw_w_first_contact_idx, :]
+    r_sw_w_first_contact_info = path.compute_closest_point_info(
+        r_sw_w_first_contact_position
+    )
+
+    r_sw_w_final_contact_position = r_sw_ws[-1, :]
+    r_sw_w_final_contact_info = path.compute_closest_point_info(
+        r_sw_w_final_contact_position
+    )
+    actual_distance = (
+        r_sw_w_final_contact_info.distance_from_start
+        - r_sw_w_first_contact_info.distance_from_start
+    )
+    completion_frac = actual_distance / ideal_distance
+    # print(f"ideal distance  = {ideal_distance}")
+    # print(f"actual distance = {actual_distance}")
+
+    print(f"completion_frac = {completion_frac}")
+
+    # some additional completion frac debugging code
+    rb_first_contact_idx = np.argmax(rb_times >= first_contact_time)
+    r_bw_w_first_contact_position = r_bw_ws[rb_first_contact_idx, :]
+    r_bw_w_final_contact_position = r_bw_ws[-1, :]
+
+    r_cw_w_first_contact_position = r_cw_ws[rb_first_contact_idx, :]
+    r_cw_w_final_contact_position = r_cw_ws[-1, :]
+
+    cmd_vel_first_contact_idx = np.argmax(cmd_times >= first_contact_time)
+    slider_pos_first_contact_idx = np.argmax(slider_times >= first_contact_time)
+
+
+    # this is almost exactly the same as the planar case: minor height
+    # differences appear negligible
+    # print(
+    #     np.linalg.norm(
+    #         slider_positions[-1, :] - slider_positions[r_sw_w_first_contact_idx, :]
+    #     )
+    # )
+
+    # compute tilt angles of the slider w.r.t. its starting orientation
+    C = slider_orientations #[rb_first_contact_idx:]
+    C = C[0].inv() * C
+    z = np.array([0, 0, 1])
+    Cz = C.apply(z)
+    slider_tilt_angles = np.arccos(Cz @ z)
+    print(f"max slider tilt angle = {np.rad2deg(np.max(slider_tilt_angles))} deg")
 
     plt.figure()
     plt.plot(slider_times, r_sw_ws[:, 0], label="x")
@@ -226,13 +285,10 @@ def main():
     plt.grid()
 
     plt.figure()
-    plt.plot(cmd_times, v_cw_w_norms, label="vx")
-    # plt.plot(cmd_times, cmd_vels[:, 1], label="vy")
-    # plt.plot(cmd_times, cmd_vels[:, 2], label="ω")
+    plt.plot(cmd_times, v_cw_w_norms)
     plt.xlabel("Time [s]")
     plt.ylabel("Velocity [m/s]")
     plt.title("Contact point velocity")
-    # plt.legend()
     plt.grid()
 
     plt.figure()
@@ -246,14 +302,13 @@ def main():
     plt.legend()
     plt.grid()
 
-    # plt.figure()
-    # ax = plt.gca()
-    # ax.set_aspect("equal")
-    # plt.plot(r_cw_ws[:, 0], r_cw_ws[:, 1])
-    # plt.xlabel("x [m]")
-    # plt.ylabel("y [m]")
-    # plt.title("EE position")
-    # plt.grid()
+    plt.figure()
+    plt.plot(slider_times, np.rad2deg(slider_tilt_angles))
+    plt.xlabel("Time [s]")
+    plt.ylabel("Tilt angle [deg]")
+    plt.title("Slider tilt angles")
+    plt.legend()
+    plt.grid()
 
     plt.show()
 

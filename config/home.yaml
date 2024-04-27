@@ -14,4 +14,4 @@ pushing_diag_rev: [-2.25, 3.25, -0.9599, 1.5708, -0.1745, 1.5708, -1.3963,  1.57
 pushing_corner: [1.25, -3.5, 1.5708, 1.5708, -0.1745, 1.5708, -1.3963,  1.5708, 1.3100]
 
 # use when calibrating contact friction against the wall obstacle
-pushing_friction_calibration: [2.75, 0, 1.5708, 1.5708, -0.1745, 1.5708, -1.3963,  1.5708, 1.3100]
+pushing_friction_calibration: [2.75, 0.15, 1.5708, 1.5708, -0.1745, 1.5708, -1.3963,  1.5708, 1.3100]

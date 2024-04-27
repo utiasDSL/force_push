@@ -31,3 +31,7 @@ class DataRecorder(mm.DataRecorder):
         super()._record_notes()
         self._record_params()
         super()._record_bag()
+
+    def record_params(self, params):
+        self.params = params
+        self._record_params()

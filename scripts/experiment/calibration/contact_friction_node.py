@@ -18,13 +18,18 @@ import force_push as fp
 import IPython
 
 
+# 1. first need to converge to path origin
+# 2. zero out the force sensor
+# 3. approach object
+# 4. move sideways
+
 # Datasheet claims the F/T sensor output rate is 100Hz, though rostopic says
 # more like ~63Hz
 RATE = 100  # Hz
 TIMESTEP = 1.0 / RATE
 
 # pushing speed
-PUSH_SPEED = 0.05
+PUSH_SPEED = 0.01
 
 # duration of initial acceleration phase
 ACCELERATION_DURATION = 1.0
@@ -47,7 +52,7 @@ Kω = 1
 
 # only control based on force when it is high enough (i.e. in contact with
 # something)
-FORCE_MIN_THRESHOLD = 15
+FORCE_MIN_THRESHOLD = 20
 
 # time constant for force filter
 FILTER_TIME_CONSTANT = 0.05
@@ -59,7 +64,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--object",
-        help="Name of the object to push with the vision-based dipole method rather than force-based pushing",
+        help="Name of the object being calibrated",
     )
     parser.add_argument("--save", help="Save data to this file.")
     parser.add_argument("--notes", help="Additional information written to notes.txt.")
@@ -137,21 +142,10 @@ def main():
     robot.brake()
     print("Aligned.")
 
-    # 1. first need to converge to path origin
-    # 2. zero out the force sensor
-    # 3. approach object
-    # 4. move sideways
-
     path = fp.SegmentPath.line(PATHDIR, origin=origin)
 
-    params = {
-        "pathdir": PATHDIR,
-        "orthdir": ORTHDIR,
-        "force_min": FORCE_MIN_THRESHOLD,
-    }
-
     if args.save is not None:
-        recorder = fp.DataRecorder(name=args.save, notes=args.notes, params=params)
+        recorder = fp.DataRecorder(name=args.save, notes=args.notes)
         recorder.record()
         print(f"Recording data to {recorder.log_dir}")
 
@@ -173,6 +167,7 @@ def main():
         time.sleep(3.0)
 
     path_switched = False
+    path_angle = PATH_ANGLE
 
     t = rospy.Time.now().to_sec()
     t0 = t
@@ -200,10 +195,24 @@ def main():
             robot.brake()
 
             # update the path to go sideways now
-            path = fp.SegmentPath.line(ORTHDIR, origin=r_cw_w)
-            path_switched = True
+            # TODO update from data
+
+            # f_w_raw = C_wb3 @ ΔC @ C_wb3.T @ C_wf @ wrench_estimator.wrench[:3]
+            # print(f"f_w_filt = {f_w[:2]}")
+            # print(f"f_w_raw = {f_w_raw[:2]}")
+            # path_angle = np.arctan2(pathdir[1], pathdir[0])
 
             rospy.sleep(3.0)
+
+            f_f = wrench_estimator.wrench_filtered[:3]
+            C_wb3 = rotz(q[2])
+            f_w = C_wb3 @ ΔC @ C_wb3.T @ C_wf @ f_f
+
+            pathdir = -fp.unit(f_w[:2])
+            orthdir = fp.rot2d(np.pi / 2) @ pathdir
+
+            path = fp.SegmentPath.line(orthdir, origin=r_cw_w)
+            path_switched = True
 
             # publish message indicating we are moving sideways now
             msg = Time()
@@ -223,6 +232,18 @@ def main():
 
         rate.sleep()
         t = rospy.Time.now().to_sec()
+
+    params = {
+        "pathdir0": PATHDIR,
+        "orthdir0": ORTHDIR,
+        "pathdir": pathdir,
+        "orthdir": orthdir,
+        "force_min": FORCE_MIN_THRESHOLD,
+        "ΔC": ΔC,
+        "r_bc_b": r_bc_b,
+    }
+    if args.save is not None:
+        recorder.record_params(params)
 
     robot.brake()
     time.sleep(0.5)  # wait a bit to make sure brake is published

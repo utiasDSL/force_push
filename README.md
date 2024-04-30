@@ -1,7 +1,7 @@
 # Force Push
 
 Quasistatic robotic planar pushing with single-point contact using only force
-feedback. 
+feedback to sense the pushed object.
 
 ## Install
 

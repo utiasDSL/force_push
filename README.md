@@ -3,6 +3,10 @@
 Quasistatic robotic planar pushing with single-point contact using only force
 feedback to sense the pushed object.
 
+The code in this repository accompanies [this
+paper](https://arxiv.org/abs/2401.17517), and a video of some of the
+experiments can be found [here](http://tiny.cc/force-push).
+
 ## Install
 
 This code has been tested on Ubuntu 20.04 with ROS Noetic and Python 3.8.
@@ -98,6 +102,28 @@ scripts in `scripts/experiment/calibration`).
 
 To run the pushing controller, use the script
 `scripts/experiments/push_control_node.py` with desired options.
+
+## Tests
+
+Some packages contain tests. Python tests use [pytest](https://pytest.org/).
+Run `pytest .` inside a package's `test` directory to run the Python tests.
+
+## Citation
+
+If you find this work useful, feel free to cite the accompanying
+[paper](https://doi.org/10.1109/LRA.2024.3414180):
+```
+@article{heins2024force,
+  title = {Force Push: Robust Single-Point Pushing With Force Feedback},
+  author = {Adam Heins and Angela P. Schoellig},
+  journal = {{IEEE Robotics and Automation Letters}},
+  volume = {9},
+  number = {8},
+  pages = {6856--6863},
+  doi = {10.1109/LRA.2024.3414180},
+  year = {2024},
+}
+```
 
 ## License
 

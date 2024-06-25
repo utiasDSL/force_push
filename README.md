@@ -1,11 +1,12 @@
 # Force Push
 
 Quasistatic robotic planar pushing with single-point contact using only force
-feedback to sense the pushed object.
-
-The code in this repository accompanies [this
-paper](https://arxiv.org/abs/2401.17517), and a video of some of the
+feedback to sense the pushed object. The code in this repository accompanies
+[this paper](https://arxiv.org/abs/2401.17517), and a video of some of the
 experiments can be found [here](http://tiny.cc/force-push).
+
+![Pushing with force feedback](https://static.adamheins.com/force_push/force_push.png)
+*Our mobile manipulator pushing a box based on contact force measurements.*
 
 ## Install
 

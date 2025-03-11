@@ -1,4 +1,6 @@
-# Force Push
+<p align="center">
+<img src="https://static.adamheins.com/force_push/logo.svg" alt="Force Push" width="50%"/>
+</p>
 
 Quasistatic robotic planar pushing with single-point contact using only force
 feedback to sense the pushed object. The code in this repository accompanies

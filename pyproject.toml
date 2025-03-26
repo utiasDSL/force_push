@@ -1,0 +1,50 @@
+[project]
+name = "force_push"
+version = "0.1.0"
+description = ""
+authors = [
+  {name = "Adam Heins", email = "mail@adamheins.com"}
+]
+license = { text = "MIT" }
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+  "jax>=0.4.1",
+  "jaxlie>=1.3.0",
+  "matplotlib>=3.7.4",
+  "numpy>=1.23.5",
+  "pyb_utils>=2.2.0",
+  "pybullet>=3.2.5",
+  "pymanopt>=2.0.1",
+  "pytest>=7.4.2",
+  "PyYAML>=6.0",
+  "qpsolvers>=4.2.0",
+  "scipy>=1.10.0",
+  "spatialmath_python>=1.0.3",
+  "tqdm>=4.65.0",
+  "xacrodoc>=0.3.0",
+]
+
+# [project.optional-dependencies]
+# mujoco = [
+#     "mujoco>=3.2.3",
+# ]
+
+[dependency-groups]
+dev = [
+  "pytest>=7.4.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+default-groups = ["dev", "docs"]
+
+[tool.black]
+line-length = 80
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = "tests/packages"
